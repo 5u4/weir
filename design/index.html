@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>weir 设计稿</title>
+<style>
+:root {
+  --bg: #0e0e10;
+  --bg-2: #151518;
+  --bg-3: #1c1c20;
+  --line: #2a2a2f;
+  --fg: #e7e5e0;
+  --fg-2: #b4b1aa;
+  --muted: #8d8a83;
+  --accent: #e8a15a;
+  --accent-2: #7fb0e0;
+  --ok: #8cc79a;
+  --warn: #e6c26a;
+  --bad: #e58a7f;
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --measure: 46rem;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--fg); font: 16px/1.75 var(--font); -webkit-font-smoothing: antialiased; }
+body { margin: 0; }
+a { color: var(--accent-2); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent); }
+a:hover { border-bottom-color: var(--accent-2); }
+.wrap { display: grid; grid-template-columns: 15rem minmax(0, var(--measure)); gap: 4rem; max-width: 70rem; margin: 0 auto; padding: 4rem 2rem 8rem; }
+nav.toc { position: sticky; top: 2rem; align-self: start; max-height: calc(100vh - 4rem); overflow: auto; font-size: 13.5px; line-height: 1.6; }
+nav.toc .toc-title { color: var(--muted); font-size: 12px; letter-spacing: .08em; margin-bottom: .75rem; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: t; }
+nav.toc li { margin: 0 0 .45rem; }
+nav.toc a { color: var(--fg-2); border: 0; display: grid; grid-template-columns: 2.6rem 1fr; }
+nav.toc a .n { color: var(--muted); font: 500 12px/1.9 var(--mono); }
+nav.toc a:hover, nav.toc a.on { color: var(--fg); }
+nav.toc a.on { box-shadow: inset 2px 0 0 var(--accent); padding-left: .6rem; margin-left: -.6rem; }
+main { min-width: 0; }
+header.doc { margin-bottom: 3.5rem; }
+header.doc .kicker { color: var(--accent); font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+h1 { font-size: 2.4rem; line-height: 1.2; margin: .6rem 0 .8rem; letter-spacing: -.01em; }
+header.doc .meta { color: var(--muted); font-size: 14px; }
+.lead { font-size: 1.12rem; color: var(--fg); }
+.lead p { margin: 0 0 1rem; }
+h2 { font-size: 1.45rem; line-height: 1.4; margin: 4.5rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); scroll-margin-top: 1rem; }
+h2 .n { color: var(--muted); font: 500 .95rem var(--mono); margin-right: .6rem; }
+h3 { font-size: 1.1rem; margin: 2.5rem 0 .6rem; scroll-margin-top: 1rem; }
+h4 { font-size: 1rem; margin: 1.8rem 0 .4rem; color: var(--fg-2); }
+p, ul, ol { margin: 0 0 1rem; }
+ul, ol { padding-left: 1.3rem; }
+li { margin: .25rem 0; }
+li::marker { color: var(--muted); }
+strong { color: #fff; font-weight: 600; }
+code { font: .88em var(--mono); background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px; padding: .05em .35em; color: #f0d9bf; }
+pre { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; overflow: auto; font: 13px/1.6 var(--mono); margin: 0 0 1.25rem; tab-size: 2; }
+pre code { background: none; border: 0; padding: 0; color: var(--fg); font-size: inherit; }
+pre .c { color: var(--muted); }
+pre .k { color: var(--accent); }
+pre .s { color: var(--ok); }
+table { width: 100%; border-collapse: collapse; margin: 0 0 1.4rem; font-size: 14.5px; line-height: 1.6; }
+th, td { text-align: left; vertical-align: top; padding: .55rem .7rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 13px; border-bottom-color: #3a3a40; }
+td code { white-space: nowrap; }
+.tw { overflow-x: auto; }
+details { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: .2rem 1.1rem; margin: 0 0 1.25rem; }
+details[open] { padding-bottom: .6rem; }
+summary { cursor: pointer; padding: .6rem 0; color: var(--fg-2); font-size: 14.5px; }
+summary:hover { color: var(--fg); }
+details pre { background: var(--bg); }
+.callout { border-left: 3px solid var(--accent); padding: .15rem 0 .15rem 1rem; margin: 0 0 1.25rem; color: var(--fg); }
+.callout.note { border-left-color: var(--accent-2); }
+.callout.warn { border-left-color: var(--warn); }
+.callout .t { display: block; font-size: 12.5px; color: var(--muted); letter-spacing: .06em; margin-bottom: .1rem; }
+.tag { display: inline-block; font: 600 11px/1 var(--mono); padding: .3em .55em; border-radius: 4px; vertical-align: .1em; }
+.tag.m { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.tag.i { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.tag.g { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.diagram { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 1.2rem; margin: 0 0 1.4rem; overflow: hidden;
+  --pele-bg: #151518; --pele-fg: #e7e5e0; --pele-muted: #8d8a83; --pele-line: #8d8a83;
+  --pele-surface: #202025; --pele-surface-alt: #1a1a1e; --pele-border: #45454c; --pele-accent: #e8a15a;
+  --pele-critical: #e58a7f; --pele-font: var(--font); --pele-font-mono: var(--mono); --pele-radius: 6px; }
+.diagram pre.mermaid { display: none; }
+.diagram .err { color: var(--bad); font: 13px var(--mono); white-space: pre-wrap; }
+ol.trace { counter-reset: s; list-style: none; padding: 0; }
+ol.trace > li { counter-increment: s; position: relative; padding-left: 2.6rem; margin: 0 0 1.2rem; }
+ol.trace > li::before { content: counter(s); position: absolute; left: 0; top: .1rem; width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 1px solid var(--line); background: var(--bg-3); color: var(--accent); font: 600 13px/1.6rem var(--mono); text-align: center; }
+ol.trace > li > strong:first-child { display: block; }
+@media (max-width: 1100px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 2.5rem 1.2rem 6rem; }
+  nav.toc { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="目录">
+  <div class="toc-title">目录</div>
+  <ol id="toc"></ol>
+</nav>
+<main>
+<header class="doc">
+  <div class="kicker">Design doc · draft</div>
+  <h1>weir 设计稿</h1>
+  <div class="meta">2026-10-25 · 依据多轮原型的结论 · 原型代码在同目录的 <code>prototype/</code>，属于一次性代码</div>
+</header>
+
+<section class="lead">
+  <p>weir 是一个跑在你本机的 daemon。它把多个 source 的消息同步进一个 SQLite 文件，按 conversation 聚合。然后它调用你自己配置的 AI，把 conversation 分进 bucket，写好摘要。你在 localhost 的 Web UI 里看，你的 agent 通过 <code>weir-axi</code> 查。</p>
+  <p>weir 只读。它不会改 Gmail、Outlook 或 Teams 里的任何状态。已读、完成、静音都只记在本地。</p>
+  <p>整个设计靠一个想法成立：<strong>sync 和 enrich 分开跑</strong>。「打开就是最新」由 sync 保证，新消息一进来就能看到、能搜到。AI 的结果稍后异步补上。AI 慢一点或贵一点，都不影响主体验。</p>
+</section>
+
+<h2 id="scope"><span class="n">01</span>weir 负责同步、聚合和分拣，不负责回复</h2>
+<p>weir 要解决的是「想知道，但不用动」的那一层信息。比如别人的 PR 合了、某个群在讨论架构、build 挂了但不归你管。逐封点开太累，全部忽略又怕错过。weir 把它们收进一个地方，用你读得快的语言给出摘要，读完一键让它离开视线。</p>
+<p>它是个人工具，也是开放的。AI 和 source 都由用户自己接入，weir 不绑定任何一家。</p>
+<div class="tw"><table>
+<thead><tr><th>MVP 做</th><th>MVP 不做</th></tr></thead>
+<tbody>
+<tr><td>IMAP source plugin，运行时插件加载</td><td>改 source 里的状态，包括回复、归档、同步已读</td></tr>
+<tr><td>SQLite 加 FTS5 存储和全文检索</td><td>日历（<code>event</code> kind）</td></tr>
+<tr><td>定时 sync，三个阶段的增量 enrich</td><td>embedding 语义检索</td></tr>
+<tr><td>Web UI，只在 localhost</td><td>手机 app，远程访问</td></tr>
+<tr><td><code>weir-axi</code> CLI，给 agent 查询</td><td>MCP server，内置 agent 对话</td></tr>
+<tr><td>一个 <code>config.toml</code></td><td>设置页</td></tr>
+<tr><td>标签页标题显示未读数</td><td>系统通知、Web Push</td></tr>
+<tr><td>英文界面</td><td>界面多语言，快捷键设计</td></tr>
+</tbody></table></div>
+
+<h3 id="terms">本文用到的术语</h3>
+<p>下表的术语在全文中保持英文，含义只有一个。</p>
+<div class="tw"><table>
+<thead><tr><th>术语</th><th>含义</th></tr></thead>
+<tbody>
+<tr><td><code>source</code></td><td>一个已配置的数据来源，比如「我的 Gmail」。由一个 plugin 实现。</td></tr>
+<tr><td><code>plugin</code></td><td>实现 source 接口的代码，比如 <code>imap</code>。同一个 plugin 可以配置成多个 source。</td></tr>
+<tr><td><code>stream</code></td><td>source 里的一路数据，比如一个 IMAP 文件夹，或者以后 Teams 的一个频道。</td></tr>
+<tr><td><code>item</code></td><td>一条消息，比如一封邮件或一条 Teams 消息。</td></tr>
+<tr><td><code>thread_id</code></td><td>source 给出的分组。值相同的 item 一定在说同一件事。可以为空。</td></tr>
+<tr><td><code>container_id</code></td><td>消息在哪里说的，比如邮件文件夹、Teams 群。只说明位置，不说明话题。</td></tr>
+<tr><td><code>conversation</code></td><td>weir 判断的「同一件事」。可以跨 thread，以后也可以跨 source。是 UI 和 AI 处理的基本单位。</td></tr>
+<tr><td><code>bucket</code></td><td>用户自定义的分类，比如 Action、Alerts。conversation 归入其中一个，或者暂时没有 bucket。</td></tr>
+<tr><td><code>rule</code></td><td>config 里的确定性匹配规则。开新 conversation 时，它可以直接定下 bucket，也可以让这个 conversation 完全不经过 AI。</td></tr>
+<tr><td><code>enricher</code></td><td>daemon 里调用 AI 的部分。它分 bucket，写 summary、update、points 和 gist。</td></tr>
+<tr><td>AI profile</td><td>config 里一个有名字的 AI CLI 命令。bucket 按名字引用它。</td></tr>
+<tr><td><code>gist</code></td><td>单条 item 的一句话摘要，说明这条消息带来了什么。</td></tr>
+<tr><td><code>update</code></td><td>conversation 最近一批新 item 的一句话摘要。UI 上叫「自你上次查看」。</td></tr>
+<tr><td><code>points</code></td><td>conversation 的要点，最多 5 条，分为 ask、decision、date、info 四类。</td></tr>
+<tr><td><code>seq</code></td><td>item 写进数据库的顺序号，全局递增。已读和完成都用它当水位线。</td></tr>
+<tr><td>dirty</td><td>conversation 里有 enricher 还没处理的 item，也就是 <code>last_seq &gt; enriched_seq</code>，而且不是 <code>skip_ai</code>。由字段算出，不单独存。</td></tr>
+<tr><td>provisional</td><td>sync 为新 thread 开的、没有命中 rule 的 conversation，AI 还没看过。只有它可能被并进别的 conversation。</td></tr>
+</tbody></table></div>
+
+<h2 id="trace"><span class="n">02</span>一封新回复从进来到被你清掉，一共经过八步</h2>
+<p>本节跟一个具体例子走完全程，后面各节都会引用它。假设如下：你配置了 IMAP source <code>personal-mail</code>。conversation「Northwind 迁移与验收」已经在 <code>action</code> bucket 里，这个 bucket 是 AI 定的。你昨天看完后点了「完成」。今天 14:03，客户回了一封邮件。</p>
+
+<div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant P as imap plugin
+  participant S as sync
+  participant DB as SQLite
+  participant E as enricher
+  participant AI as AI CLI
+  participant UI as Web UI
+  S->>P: sync(stream, cursor)
+  P-->>S: upserts, deletions, cursor
+  S->>DB: upsert item, update FTS
+  S->>DB: attach by thread_id
+  UI->>DB: GET conversations
+  DB-->>UI: unread again, old summary
+  Note over E: wait until quiet 2 min
+  E->>DB: read dirty conversations
+  E->>AI: prompt on stdin
+  AI-->>E: JSON on stdout
+  E->>DB: bucket, summary, update, points, gists
+</pre></div>
+
+<ol class="trace">
+<li><strong>sync 拉到这封邮件。</strong>scheduler 每 5 分钟调用一次 plugin 的 <code>sync(stream, cursor)</code>，间隔由 <code>sync_every</code> 决定。plugin 返回一条 item，<code>thread_id</code> 是 References 链的根，<code>container_id</code> 是 <code>INBOX</code>。core 按 <code>(stream_id, external_id)</code> upsert，重复 sync 不会产生重复 item。新 item 拿到一个 seq，同时记下 <code>synced_at</code>。core 去掉引用历史和签名，结果写进 <code>body_new</code>，FTS index 同时更新。从这一刻起，UI 和 <code>weir-axi search</code> 都能搜到它。</li>
+<li><strong>按 thread_id 挂进已有 conversation。</strong>同一个 thread 的上一条 item 属于「Northwind 迁移与验收」，新 item 跟过去，记为 <code>assigned_by = "thread"</code>。rule 不执行，因为 rule 只对开新 conversation 的 item 生效。这一步不调用 AI。</li>
+<li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>action</code> 里，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时 summary 还是旧的。</li>
+<li><strong>conversation 变脏，等它安静下来。</strong><code>last_seq</code> 大于 <code>enriched_seq</code>，conversation 就是 dirty。enricher 等它 2 分钟没有新 item 再处理，最长等 10 分钟。客户连发三封，也只处理一次。</li>
+<li><strong>enricher 增量更新。</strong>它不是 provisional，所以跳过合并判断。enricher 把它和其他 dirty conversation 攒成一批，调用一次 AI CLI。输入是上一版 summary，加上 <code>enriched_seq</code> 之后的新 item。输出是 bucket、title、summary、update、points，以及每条新 item 的 gist。写回后，<code>enriched_seq</code> 前进到这次送出的最大 seq。</li>
+<li><strong>AI 重新判断 bucket。</strong><code>bucket_by</code> 是 <code>ai</code>，所以 AI 这次给的 bucket 会写回。客户提了新要求，仍然是 <code>action</code>。如果你手动改过它的 bucket，AI 给的值会被忽略。</li>
+<li><strong>你打开它。</strong>阅读区顶部的「自你上次查看」显示 update。下面的对话流从「上次读到这里」开始，每个气泡是一条 gist。想核对英文原文，点 dock 上的「原文」。打开就算已读，<code>seen_seq</code> 前进到 <code>last_seq</code>。</li>
+<li><strong>你点「完成」。</strong><code>cleared_seq</code> 前进到 <code>last_seq</code>，conversation 离开列表，下一条自动打开。灵动岛里的计数跟着变，没有别的提示，也没有撤销。点错了就去「已清理」里点「恢复」。</li>
+</ol>
+
+<p>三个变体，各自在不同的步骤分叉：</p>
+<ul>
+<li><strong>新开的 thread</strong>在第 2 步分叉。没有可跟的 conversation，sync 给它开一个 provisional conversation，放在「未分类」里。enricher 在第 5 步之前先判断它要不要并进别的 conversation。见<a href="#assign">第 06 节</a>。</li>
+<li><strong>CI 通知</strong>也是新 thread，在第 2 步命中一条 <code>skip_ai</code> rule。它的 conversation 直接进 <code>alerts</code>，标题就用邮件主题，之后永远不调用 AI。</li>
+<li><strong>agent 查询</strong>不经过第 7、8 步。agent 运行 <code>weir-axi</code>，首页显示 <code>action</code> 有 1 个未读。<code>weir-axi conv &lt;id&gt;</code> 读到同样的 summary 和 gist。axi 读取不改变已读状态。</li>
+</ul>
+
+<h2 id="arch"><span class="n">03</span>core 之外有三个扩展点，数据方向各不相同</h2>
+<p>core 是一个常驻的本地 daemon。它负责 sync、存储、enrich 调度，并在 <code>127.0.0.1:9347</code> 上提供 HTTP API 和 Web UI。三个扩展点分别是：</p>
+<div class="tw"><table>
+<thead><tr><th>扩展点</th><th>谁调用谁</th><th>职责</th><th>MVP 自带的实现</th></tr></thead>
+<tbody>
+<tr><td>Source plugin</td><td>core 调用 plugin</td><td>把外部数据增量同步进来</td><td><code>imap</code></td></tr>
+<tr><td>AI profile</td><td>core 调用 CLI</td><td>分类、归属、摘要，输出固定 JSON</td><td>任意 CLI 命令，默认示例是 <code>omp -p</code></td></tr>
+<tr><td><code>weir-axi</code></td><td>agent 调用 core</td><td>搜索和读取，遵循 <a href="https://axi.md/">AXI</a> 的 CLI 原则</td><td>CLI，调用本机 HTTP API</td></tr>
+</tbody></table></div>
+
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  subgraph ext_in [Sources]
+    IMAP[imap plugin]
+    OTHER[other plugins in ~/.weir/plugins]
+  end
+  subgraph core [weir daemon]
+    SYNC[sync scheduler]
+    DB[(weir.db: SQLite + FTS5)]
+    ENR[enricher queue]
+    API[HTTP API on 127.0.0.1:9347]
+  end
+  AICLI[AI CLI from config]
+  WEB[Web UI]
+  AXI[weir-axi]
+  AGENT[your agent]
+  IMAP --> SYNC
+  OTHER --> SYNC
+  SYNC --> DB
+  DB --> ENR
+  ENR --> AICLI
+  AICLI --> ENR
+  ENR --> DB
+  DB --> API
+  API --> WEB
+  API --> AXI
+  AGENT --> AXI
+</pre></div>
+
+<p>Web UI 和 <code>weir-axi</code> 读同一套 HTTP API。所以 UI 上看到的数字，agent 也能拿到。对话能力全部交给你自己的 agent。weir 只负责把检索做好，不内置聊天。</p>
+<p>技术栈是 Bun、TypeScript 和 Effect，仓库结构参照 <code>~/Workspaces/tael</code>，见<a href="#repo">附录</a>。</p>
+
+<h2 id="source"><span class="n">04</span>Source plugin 只交出数据，不做判断</h2>
+<p>一个 plugin 对外暴露三样东西，由不同的人负责：</p>
+<div class="tw"><table>
+<thead><tr><th>部分</th><th>谁提供</th><th>例子</th></tr></thead>
+<tbody>
+<tr><td>config schema</td><td>plugin 定义，用户填写</td><td>host、user、password_cmd、folders</td></tr>
+<tr><td>stream descriptor</td><td>plugin 声明，用户不用管</td><td>id、kind、名字、代表「我」的地址</td></tr>
+<tr><td><code>sync</code></td><td>plugin 实现</td><td>按 cursor 增量拉取</td></tr>
+</tbody></table></div>
+
+<p>接口是普通的 async 函数加纯数据。plugin 作者不需要会 Effect。core 在内部把它包成 Effect，并用 Schema 校验 plugin 的返回值。</p>
+<details>
+<summary>接口定义（TypeScript）</summary>
+<pre><code><span class="k">interface</span> SourcePlugin&lt;Config&gt; {
+  id: string
+  configSchema: StandardSchemaV1&lt;Config&gt;
+  create(config: Config): Source
+}
+
+<span class="k">interface</span> Source {
+  streams(): Promise&lt;StreamDescriptor[]&gt;
+  sync(streamId: string, cursor: string | null): Promise&lt;SyncPage&gt;
+}
+
+<span class="k">type</span> StreamDescriptor = {
+  id: string
+  kind: <span class="s">"message"</span>
+  name: string
+  me: string[]
+  openLabel: string
+}
+
+<span class="k">type</span> SyncPage = {
+  upserts: RawItem[]
+  deletions: string[]
+  cursor: string
+  more: boolean
+}
+
+<span class="k">type</span> RawItem = {
+  externalId: string
+  threadId: string | null
+  containerId: string
+  containerName: string
+  occurredAt: string
+  title: string | null
+  from: Party
+  to: Party[]
+  cc: Party[]
+  mentions: Party[]
+  bodyText: string
+  bodyNew: string | null
+  link: string | null
+  raw: unknown
+}
+
+<span class="k">type</span> Party = { name: string; address: string }</code></pre>
+</details>
+
+<p>几条约定：</p>
+<ul>
+<li><code>configSchema</code> 用 Standard Schema。plugin 作者可以用 zod、valibot 或 Effect Schema 写。Effect Schema 能否直接导出 Standard Schema，这一点还没核实，搭骨架时第一件事就是确认。</li>
+<li>daemon 启动和 reload 时，用 <code>configSchema</code> 校验 <code>[source.config]</code>。校验失败的报错里带上出错的 config 路径。</li>
+<li><code>cursor</code> 的内容由 plugin 决定，比如 IMAP 的 UIDVALIDITY 和 MODSEQ，或者 Graph 的 delta token。core 只负责保存，不解析。</li>
+<li><code>more = true</code> 表示还有下一页，core 立刻用新 cursor 再调一次。这样冷启动拉一万封邮件时，每一页都单独落盘，中途崩溃也能从上一页接着来。</li>
+<li><code>bodyNew</code> 是去掉引用历史和签名后的正文。plugin 可以自己算。返回 <code>null</code> 时 core 用通用实现。</li>
+<li><code>openLabel</code> 是 dock 上「在 Gmail 中打开」按钮里的来源名。</li>
+<li><code>me</code> 列出这个 stream 里代表你的地址或 handle。「直接发给我」「@ 我」靠它判断。</li>
+<li>plugin 用名字加载。内置的写名字，比如 <code>imap</code>。第三方的放在 <code>~/.weir/plugins/&lt;name&gt;/</code>。公司内部的 source 可以放在单独的私有仓库，不碰主仓库。</li>
+</ul>
+
+<div class="callout note"><span class="t">容易误解的地方</span>
+你可能以为 <code>thread_id</code> 就是 conversation。它不是。<code>thread_id</code> 只说明「这几条一定是同一件事」，它是归属的线索。一个 conversation 可以包含几个 thread。区别在于是否由 weir 判断。<code>thread_id</code> 来自 source，conversation 由 weir 决定。同理，Teams 群聊的 chat id 是 <code>container_id</code>，不是 <code>thread_id</code>。一个群里可能同时在聊五件事。
+</div>
+
+<p>每条 item 都带 <code>thread_id</code> 和 <code>container_id</code> 两个字段，两者含义固定。<code>thread_id</code> 可以为空，Teams 群聊里的大部分消息就没有。</p>
+<p>kind 在 MVP 里只有 <code>message</code>。日历以后作为 <code>event</code> kind 加入，那时用一次 migration 加上 <code>event_detail</code> 表。</p>
+
+<h2 id="store"><span class="n">05</span>存储分四层，只有用户层不能丢</h2>
+<p>所有数据都在 <code>~/.weir/weir.db</code> 一个文件里。表按生命周期分成四层。判断某张表能不能删，只要看它属于哪一层。</p>
+<div class="tw"><table>
+<thead><tr><th>层</th><th>内容</th><th>丢了怎么办</th></tr></thead>
+<tbody>
+<tr><td>原始层</td><td><code>stream</code>、<code>item</code>、<code>party</code>、<code>item_party</code></td><td>从 source 重新 sync</td></tr>
+<tr><td>派生层</td><td><code>conversation</code>、<code>conversation_item</code></td><td>重新 enrich，要花 AI 费用</td></tr>
+<tr><td>用户层</td><td><code>conversation_state</code>，以及派生层里 <code>*_by = "user"</code> 的行</td><td>找不回来，需要备份</td></tr>
+<tr><td>运维层</td><td><code>sync_run</code>、<code>enrich_run</code></td><td>直接丢</td></tr>
+</tbody></table></div>
+<p>搜索索引 <code>search_fts</code> 不属于这四层。它只是索引，丢了就从 <code>item</code>、<code>party</code>、<code>conversation_item</code> 和 <code>conversation</code> 重建，不用 sync，也不用调用 AI。</p>
+
+<div class="diagram"><pre class="mermaid">
+erDiagram
+  stream ||--o{ item : contains
+  item ||--o{ item_party : has
+  party ||--o{ item_party : plays
+  conversation ||--|{ conversation_item : groups
+  item ||--|| conversation_item : "belongs to"
+  conversation ||--|| conversation_state : "user state"
+  stream ||--o{ sync_run : logs
+</pre></div>
+
+<details>
+<summary>每张表的列</summary>
+<div class="tw"><table>
+<thead><tr><th>表</th><th>列</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>stream</code></td><td><code>id, source_id, kind, name, open_label, me, cursor, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。</td></tr>
+<tr><td><code>item</code></td><td><code>seq, id, stream_id, external_id, kind, thread_id, container_id, container_name, occurred_at, synced_at, title, body_text, body_new, link, raw, deleted_at</code></td><td><code>seq</code> 是自增主键。<code>(stream_id, external_id)</code> 唯一。<code>synced_at</code> 是写进数据库的时间，防抖用它。删除用软删除。</td></tr>
+<tr><td><code>party</code></td><td><code>id, source_id, address, name, is_me</code></td><td>跨 source 的身份合并 MVP 不做。</td></tr>
+<tr><td><code>item_party</code></td><td><code>item_seq, party_id, role</code></td><td><code>role</code> 取 <code>from</code>、<code>to</code>、<code>cc</code>、<code>mention</code>。</td></tr>
+<tr><td><code>search_fts</code></td><td><code>text, conversation_id, item_seq</code></td><td>搜索用的 FTS5 表，trigram 分词。结构和写法见<a href="#fts">下文</a>。</td></tr>
+<tr><td><code>conversation</code></td><td><code>id, title, bucket, bucket_by, provisional, skip_ai, summary, update, points, first_at, last_at, last_seq, enriched_seq, increments</code></td><td><code>bucket</code> 只存字符串 id，不加外键，可以为空。<code>bucket_by</code> 取 <code>rule</code>、<code>ai</code>、<code>user</code>，为空表示还没有 bucket。<code>points</code> 存 JSON。dirty 由 <code>last_seq &gt; enriched_seq</code> 且 <code>skip_ai = 0</code> 算出。</td></tr>
+<tr><td><code>conversation_item</code></td><td><code>item_seq, conversation_id, assigned_by, gist</code></td><td>一条 item 只属于一个 conversation。gist 跟着归属走。<code>assigned_by</code> 取 <code>thread</code>、<code>new</code>、<code>ai</code>、<code>user</code>。<code>new</code> 表示这条 item 开了这个 conversation。</td></tr>
+<tr><td><code>conversation_state</code></td><td><code>conversation_id, seen_seq, cleared_seq, muted</code></td><td>三个字段就够表达已读、完成、静音。</td></tr>
+<tr><td><code>sync_run</code></td><td><code>id, stream_id, started_at, ms, upserts, deletions, error</code></td><td>状态页和 axi 首页读它。</td></tr>
+<tr><td><code>enrich_run</code></td><td><code>id, ai, stage, conversations, items, ms, ok, error, log_path</code></td><td>AI 的原始输出写到 <code>~/.weir/logs/enrich/</code>，表里只存路径。</td></tr>
+</tbody></table></div>
+</details>
+
+<h3 id="where">daemon 或 agent 需要知道的放 SQLite，其他放 localStorage</h3>
+<p>判断标准只有一个：daemon 或 agent 需不需要知道这件事。</p>
+<ul>
+<li>放 SQLite：已读、完成、静音，手动改过的 bucket 和 item 归属。axi 首页要显示未读数，enricher 不能覆盖你的手动修改，所以它们必须在 daemon 那边。</li>
+<li>放 localStorage：主题、上次停在哪个 bucket、阅读区的展开状态。这些只跟浏览器有关。主题在状态视图的 Appearance 里选，见<a href="#no-settings">第 09 节</a>。</li>
+</ul>
+<p>localStorage 按 origin 存储，origin 包含端口。端口一变，偏好就丢了。所以端口固定为 <code>9347</code>，也就是 weir 四个字母在九宫格键盘上的位置。</p>
+
+<h3 id="fts">搜索用 trigram 索引，不到 3 个字的词改用 LIKE</h3>
+<p>搜索要同时对中文和英文有效。FTS5 默认的 <code>unicode61</code> 分词器两样都做不到。它把一串连续的汉字当成一个词，「报价」只在单独出现时才搜得到。英文它只按整词匹配，<code>migrat</code> 搜不到 migration。<code>trigram</code> 分词器按 3 个字一组建索引，3 个字及以上的词都能按子串搜对。不到 3 个字的词它一条也搜不到，而两个字的中文词恰恰是最常见的查询。</p>
+<p>所以每个词按长度分开处理。原型数据上测过一次，范围是 301 条 item 的 gist 和 <code>body_new</code>，SQLite 3.54.0，通过 <code>bun:sqlite</code>：</p>
+<div class="tw"><table>
+<thead><tr><th>查询</th><th>实际条数</th><th><code>unicode61</code></th><th><code>trigram</code></th><th><code>LIKE</code></th></tr></thead>
+<tbody>
+<tr><td>报价</td><td>12</td><td>4</td><td>0</td><td>12</td></tr>
+<tr><td>保险报价</td><td>3</td><td>0</td><td>3</td><td>3</td></tr>
+<tr><td>migrat</td><td>11</td><td>0</td><td>11</td><td>11</td></tr>
+<tr><td>PR</td><td>245</td><td>88</td><td>0</td><td>245</td></tr>
+</tbody></table></div>
+<p>「实际条数」是对同样两个字段做不分大小写的子串匹配得到的。<code>LIKE</code> 在每个查询上都和它一致。<code>LIKE</code> 要扫全表，每次查询 0.80 ms，<code>trigram</code> 的 <code>MATCH</code> 是 0.022 ms。两个数都是 200 次查询的平均，只跑了一轮。301 条上 <code>LIKE</code> 不慢，但它的耗时随条数增长，所以只给短词用。</p>
+<ul>
+<li>索引用 <code>tokenize = 'trigram case_sensitive 0'</code>，不分大小写。</li>
+<li>查询按空白切成词。3 个字及以上的词用 <code>MATCH</code>，词放进双引号，不当成 FTS 语法解析。不到 3 个字的词用 <code>text LIKE '%词%'</code>，先转义 <code>%</code> 和 <code>_</code>。字数按字符算，不按字节算。</li>
+<li>每个词各查出一组 conversation id，再取交集。也就是所有词都要在同一个 conversation 里出现，但可以出现在不同的消息和不同的字段里。</li>
+<li>原文只索引 <code>body_new</code>，不索引引用历史。一条回复不会因为它引用的旧文字而命中。</li>
+<li><code>--from</code>、<code>--bucket</code>、<code>--source</code>、<code>--since</code> 和 UI 里的 chip 是普通的 SQL 条件，作用在交集上。</li>
+<li>命中的是哪条消息、哪个字段，索引不记。API 只对要显示的结果逐个字段再比一次，用来生成命中行和标记。</li>
+</ul>
+<details>
+<summary><code>search_fts</code> 的结构，以及为什么只用一张表</summary>
+<pre><code><span class="k">CREATE VIRTUAL TABLE</span> search_fts <span class="k">USING</span> fts5(
+  text,
+  conversation_id UNINDEXED,
+  item_seq UNINDEXED,
+  tokenize = <span class="s">'trigram case_sensitive 0'</span>
+);</code></pre>
+<p>表里有两种行。</p>
+<div class="tw"><table>
+<thead><tr><th>行</th><th><code>item_seq</code></th><th><code>text</code> 的内容</th><th>谁来写</th></tr></thead>
+<tbody>
+<tr><td>每条 item 一行</td><td>item 的 seq</td><td>标题、发件人名字和地址、来源名、<code>body_new</code>、gist</td><td>sync 写入。enrich 写回 gist 时重写。移动 item 时改 <code>conversation_id</code>。软删除时删掉</td></tr>
+<tr><td>每个 conversation 一行</td><td>空</td><td>标题、summary、points 的文字</td><td>开 conversation 时写入。enrich 写回时重写。conversation 删除时删掉</td></tr>
+</tbody></table></div>
+<ul>
+<li>一张表就够。查询的单位是 conversation，每个词只要一次查询就拿到 conversation id。拆成 item 和 conversation 两张表，每个词就要查两次再合并。</li>
+<li><code>text</code> 只有一列。哪个字段命中只在显示结果时才需要，那时 API 会逐个字段重新比较，所以不用每个字段一列。</li>
+<li>item 单独成行，不把整个 conversation 拼成一行。长群聊来一条新消息，sync 只写这一条的行，不用重写整个 conversation。</li>
+<li>不用 external content 表。文字来自 <code>item</code>、<code>party</code>、<code>conversation_item</code> 和 <code>conversation</code> 四张表，external content 只能对着一张表或视图。所以 core 在写这些表的同一个事务里写 <code>search_fts</code>，不用 trigger。代价是文字存了两份。</li>
+</ul>
+</details>
+
+<h3 id="seq">水位线用 seq，不用时间</h3>
+<p>「完成」如果只记一个时间，之后只有比它新的消息才会让 conversation 重新出现。问题出在晚到的消息。IMAP 可能隔几个小时才同步到一封早上发出的邮件。它的 <code>occurred_at</code> 早于你点「完成」的时间，按时间比较就不会重新出现。</p>
+<p>所以水位线比较的是 seq，也就是写进数据库的顺序。只要是 weir 之后才知道的消息，seq 一定更大。显示时间仍然用 <code>occurred_at</code>。</p>
+
+<h2 id="assign"><span class="n">06</span>新 item 在 sync 时进 conversation，bucket 由 enricher 稍后补上</h2>
+<p>一条新 item 分两段处理。sync 时，core 立刻决定它属于哪个 conversation。这一段不调用 AI，所以新消息马上能看到。enrich 时，AI 再做两件事。一是判断新开的 conversation 该不该并进别的 conversation，二是给 conversation 定 bucket、写摘要。</p>
+<div class="diagram"><pre class="mermaid">
+flowchart TD
+  A[sync writes item] --> B{thread already in a conversation?}
+  B -- yes --> C[attach, assigned_by thread]
+  B -- no --> D{rule matched?}
+  D -- yes --> E[new conversation, bucket from rule]
+  D -- no --> F[new provisional conversation, no bucket]
+  C --> G{skip_ai conversation?}
+  E --> G
+  F --> G
+  G -- yes --> Z[done, never sent to AI]
+  G -- no --> H[dirty, wait until quiet 2 min or 10 min max]
+  H --> I{provisional?}
+  I -- yes --> J[stage 1: AI picks a merge target or keeps it]
+  I -- no --> K[stage 2: bucket, title, summary, update, points, gists]
+  J --> K
+</pre></div>
+
+<h3 id="assign-sync">sync 时按三条规则开或挂 conversation</h3>
+<p>规则按顺序执行，前一条命中就停。</p>
+<ol>
+<li><strong>跟 thread。</strong>item 的 <code>thread_id</code> 非空，而且同一 thread 已经有 item 在某个 conversation 里，就跟最新那条走，记为 <code>assigned_by = "thread"</code>。你手动把上一条移走了，后面的回复会跟着移过去。被跟的 conversation 的 bucket 不变，它会变成未读，也会变脏。</li>
+<li><strong>rule。</strong>其余的 item 都要开一个新 conversation。开之前按 config 里的书写顺序匹配 rule，第一条命中的生效。conversation 的 bucket 取 rule 的值，记为 <code>bucket_by = "rule"</code>，之后 AI 不会改它。它不是 provisional，不会被合并。rule 带 <code>skip_ai = true</code> 时，conversation 记为 <code>skip_ai</code>，标题用 item 的标题，永远不送给 AI。同一 thread 后续的回复跟着它，也不送给 AI。</li>
+<li><strong>provisional。</strong>rule 也没命中，就开一个 provisional conversation。它没有 bucket，显示在「未分类」里，标题暂时用 item 的标题。</li>
+</ol>
+<p>跟 thread 排在 rule 前面，是为了不让一条 item 改变整个 conversation 的去向。如果每条 item 都先跑 rule，一个 PR thread 里最后来的一封 merged 通知，就会把整个 conversation 拽进 <code>alerts</code>。</p>
+<p>冷启动时，最后一条 item 早于 <code>backfill</code> 窗口的 conversation 也按这三条规则开出来，但开出来时 <code>enriched_seq</code>、<code>seen_seq</code>、<code>cleared_seq</code> 都等于 <code>last_seq</code>，<code>provisional</code> 为 0，也就是当作已处理、已读、已完成。它们不调用 AI，只能被搜到，或者在「已清理」里找到。以后这个 thread 来了新回复，conversation 重新出现。因为没有上一版 summary，enricher 会读全部 item 写一份新的，仍然受每批字符上限和单条正文截断的约束。</p>
+
+<h3 id="assign-enrich">enrich 时先合并，再定 bucket 和摘要</h3>
+<p>enricher 每 30 秒检查一次。一个 dirty conversation 满足下面任一条件就可以处理：最后一条 item 的 <code>synced_at</code> 已过 2 分钟，或者最早一条未处理 item 的 <code>synced_at</code> 已过 10 分钟。可以处理的 conversation 攒成一批，先过阶段 1，再过阶段 2。本节的时间和数量都是起始值，没在真实数据上调过。</p>
+<p><strong>阶段 1 是合并。</strong>只在这一批里有 provisional conversation 时运行。</p>
+<ul>
+<li>core 先在本地给每个 provisional conversation 找候选。第一类候选是最近 14 天活跃过的 conversation，不含 provisional、<code>skip_ai</code> 和静音的。它们按同一 <code>container_id</code>、FTS 相似度和参与人重合度打分，取前 8 个。第二类是同一批里的其他 provisional conversation。本地一个候选都找不到的，不送给 AI。</li>
+<li>这一步用 <code>[enrich] ai</code> 指定的默认 profile。AI 看到 provisional conversation 的标题和正文开头，以及候选的标题和 summary。它输出一张合并表，比如 <code>{"p2": "c7", "p3": "p2"}</code>。不在表里的保持独立。</li>
+<li>core 按表移动 item，记为 <code>assigned_by = "ai"</code>。指向另一个 provisional 的，顺着链找到最终目标。成环或者引用了不存在的编号，当作不合并。被移空的 provisional conversation 直接删除。</li>
+<li>AI 只会把 provisional conversation 并进别处。它不拆分已经处理过的 conversation，也不把两个已经处理过的 conversation 合在一起，所以列表里的 conversation 不会自己重排。</li>
+<li>你打开、完成、静音、移动过 item 或者改过 bucket 的 conversation，立刻不再是 provisional。所以你正在读的 conversation 不会在眼前消失。</li>
+</ul>
+<p><strong>阶段 2 是 bucket 和摘要。</strong>这一批里所有 dirty conversation 都进阶段 2，包括刚在阶段 1 被并进新 item 的目标。</p>
+<ul>
+<li>输入是上一版 summary，加上 <code>enriched_seq</code> 之后的 item。没有上一版 summary 时，送全部 item。细节见<a href="#incremental">第 07 节</a>。</li>
+<li>AI 给每个 conversation 输出一个 bucket。<code>bucket_by</code> 为空或者是 <code>ai</code> 时，core 写回这个值，记为 <code>ai</code>。是 <code>rule</code> 或 <code>user</code> 时，这个值被忽略。</li>
+<li>AI 给的 bucket id 不在 config 里，就当作没有 bucket，conversation 留在「未分类」，原始输出写进日志。</li>
+<li>bucket 每次处理都可能变。一个在 <code>fyi</code> 里的 conversation，后来有人在里面直接问你问题，下一次处理就可能变成 <code>action</code>。</li>
+<li>写回后，<code>enriched_seq</code> 前进到这次送出的最大 seq，<code>provisional</code> 清零。AI 调用期间又进来的 item，seq 更大，conversation 仍然是 dirty，下一轮再处理。</li>
+</ul>
+
+<h3 id="assign-seen">一条新邮件在 UI 上的样子</h3>
+<div class="tw"><table>
+<thead><tr><th>时间</th><th>新 thread，没命中 rule</th><th>新 thread，命中 skip_ai rule</th><th>回复已有 thread</th></tr></thead>
+<tbody>
+<tr><td>sync 之后</td><td>出现在「未分类」，标题是邮件主题，没有 summary</td><td>出现在 rule 指定的 bucket，之后不再变化</td><td>所在 conversation 变成未读，summary 还是旧的</td></tr>
+<tr><td>2 到 10 分钟后</td><td>被合并的，从「未分类」消失，出现在目标 conversation 里。没被合并的，拿到 bucket、标题和 summary</td><td>不变</td><td>summary、update 和 gist 更新，bucket 可能变</td></tr>
+</tbody></table></div>
+<p>原型在 10 天的 Gmail 数据上测过合并。240 封、192 个 thread，opus-5.5 合并了 6 处，人工看过都合理。gpt-6-luna 合并的 5 处都在这 6 处之内。原型是把所有 thread 一次交给 AI 分组，没有先在本地筛候选，所以这个数字只说明模型分得准，不说明候选筛选的召回率。</p>
+
+<h2 id="enrich"><span class="n">07</span>enricher 增量运行，从不自动全量重算</h2>
+<p>enrich 分三个阶段。越往后越贵，所以越往前越要多拦住一些。</p>
+<div class="tw"><table>
+<thead><tr><th>阶段</th><th>何时运行</th><th>成本</th><th>输出</th></tr></thead>
+<tbody>
+<tr><td>0. rule</td><td>sync 开新 conversation 时</td><td>零</td><td>bucket。命中 <code>skip_ai</code> 时，整个 conversation 不进 AI</td></tr>
+<tr><td>1. 合并</td><td>一批里有 provisional conversation 时</td><td>小，只看标题、正文开头和候选摘要</td><td>并进哪个 conversation</td></tr>
+<tr><td>2. 摘要</td><td>conversation 变脏并安静下来之后</td><td>主要成本</td><td>bucket、title、summary、update、points、gist</td></tr>
+</tbody></table></div>
+
+<h3 id="incremental">阶段 2 只读新消息</h3>
+<ul>
+<li><strong>防抖。</strong>conversation 安静 2 分钟才处理，最长等 10 分钟。这两个数是起始值，还没在真实群聊上测过。</li>
+<li><strong>增量。</strong>输入是上一版 summary，加上 <code>enriched_seq</code> 之后的新 item。没有上一版 summary，或者已经连续增量 5 次，就送全部 item 做一次全量重写，防止 summary 越改越偏。</li>
+<li><strong>攒批。</strong>多个 dirty conversation 合成一次 CLI 调用，每批最多 <code>max_batch</code> 个 conversation。原型摘要每批 8 个 conversation。生成 gist 时每批最多 30 条 item 或 24000 字符，单条正文截到 1200 字符。</li>
+<li><strong>一次调用出全部字段。</strong>bucket、summary、points 和 gist 在同一次调用里输出，正文只读一遍。</li>
+<li><strong>单条 conversation 不出 gist。</strong>只有一条 item 时，gist 和 summary 说的是同一件事。原型 r5 的数据里 189 个 conversation 有 152 个只有一条 item，这 189 个是 gpt-6-luna 聚出的 187 个加上 2 个合成的长 conversation。</li>
+</ul>
+
+<h3 id="backfill">冷启动只 enrich 最近 3 天</h3>
+<p>第一次接入一个邮箱，历史邮件可能有上万封。<code>backfill = "3d"</code> 以内的 enrich，更早的只建 FTS index，能搜到但没有摘要。这个窗口可以在 config 里改。</p>
+
+<h3 id="recompute">改了 prompt 或换了模型，旧结果原样保留</h3>
+<p>改动只影响之后的处理，不自动重算。手动重算有两个入口：UI 上对单个 conversation 点「重新分析」，或者运行 <code>weir-axi enrich --since 7d</code>。两者都把 <code>enriched_seq</code> 清零，下一轮送全部 item 重写。</p>
+<p>这样做有一个副作用，用户改 prompt 时应该预料到。活跃的 conversation 一来新消息，就按新的 prompt 处理。所以新规则会逐渐覆盖活跃的 conversation，已经安静的旧 conversation 保留旧结果。</p>
+<p><code>enriched_seq</code> 仍然要保留。它记录 summary 处理到了哪条 item，判断的是「有没有新消息」，和「配置有没有变」无关。</p>
+
+<h3 id="profiles">bucket 可以指定自己的 AI profile</h3>
+<p>AI 接口在 config 里是一组有名字的 profile。<code>[enrich] ai</code> 是默认值，每个 bucket 可以用 <code>ai</code> 覆盖。</p>
+<p>这里有一个先后问题。bucket 本身是 AI 分出来的，所以分类只能用默认 profile。分完之后，summary、points 和 gist 才交给 bucket 指定的 profile。</p>
+<ul>
+<li>bucket 的 profile 和默认的相同时，一次调用输出全部字段。这是常见情况。</li>
+<li>两者不同时拆成两次。第一次用默认 profile 只输出 bucket，第二次用 bucket 的 profile 输出其余字段。</li>
+</ul>
+<p>你手动改过 bucket 的 conversation 记为 <code>bucket_by = "user"</code>，enricher 之后不再改它的 bucket。没有这条，你刚改好的分类会在下一条消息进来时被 AI 改回去。</p>
+
+<h3 id="cli">CLI 约定很窄，任何 agent harness 都能接</h3>
+<ul>
+<li><code>command</code> 是 argv 数组，不经过 shell 拼接。</li>
+<li>core 拼好完整的 prompt，从 stdin 传入。prompt 包括系统指令、<code>guide</code> 文件、各 bucket 的 prompt 文件、数据，以及输出 schema。</li>
+<li>core 取 stdout 里最后一个 JSON 块，用 Schema 校验。这样能兼容在 JSON 前后输出多余文字的 harness。</li>
+<li>失败时原始输出写到 <code>~/.weir/logs/enrich/</code>，重试一次。还失败就保持 dirty，下一轮再试。</li>
+<li>数据里的 item 用短编号 <code>m1</code>、<code>m2</code> 引用。原型里模型抄写十六进制 id 时会抄错，换成短编号后就没有这个问题了。</li>
+</ul>
+<details>
+<summary>阶段 2 的输出格式</summary>
+<pre><code>{
+  <span class="s">"conversations"</span>: [
+    {
+      <span class="s">"ref"</span>: <span class="s">"c1"</span>,
+      <span class="s">"bucket"</span>: <span class="s">"action"</span>,
+      <span class="s">"title"</span>: <span class="s">"Northwind 迁移与验收"</span>,
+      <span class="s">"summary"</span>: <span class="s">"..."</span>,
+      <span class="s">"update"</span>: <span class="s">"客户确认周四验收，要求补一份回滚方案"</span>,
+      <span class="s">"points"</span>: [
+        { <span class="s">"kind"</span>: <span class="s">"ask"</span>, <span class="s">"text"</span>: <span class="s">"周三前发回滚方案"</span>, <span class="s">"item"</span>: <span class="s">"m3"</span> },
+        { <span class="s">"kind"</span>: <span class="s">"date"</span>, <span class="s">"text"</span>: <span class="s">"周四 10:00 验收"</span>, <span class="s">"item"</span>: <span class="s">"m3"</span> }
+      ],
+      <span class="s">"gists"</span>: { <span class="s">"m3"</span>: <span class="s">"客户同意周四验收，但要先看回滚方案"</span> }
+    }
+  ]
+}</code></pre>
+</details>
+
+<h2 id="lifecycle"><span class="n">08</span>bucket 和 conversation 的变更都不触发重算</h2>
+<h3 id="bucket-change">找不到的 bucket 一律显示为「未分类」</h3>
+<p><code>conversation.bucket</code> 只存字符串 id。config 里找不到这个 id，UI 就把 conversation 放进「未分类」。「未分类」本来就要有，给还没 enrich 的 provisional conversation 用。所以删除 bucket 不需要写迁移代码。</p>
+<p>「未分类」里的 conversation 有两种来历。一种是 provisional，还没 enrich，列表里这一行带 <code>Sorting</code> 标签。另一种的 bucket id 已经不在 config 里。「未分类」排在所有 bucket 前面，灵动岛、默认标签页、搜索结果的分组都是这样。它有内容时从不隐藏，因为它是 config 还没管到的地方，最需要你看一眼。</p>
+<div class="tw"><table>
+<thead><tr><th>操作</th><th>结果</th></tr></thead>
+<tbody>
+<tr><td>新增 bucket</td><td>不重算。之后进来的 conversation 才可能落进去。</td></tr>
+<tr><td>调整顺序</td><td>只影响显示。显示顺序就是 config 里的书写顺序，排在「未分类」后面。没有 priority 字段。</td></tr>
+<tr><td>改 <code>name</code></td><td>id 不变，没有影响。</td></tr>
+<tr><td>改 prompt 或 <code>ai</code></td><td>不重算，见<a href="#recompute">第 07 节</a>。</td></tr>
+<tr><td>删除 bucket</td><td>原来的 conversation 进入「未分类」，等你手动重算或者它们有新消息。</td></tr>
+<tr><td>改 id</td><td>等于删除再新增。启动或 reload 时，发现有 conversation 引用了 config 里没有的 bucket id，就打一条 warning。</td></tr>
+</tbody></table></div>
+
+<h3 id="conv-change">conversation 只增长，手动操作只有「移动 item」</h3>
+<ul>
+<li>AI 不拆分已经处理过的 conversation，也不把两个已经处理过的 conversation 合在一起。只有 provisional conversation 会被并进别处，见<a href="#assign-enrich">第 06 节</a>。</li>
+<li>你可以把选中的 item 移到另一个 conversation，或者移出去新建一个。拆分和合并都用这一个操作完成。手动新建的 conversation 不是 provisional。被移空的 conversation 自动删除。两边的 <code>enriched_seq</code> 都清零，下一轮重新生成 summary。</li>
+<li>不提供删除 conversation，用「完成」或「静音」代替。</li>
+<li>source 那边删了邮件，item 做软删除。summary 等下次有新消息时再更新。</li>
+</ul>
+
+<h3 id="visibility">已读、完成、静音由三个字段推算</h3>
+<p>已读按 conversation 算，打开就算已读。「离开视线」用的是原型里的 D1 方案，也就是手动完成。</p>
+<div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> Unread
+  Unread --> Read: open
+  Read --> Unread: mark unread or new item
+  Read --> Done: 完成
+  Unread --> Done: 全部清掉
+  Done --> Unread: new item
+  Done --> Read: 恢复
+</pre></div>
+<div class="tw"><table>
+<thead><tr><th>状态</th><th>条件</th><th>显示在哪里</th></tr></thead>
+<tbody>
+<tr><td>静音</td><td><code>muted = 1</code></td><td>只在「已清理」里。来新消息也不出现。</td></tr>
+<tr><td>已完成</td><td><code>last_seq &lt;= cleared_seq</code></td><td>只在「已清理」里，可以「恢复」。</td></tr>
+<tr><td>未读</td><td><code>last_seq &gt; seen_seq</code></td><td>所在 bucket，计入灵动岛那句话的数字。</td></tr>
+<tr><td>已读未完成</td><td>其余情况</td><td>所在 bucket，变灰，留到你点「完成」。</td></tr>
+</tbody></table></div>
+<p>表格从上到下判断，第一条命中的就是当前状态。「重新出现」不需要后台任务。新 item 让 <code>last_seq</code> 变大，查询结果自然就变了。「标为未读」把 <code>seen_seq</code> 设成 <code>last_seq - 1</code>。</p>
+
+<h2 id="config"><span class="n">09</span>一个 config.toml 管全部配置，不做设置页</h2>
+<pre><code>~/.weir/
+  config.toml
+  prompts/          <span class="c">bucket 的 prompt 和 guide，.md</span>
+  plugins/          <span class="c">第三方 source plugin</span>
+  weir.db
+  logs/enrich/      <span class="c">AI 的原始输出</span></code></pre>
+
+<p>选 TOML 而不选 YAML。YAML 对缩进敏感，prompt 一缩进错就出问题。它还有隐式类型转换，比如 <code>no</code> 会被解析成 <code>false</code>。Bun 能直接 import TOML。长 prompt 写在单独的 <code>.md</code> 文件里，config 只写路径。</p>
+
+<details open>
+<summary>完整的 config.toml 示例</summary>
+<pre><code>port = 9347
+
+[ai.luna]
+command = [<span class="s">"omp"</span>, <span class="s">"-p"</span>, <span class="s">"--no-tools"</span>, <span class="s">"--no-session"</span>, <span class="s">"--no-skills"</span>, <span class="s">"--no-rules"</span>,
+           <span class="s">"--no-extensions"</span>, <span class="s">"--no-title"</span>, <span class="s">"--model"</span>, <span class="s">"gpt-6-luna"</span>, <span class="s">"--thinking"</span>, <span class="s">"low"</span>]
+timeout = <span class="s">"180s"</span>
+max_batch = 8          <span class="c"># conversations per AI call</span>
+concurrency = 2
+
+[ai.careful]
+command = [<span class="s">"omp"</span>, <span class="s">"-p"</span>, <span class="s">"--no-tools"</span>, <span class="s">"--model"</span>, <span class="s">"opus-5.5"</span>]
+
+[enrich]
+ai = <span class="s">"luna"</span>
+backfill = <span class="s">"3d"</span>
+guide = <span class="s">"prompts/guide.md"</span>
+
+[[source]]
+id = <span class="s">"personal-mail"</span>
+plugin = <span class="s">"imap"</span>
+sync_every = <span class="s">"5m"</span>
+
+[source.config]
+host = <span class="s">"imap.gmail.com"</span>
+user = <span class="s">"me@gmail.com"</span>
+password_cmd = [<span class="s">"security"</span>, <span class="s">"find-generic-password"</span>, <span class="s">"-s"</span>, <span class="s">"weir-gmail"</span>, <span class="s">"-w"</span>]
+folders = [<span class="s">"INBOX"</span>]
+
+[[bucket]]
+id = <span class="s">"action"</span>
+name = <span class="s">"Action"</span>
+color = <span class="s">"red"</span>
+prompt = <span class="s">"prompts/action.md"</span>
+ai = <span class="s">"careful"</span>
+
+[[bucket]]
+id = <span class="s">"fyi"</span>
+name = <span class="s">"FYI"</span>
+color = <span class="s">"blue"</span>
+prompt = <span class="s">"prompts/fyi.md"</span>
+
+[[bucket]]
+id = <span class="s">"feed"</span>
+name = <span class="s">"Reading"</span>
+prompt = <span class="s">"prompts/feed.md"</span>
+
+[[bucket]]
+id = <span class="s">"alerts"</span>
+name = <span class="s">"Alerts"</span>
+prompt = <span class="s">"prompts/alerts.md"</span>
+
+[[rule]]
+match = { source = <span class="s">"personal-mail"</span>, from = <span class="s">"*@github.com"</span>, subject = <span class="s">"~build (succeeded|passed)"</span> }
+bucket = <span class="s">"alerts"</span>
+skip_ai = true</code></pre>
+</details>
+
+<ul>
+<li><code>guide</code> 是对所有 bucket 生效的额外指令。AI 输出用什么语言，就写在这里，比如「Write titles, summaries and gists in Simplified Chinese」。原型里 gpt-6-luna 有 8 个标题写成了繁体，就靠这类指令约束。</li>
+<li>bucket 的 <code>name</code> 原样显示在 UI 里，写什么语言都可以。</li>
+<li>bucket 建议配 3 到 6 个，但没有硬上限。bucket 多了，灵动岛那句话会折行，药丸里的 bucket 区可以横向滚动。</li>
+<li>每个 source 一个 <code>[[source]]</code>。plugin 自己的配置放在 <code>[source.config]</code> 里，core 不解析，原样交给 plugin 校验。</li>
+<li>以 <code>_cmd</code> 结尾的字段表示「执行这条命令取值」。在 macOS 上可以配合 Keychain，密码不写明文。core 统一处理，plugin 拿到的是取好的值。</li>
+<li>bucket 的 <code>ai</code> 和 <code>[enrich] ai</code> 只能引用已定义的 profile。拼错了，校验会报出 config 路径。</li>
+<li>bucket 的 <code>color</code> 可以不写。要写的话，只能从 14 个色名里选：red、blue、green、purple、amber、cyan、pink、lime、sky、orange、teal、indigo、yellow、rose。色名只决定色相，明度和饱和度由 UI 按主题和用途决定，这样对比度由 UI 统一负责，不交给用户。写了不在列表里的名字，校验会报出 config 路径。</li>
+<li>没写 <code>color</code> 的 bucket 由 id 算出颜色。先让写了 <code>color</code> 的 bucket 占住各自的色，再按 config 顺序处理其余 bucket：对 id 做 FNV-1a 32 位哈希，模 14 得到起点，沿上面的色名顺序往后找第一个没被占的色。这个顺序里相邻两色的色相大多相差 95 度以上，所以撞色后换到的色也容易区分。bucket 总数不超过 14 个、也没有两个 bucket 写同一个 <code>color</code> 时，不会重色。超过 14 个时允许重色，两个 bucket 写了同一个 <code>color</code> 也就是同色，校验不拦。颜色只跟 id 走，改 <code>name</code> 不会变色。增删或调整别的 bucket 后，原本就拿到自己起点色的 bucket，只要起点色没被显式色或排在它前面的 bucket 占走，颜色就不变。其余 bucket 可能换色，而且可能顺着色名顺序连锁挤动后面几个。Unsorted 永远是中性灰。上面例子里 <code>feed</code> 和 <code>alerts</code> 没写颜色，就走这条规则。</li>
+</ul>
+
+<h3 id="reload">改了 config 要手动 reload</h3>
+<p>daemon 只在启动和 reload 时读取 <code>config.toml</code> 和 <code>prompts/</code>。改完后，在 UI 的状态视图点 Reload，或者运行 <code>weir-axi reload</code>。两者调用的是同一个 HTTP 接口。</p>
+<ul>
+<li>reload 先等正在跑的 sync 和 AI 调用结束，再重新读取并校验全部 config，包括 prompt 文件和每个 plugin 的 <code>configSchema</code>。</li>
+<li>校验通过，就按新 config 重建 source、AI profile、bucket 和 rule，继续 sync 和 enrich。</li>
+<li>校验失败，接口返回错误，列出出错的文件和 config 路径。daemon 不会退回上一份 config。sync 和 enrich 停下，UI 和 axi 仍然能读已有的数据，状态视图和 axi 首页都显示这个错误。改好之后再 reload 一次。</li>
+<li>启动时校验失败，daemon 打印错误后退出。</li>
+<li><code>port</code> 改了要重启 daemon 才生效。</li>
+</ul>
+
+<h3 id="no-settings">不做设置页，只做状态视图</h3>
+<p>设置页难做好。enricher 的命令是 argv 数组，prompt 在单独的文件里，每个 plugin 又有自己的 schema。做成表单就得按 schema 自动生成，还要把改动写回 TOML 并保留注释。weir 的用户本来就带着 agent。「帮我加一个 bucket」让 agent 改 <code>config.toml</code> 更快。</p>
+<p>UI 需要的是一个只读的状态视图，回答「它现在靠不靠谱」。它的入口是灵动岛上一个小的状态按钮，展开和收成药丸时都在。一切正常时它不显眼。任何一个 source 出错，或者 config 有错，它上面出现一个琥珀色圆点，药丸形态也看得到。</p>
+<p>没打开 conversation 时，阅读区直接显示一份紧凑的状态摘要，列出每个 source 上次 sync 的时间、enrich 队列还剩多少，以及错误。有错误时，摘要里的 <code>Open Status</code> 按钮打开下面这个完整的状态视图，见<a href="#layout">第 10 节</a>。</p>
+<p>点状态按钮后，状态视图在阅读岛里替换阅读内容，就像打开一个 conversation。它不加第三栏，两栏也不动。按 Esc 或关闭按钮，回到原来的内容和阅读区的滚动位置。视图分四块：</p>
+<ul>
+<li><strong>Sources。</strong>每个 stream 上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，以及 item 数。出错时显示 <code>Sync failed</code> 和最近一次错误的原文。</li>
+<li><strong>Enrichment。</strong>还有多少 conversation 等着 enrich，上次运行的时间和耗时，用的是哪个 AI profile，最近一次失败和它的日志路径 <code>~/.weir/logs/enrich/&lt;file&gt;.txt</code>。</li>
+<li><strong>Config。</strong><code>config.toml</code> 的路径，加载时间，Reload 按钮。点 Reload 后按钮显示 <code>Reloading…</code>，daemon 先等正在跑的 sync 和 AI 调用结束。成功时显示 <code>Config loaded</code> 和新的加载时间。失败时列出每个错误的文件和 config 路径，显示 <code>Sync and enrich stopped</code>，灵动岛上出现琥珀色圆点。conversation 照样能读。改好后再点一次 Reload，错误就清掉。</li>
+<li><strong>Appearance。</strong>主题，三个选项 <code>System</code>、<code>Light</code>、<code>Dark</code>，选择存在 localStorage。</li>
+</ul>
+<p>Sources 和 Enrichment 读 <code>stream</code>、<code>sync_run</code> 和 <code>enrich_run</code>。<code>weir-axi</code> 首页读同一份数据。</p>
+
+<h2 id="ui"><span class="n">10</span>Web UI 是常驻双栏，导航收在灵动岛里</h2>
+<p>UI 经过很多轮原型才定下来。定稿是原型 <code>design/prototype/ui/final/</code>，布局、交互、文案和两套主题的样式都以那里的 <code>app.js</code> 和 <code>style.css</code> 为准。启动方式是 <code>cd design/prototype &amp;&amp; bun ux/serve.ts</code>，然后打开 <code>http://localhost:9347/ui/final/</code>，根路径 <code>/</code> 也会跳到这里。本节只记录定下来的规则和理由。</p>
+<p>正式版的界面文案只有英文，不做多语言。原型的界面也已经换成英文。本文仍然用中文称呼界面元素，下表把这些叫法对到原型和正式版共用的英文文案。bucket 名、标题、summary、gist 和原文属于用户配置、AI 输出或消息本身，按原样显示。</p>
+<details>
+<summary>界面文案对照</summary>
+<div class="tw"><table>
+<thead><tr><th>本文的叫法</th><th>正式版文案</th></tr></thead>
+<tbody>
+<tr><td>完成</td><td>Done</td></tr>
+<tr><td>标为未读</td><td>Mark unread</td></tr>
+<tr><td>静音</td><td>Mute</td></tr>
+<tr><td>原文</td><td>Original</td></tr>
+<tr><td>在 Gmail 中打开</td><td>Open in Gmail，来源名取自 <code>openLabel</code>，比如 Open in Teams</td></tr>
+<tr><td>全部清掉</td><td>Clear all</td></tr>
+<tr><td>已清理</td><td>Cleared</td></tr>
+<tr><td>恢复</td><td>Restore</td></tr>
+<tr><td>未分类</td><td>Unsorted</td></tr>
+<tr><td>还没 enrich 的行上的标签</td><td>Sorting</td></tr>
+<tr><td>重新分析</td><td>Re-analyze（只在正式版，原型没有这个按钮）</td></tr>
+<tr><td>自你上次查看</td><td>Since you last looked</td></tr>
+<tr><td>上次读到这里</td><td>Last read</td></tr>
+<tr><td>之前 N 条</td><td>N earlier</td></tr>
+<tr><td>摘要 / 原文（对照的两栏）</td><td>Summary / Original</td></tr>
+<tr><td>灵动岛那句话，全部读完时</td><td><code>All caught up.</code></td></tr>
+<tr><td>时间和日期</td><td><code>14:03</code>、<code>Yesterday</code>、<code>Oct 21</code></td></tr>
+<tr><td>搜索（按钮和输入框占位文字）</td><td>Search</td></tr>
+<tr><td>搜索结果那句话</td><td><code>“freeze” appears in 1 Action and 2 Reading.</code></td></tr>
+<tr><td>没有结果</td><td><code>Nothing matches “q”.</code></td></tr>
+<tr><td>结果上的状态标签：已完成、已静音</td><td>Done、Muted</td></tr>
+<tr><td>命中计数</td><td><code>1/4</code></td></tr>
+<tr><td>上一处、下一处、关闭搜索</td><td>Previous match、Next match、Close search</td></tr>
+<tr><td>状态（按钮和视图标题）</td><td>Status</td></tr>
+<tr><td>状态视图的四块</td><td>Sources、Enrichment、Config、Appearance</td></tr>
+<tr><td>3 分钟前同步</td><td><code>Synced 3m ago</code></td></tr>
+<tr><td>同步失败</td><td><code>Sync failed</code></td></tr>
+<tr><td>Reload，进行中</td><td>Reload，<code>Reloading…</code></td></tr>
+<tr><td>config 加载成功</td><td><code>Config loaded</code></td></tr>
+<tr><td>config 校验失败</td><td><code>Sync and enrich stopped</code></td></tr>
+<tr><td>空阅读区里打开状态视图的按钮</td><td><code>Open Status</code></td></tr>
+<tr><td>药丸 bucket 区的左右箭头（aria-label）</td><td><code>Scroll buckets left</code>、<code>Scroll buckets right</code></td></tr>
+<tr><td>主题：跟随系统、浅色、深色</td><td>System、Light、Dark</td></tr>
+</tbody></table></div>
+</details>
+
+<h3 id="layout">两栏从一开始就在，打开 conversation 时都不动</h3>
+<ul>
+<li>整体宽度上限 1360px，居中。宽屏两侧的背景始终不变。</li>
+<li>左栏是平的，直接铺在背景上，列出当前 bucket 的 conversation。右栏是一块浮起的阅读岛。</li>
+<li>打开、切换、关闭 conversation 时，两栏的位置和大小都不变，只有阅读岛里的内容在换。原型第 4 轮实测，在 2560 宽的屏幕上打开一条 conversation，阅读区以外只有 1.16% 的像素变化，就是被选中的那一行。之后灵动岛改矮了，这个数没有重测。</li>
+<li>阅读区空着时，也就是没打开 conversation 时，显示一份紧凑的状态摘要。每个 source 一行，写上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，出错时写 <code>Sync failed</code> 和错误原文。Enrichment 一行写 <code>4 conversations waiting</code> 或者 <code>Caught up</code>。config 加载失败时多一句 <code>Sync and enrich stopped. The config did not load.</code>。有错误时下面有 <code>Open Status</code> 按钮，打开完整的状态视图。这份摘要取代了原来的「数据更新于」那一行。页面加载时不自动打开 conversation，因为打开就算已读。</li>
+<li>原型第 12 轮试过在空阅读区放一份 AI 写的 bucket 简报。引用只靠头像，PR 那一行下面是 12 个一样的 GitHub 图标，分不清对话。FYI 的一行还把一条不相关的防诈骗提醒混进了 PR 那一组。所以否决了，以后也不做。</li>
+</ul>
+
+<h3 id="notch">灵动岛嵌在阅读岛上沿，只负责导航</h3>
+<ul>
+<li>没打开 conversation 时，灵动岛展开成一句话，列出每个有更新的 bucket 和它的数量。一个 bucket 时是 <code>13 Action has updates.</code>，两个时是 <code>13 Action and 12 FYI have updates.</code>。三个及以上时用逗号隔开，最后一个前面用 and，and 前面不加逗号，比如 <code>15 Action, 12 FYI, 8 Reading and 31 Alerts have updates.</code>。全部读完时是 <code>All caught up.</code>。每个 bucket 是一个小部件，带几个发件人头像、数量和名字。点它就切到那个 bucket。</li>
+<li>一次只看一个 bucket，这是原型里的导航方案 B。「未分类」排在最前面。已读完的 bucket 和「已清理」放在句子后面的尾句里，同样可以点。bucket 多时，这句话直接折行，不收成「and N more」。</li>
+<li>「已清理」的小部件一直显示，数量是 0 时也在。展开的句子和药丸里都有。空阅读区只显示状态摘要，不放「已清理」。</li>
+<li>打开 conversation 后，灵动岛收成一行药丸，只剩各 bucket 的小部件和数字。读长文时它不占地方。</li>
+<li>药丸两端固定。左端是搜索按钮，右端是「已清理」和状态按钮。中间的 bucket 区放不下时横向滚动，被藏住内容的那一侧边缘渐隐，渐隐处叠一个箭头按钮。点一次箭头，滚动距离是可见宽度减去两侧渐隐的 64px，只用鼠标也能翻到最后一个 bucket。箭头不占 Tab 顺序，键盘用户直接 Tab 到各个 bucket 小部件。当前 bucket 的小部件滚到中间。鼠标的竖向滚轮在这里也变成横向滚动，触控板的横向轻扫照常生效。</li>
+<li>灵动岛不弹提示。完成、静音、全部清掉、恢复、标为未读的反馈就是这一行离开列表、计数跟着变。MVP 不做撤销。</li>
+<li>灵动岛上还有搜索按钮和状态按钮，展开和药丸两种形态都有。搜索见<a href="#search">下文</a>，状态视图见<a href="#no-settings">第 09 节</a>。</li>
+</ul>
+
+<h3 id="reader">阅读区先讲新进展，再讲原文</h3>
+<p>打开一个 conversation，阅读区按顺序回答四个问题：这是什么事，上次之后有什么新进展，和我有什么关系，原文怎么说的。</p>
+<ul>
+<li>顶部是标题和 summary。下面是「自你上次查看」，左边一条直的 3px 竖线，没有底色和圆角。</li>
+<li>再下面是 points，按 ask、decision、date、info 分组。</li>
+<li>对话流里，每个气泡是一条 gist，不是原文。你自己的消息靠右。</li>
+<li>换人或者停顿超过 5 分钟就开一个新组。组头依次是名字、来源和时间，比如「Jacky Ng Gmail 14:03」，和 Slack、Teams 一样。你自己的组不显示名字。气泡里不放时间。</li>
+<li>来源标签只在变化时出现。一个全是邮件的 conversation，通常只在第一组显示一次 <code>Gmail</code>。中间有折叠行时，折叠行之后会再显示一次。</li>
+<li>打开时直接落在第一条未读。连续超过 3 条的已读消息折叠成一行「之前 N 条」，只留最后 1 到 2 条可见。</li>
+<li>界面上不出现任何语言名。原文对照的两栏叫「摘要」和「原文」。</li>
+</ul>
+<p>底部有一条悬浮的 dock，按钮是「完成」「标为未读」「静音」「原文」，以及「在 Gmail 中打开」。「标为未读」只在已读时出现。最后一个按钮里的来源名由 stream 的 <code>openLabel</code> 提供，所以 Teams 的 conversation 显示「在 Teams 中打开」。</p>
+
+<h3 id="transcript">「原文」打开整段对照，而不是单条原文</h3>
+<ul>
+<li>对话框和整个舞台一样宽。左栏按顺序列出 gist，右栏是原文岛，两栏一起滚动。原型实测，打开时定位的那一条在两栏的落点误差小于 0.5px。其他消息在两栏里的位置并不逐行对齐。</li>
+<li>打开时定位到阅读区当前能看到的第一个气泡，接着你正在读的位置。</li>
+<li>Esc、关闭按钮、点对话框外面，三种方式都能关。关闭后阅读区停在原来的滚动位置，焦点回到「原文」按钮。</li>
+</ul>
+
+<h3 id="dismiss">「完成」是让 conversation 离开视线的唯一方式</h3>
+<ul>
+<li>看过的 conversation 变灰，但还留在列表里。点「完成」它才消失，并且自动打开下一条。</li>
+<li>每个 bucket 都有「全部清掉」。<code>alerts</code> 这类 bucket 里常有上百条，没有它清不完。</li>
+<li>「已清理」视图能找回所有完成和静音的 conversation，每条都有「恢复」。</li>
+<li>完成的 conversation 来了新消息，会以未读状态重新出现。静音的不会。</li>
+</ul>
+
+<h3 id="search">搜索也在灵动岛里，一条结果就是一个 conversation</h3>
+<p>原型第 10 轮比了三种放法。搜索放在灵动岛里，放在左栏顶部，或者弹出一个带预览的面板。定稿用灵动岛这一种，再从另外两种各借了一点。匹配规则和 <code>weir-axi search</code> 相同，见<a href="#fts">第 05 节</a>。</p>
+<ul>
+<li><strong>进入。</strong>点灵动岛上的搜索按钮，或者按 <code>/</code>，灵动岛变成输入框。两栏的位置和大小都不变。</li>
+<li><strong>结果那句话。</strong>边输入边更新。灵动岛那句话变成结果句，语法和 bucket 那句话相同，比如 <code>“freeze” appears in 1 Action and 2 Reading.</code>。有已完成或静音的结果时，句子里多一个「已清理」小部件。点一个小部件，结果只剩那一组。没有结果时显示 <code>Nothing matches “q”.</code>。</li>
+<li><strong>结果列表。</strong>左栏变成结果列表。一条结果是一个 conversation，最多 3 行命中，命中的词都有标记。命中在原文正文里时，显示一段约 120 字符的英文原文摘录，下面是那条消息的 gist，不读英文也能知道它在说什么。命中在 gist、summary、point、标题或发件人里时，直接显示那段文字。结果按最新一条命中消息的时间排序。</li>
+<li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开时照常算已读。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
+<li><strong>阅读区。</strong>搜索时没打开 conversation，阅读岛只显示一句空状态，比如 Pick a result to read it.，不再列一遍结果。第 10 轮的灵动岛方案在这里放过一份结果简报，和左栏重复，所以删掉了。</li>
+<li><strong>打开结果。</strong>阅读区落在第一条命中的消息上。这条消息要是在折叠行里，折叠行会展开。气泡里命中的词有标记。只在原文里命中的气泡带一个小标记。灵动岛收成药丸，显示查询、计数 <code>1/4</code>，以及上一处、下一处、关闭三个按钮。点「原文」，对照框落在当前这一处，原文里的词也有标记。</li>
+<li><strong>离开搜索。</strong>按 Esc、清空输入框或点关闭，都回到搜索前的 bucket、搜索前打开的 conversation，以及左栏原来的滚动位置。</li>
+<li><strong>字段 chip。</strong>在输入框里写 <code>from:</code>、<code>in:</code>、<code>source:</code> 开头的词，按空格或者离开输入框后，它变成一个可以删掉的 chip。三种 chip 对应 <code>weir-axi search</code> 的 <code>--from</code>、<code>--bucket</code>、<code>--source</code>，和其他词是 AND 的关系。<code>in:</code> 后面写 bucket 的 id 或显示名都行，不分大小写。输入框空着时按退格，删掉最后一个 chip。</li>
+<li><strong>只搜新写的正文。</strong>原文只搜 <code>body_new</code>。一条回复不会因为它引用的旧文字而命中。所以落点那条消息的原文里，一定看得到这个词。</li>
+<li><strong>标记的颜色。</strong>深色主题的标记用琥珀色，比黄色在近黑的底色上安静。两种主题下，标记里的文字对比度都要达到 WCAG AA 的 4.5。</li>
+</ul>
+<p>定稿原型跑过 169 项检查，全部通过，脚本是 <code>/tmp/final-jury/jury.mjs</code>。主流程的 73 项只在 Chromium 里跑，1440 宽、深色。第 12 和 13 轮加的 27 项、第 14 轮加的 16 项（药丸箭头和 bucket 颜色）在 Chromium 和 WebKit 里各跑一遍。其余 10 项是 bucket 很多时那句话的折行（1440 浅色和 390 深色）、4 张截图（其中一张在 WebKit 1406 宽）和 2 项对比度。搜索类查询显示的 conversation，和在浏览器里暴力子串匹配算出的集合完全一致，包括 <code>from:</code> 和 <code>in:</code> 标签的查询。bucket 颜色和脚本按<a href="#config">第 09 节</a>的规则独立重算的结果一致。只出现在引用历史里的词不会命中。状态视图、Reload 的成功和失败、主题切换、完成、标为未读、全部清掉、恢复都在检查范围内。界面文字、<code>aria-label</code>、<code>title</code> 和 placeholder 里没有中文。</p>
+
+<h3 id="theme">深色是主要场景，浅色也要可用</h3>
+<p>主题默认跟随系统，也可以在状态视图的 Appearance 里固定为 Light 或 Dark，选择存在 localStorage。bucket 颜色在两种主题下各有一套。气泡统一用中性底色，不带 bucket 颜色。定稿原型用脚本测了文字对比度，深色最低 5.63，是搜索命中的琥珀色标记。浅色最低 5.18，是状态视图里的 <code>Config loaded</code>。都高于 WCAG AA 的 4.5。</p>
+
+<h3 id="ui-details">实现时要记住的几件事</h3>
+<ul>
+<li>不要用 <code>text-wrap: pretty</code>。WebKit 会把整段中文的行长拉平，每行都提前换行，右边空出大片参差空白。只在短标题上用 <code>balance</code>。</li>
+<li>图标用内嵌 SVG。<code>✕</code> 这类字符在 WebKit 里会回退到别的字体，显得又小又细。</li>
+<li>原型的头像来自 Google 的 favicon 服务，会把发件人域名发给 Google。正式版改成 daemon 在本地拉取并缓存，拉不到就用首字母头像。</li>
+<li>列表行在原型里能用 Tab 聚焦，但在辅助功能树里不是按钮角色。正式版要改成真正的按钮或链接。</li>
+<li>标签页标题显示未读总数，比如 <code>(3) weir</code>。</li>
+</ul>
+
+<h2 id="axi"><span class="n">11</span>weir-axi 是 agent 唯一的入口</h2>
+<p><code>weir-axi</code> 是一个 CLI，调用本机的 HTTP API。它遵循 AXI 的原则：不带参数直接运行就显示当前状态，长正文默认截断并提示 <code>--full</code>，每次输出后附上 <code>help[]</code>，列出下一步可以运行的命令。输出格式是 TOON。</p>
+<div class="tw"><table>
+<thead><tr><th>命令</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>weir-axi</code></td><td>各 bucket 的未读数和待完成数，各 source 的 sync 状态，config 错误</td></tr>
+<tr><td><code>weir-axi search &lt;query&gt;</code></td><td>和 UI 的搜索用同一套匹配。两者查同一张 <code>search_fts</code>，原文只搜 <code>body_new</code>，所有词都在同一个 conversation 里出现才算命中，见<a href="#fts">第 05 节</a>。可以用 <code>--bucket</code>、<code>--source</code>、<code>--from</code>、<code>--since</code> 过滤</td></tr>
+<tr><td><code>weir-axi conv &lt;id&gt;</code></td><td>一个 conversation 的 summary、points 和每条 item 的 gist</td></tr>
+<tr><td><code>weir-axi item &lt;id&gt; [--full]</code></td><td>一条 item 的原文</td></tr>
+<tr><td><code>weir-axi enrich --conv &lt;id&gt; | --since &lt;dur&gt;</code></td><td>手动重算</td></tr>
+<tr><td><code>weir-axi reload</code></td><td>重新读取并校验 config，失败时输出错误位置</td></tr>
+</tbody></table></div>
+<p>下面是首页输出的示意，具体字段等实现时再定：</p>
+<pre><code>weir · ~/.weir · local inbox for mail and chat
+buckets[4]{id,name,unread,open}:
+  action,Action,3,11
+  fyi,FYI,12,12
+  feed,Reading,8,8
+  alerts,Alerts,31,31
+sources[1]{id,stream,last_sync,error}:
+  personal-mail,INBOX,2m ago,-
+help[2]:
+  weir-axi search &lt;query&gt; --bucket action
+  weir-axi conv &lt;id&gt;</code></pre>
+<p>axi 只读 weir 的数据，不改变已读和完成状态，也不能对 source 做任何操作。能写的只有两个命令。<code>enrich</code> 只覆盖派生层，<code>reload</code> 只重新加载 config。</p>
+
+<h2 id="security"><span class="n">12</span>安全边界是「只读」和「不信任消息内容」</h2>
+<p>邮件和群聊的内容是外部人写的，属于不可信输入。如果一个 agent 同时具备三样能力，就构成一条数据外泄路径：读得到你的私人数据，会读到外部内容，还能往外发消息。weir 的设计在每一层都切断其中一样。</p>
+<ul>
+<li>MVP 不实现任何 source 写操作，所以 weir 本身发不出消息。</li>
+<li>AI profile 的示例命令带 <code>--no-tools</code>。enricher 调用的 AI 只能输出文本，不能执行操作。</li>
+<li>prompt 里用分隔符把消息内容标为数据，并告诉 AI 不执行其中的任何指令。</li>
+<li>enricher 的输出必须通过 Schema 校验。字段以外的内容一律丢弃。</li>
+<li>daemon 只监听 <code>127.0.0.1</code>。</li>
+<li>凭证不进 SQLite，用 <code>*_cmd</code> 从 Keychain 或环境变量取。</li>
+</ul>
+<p>以后如果加 source 写操作，第一个做「把已读同步回 source」，它风险低、价值高。即使做了，也默认只能由人在 UI 里点击触发，不通过 axi 开放给 agent。</p>
+
+<h2 id="numbers"><span class="n">13</span>原型测过的数字</h2>
+<p>下表的每个数字都只跑了一次，没有波动范围。数据是 10 天的个人 Gmail，加两个合成的长 conversation。</p>
+<div class="tw"><table>
+<thead><tr><th>问题</th><th>结果</th><th>来源</th></tr></thead>
+<tbody>
+<tr><td>10 天有多少数据</td><td>240 封邮件，192 个 thread。gpt-6-luna 聚成 187 个 conversation，合并 5 处</td><td><code>data/runs/compare.md</code></td></tr>
+<tr><td>全流程 enrich 要多久</td><td>gpt-6-luna low 90.8 秒，0 失败。opus-5.5 139.5 秒，haiku-5.5 147.6 秒</td><td><code>data/runs/compare.md</code></td></tr>
+<tr><td>时间花在哪里</td><td>omp 启动约 0.52 秒，单次调用约 9 到 15 秒。主要花在生成输出上</td><td><code>data/runs/startup.md</code>、<code>compare.md</code></td></tr>
+<tr><td>换便宜模型能变快吗</td><td>不能。haiku 和 opus 生成速度接近。gpt-4o-mini 快，是因为摘要写得短，而且丢了 4 批</td><td><code>data/runs/compare.md</code></td></tr>
+<tr><td>分类和 opus 一致的比例</td><td>haiku-5.5 85.4%，gpt-6-luna 72.9%。分歧集中在规则本身模糊的地方，比如 Copilot PR review 算不算「要我处理」</td><td><code>data/runs/compare.md</code></td></tr>
+<tr><td>gist 和 points 的成本</td><td>22 次调用，墙钟 92.9 秒，1 次失败后重试成功。301 条 item 都有 gist，中位数 19 个字</td><td><code>data/runs/gpt-6-luna-r5/timing.md</code></td></tr>
+<tr><td>能省多少输入</td><td>正文全量 743,251 字符，每条截到 1200 后是 276,054。原型里「通知」bucket 占全部 item 的 31%，可以用 rule 跳过</td><td>session 记录 <code>r8-folio-and-ai.md</code></td></tr>
+<tr><td>浏览器自带 AI 能用吗</td><td>WebKit 27.2 完全没有。Chrome 155 的 Translator 英译中显示 downloadable，Summarizer 和 LanguageModel 不可用</td><td>同上</td></tr>
+<tr><td>gist 气泡比铺原文短多少</td><td>48 条的群聊，1440 宽下阅读区的滚动高度从铺原文的 2343px 降到 gist 气泡的 1761px</td><td>原型第 4 轮和第 5 轮的测量，记在 session 的 <code>INDEX.md</code></td></tr>
+</tbody></table></div>
+<p>结论是 AI 选什么模型、规则怎么写，都是用户自己的事，weir 只负责少调用、少喂数据。浏览器自带的 AI 在 WebKit 里不存在，而 enrich 又必须在后台跑，所以它不进架构。</p>
+
+<h2 id="later"><span class="n">14</span>以后可能做，现在不做</h2>
+<div class="tw"><table>
+<thead><tr><th>功能</th><th>现在不做的原因</th><th>以后接在哪里</th></tr></thead>
+<tbody>
+<tr><td>source 写操作</td><td>双向同步要处理冲突、离线队列、重试，难度高一个量级</td><td>stream 上声明 capability，用户在 config 里收窄</td></tr>
+<tr><td>日历</td><td>形状和 message 不同，UI 要显示「即将发生」</td><td>新的 <code>event</code> kind，加 <code>event_detail</code> 表</td></tr>
+<tr><td>Teams 和 Outlook</td><td>MVP 只验证 IMAP</td><td>第三方 plugin，<code>thread_id</code> 和 <code>container_id</code> 已经够用</td></tr>
+<tr><td>source 级的 AI 限制</td><td>两个 source 指定不同 AI 时，它们的 thread 能否合并还没想清楚</td><td><code>[[source]]</code> 上加 <code>ai</code>，作为硬约束</td></tr>
+<tr><td>跨 source 的身份合并</td><td>MVP 只有一个 source</td><td><code>party</code> 表加一层映射</td></tr>
+<tr><td>embedding 语义检索</td><td>agent 换关键词多搜几次已经够用</td><td>作为 enricher 的一个可选输出</td></tr>
+<tr><td>按需翻译整篇原文</td><td>还不知道只看 gist 够不够</td><td>daemon 调 AI profile，结果缓存进 SQLite</td></tr>
+<tr><td>snooze、置顶</td><td>D1 手动完成已经够用</td><td><code>conversation_state</code> 加列</td></tr>
+<tr><td>系统通知</td><td>目标是「打开就看」，不是「打扰我」</td><td>daemon 调 macOS 通知</td></tr>
+<tr><td>axi 的 ambient hook</td><td>先确认 agent 用得上首页数据</td><td>AXI 的 <code>setup hooks</code></td></tr>
+</tbody></table></div>
+
+<h2 id="open"><span class="n">15</span>还没定的问题</h2>
+<ol>
+<li>agent 能不能通过 axi 标记完成或已读？现在的设计是不能。</li>
+<li>每种 source 的正文怎么渲染？GitHub 通知邮件的正文是 markdown 混 HTML，原型里显示得很难看。</li>
+<li>防抖的 2 分钟和 10 分钟，要在真实群聊上测过再定。</li>
+<li>没有 <code>thread_id</code> 的消息，比如 Teams 群聊，每条都会开一个 provisional conversation。群里聊得热闹时，2 到 10 分钟内「未分类」会堆很多条，直到阶段 1 把它们合并。要不要先按 <code>container_id</code> 和时间间隔临时归成一组，接 Teams 时用真实数据再定。</li>
+<li>Effect Schema 能不能直接作为 Standard Schema 给 plugin 用，搭骨架时确认。</li>
+<li>默认模型。你想用的 <code>gpt-6.1-luna</code> 在 omp 的模型目录里不存在，原型用的是 <code>gpt-6-luna</code>。这只影响示例 config，不影响设计。</li>
+<li>头像拉取会向发件人的域名发请求。要不要默认只用首字母头像？</li>
+</ol>
+
+<h2 id="repo"><span class="n">附录</span>仓库结构照搬 tael</h2>
+<p>tael 是一个 Bun monorepo，Effect v4 以源码形式放在仓库里，migration 用 Effect Migrator。weir 沿用同样的做法：</p>
+<pre><code>weir/
+  packages/
+    contract/     <span class="c">Schema：item、conversation、plugin 接口、AI 输出格式</span>
+    store/        <span class="c">SQLite、FTS5、migration</span>
+    sync/         <span class="c">scheduler、plugin 加载、upsert、按 thread 归属、rule</span>
+    enrich/       <span class="c">dirty 查询、防抖、攒批、合并、CLI 调用、输出校验</span>
+  plugins/
+    imap/
+  apps/
+    daemon/       <span class="c">进程入口、HTTP API、config 加载和 reload</span>
+    web/          <span class="c">Web UI</span>
+    axi/          <span class="c">weir-axi</span></code></pre>
+<p>建议按这个顺序搭，每一步都能单独验证：contract 和 store，然后 imap plugin 加 sync，然后 HTTP API 加 <code>weir-axi search</code>，然后 enrich，最后 Web UI。做完第三步，agent 就已经能搜你的邮件了，那时还没有任何 AI 调用。</p>
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pele@1.10.0/dist/pele.global.js"></script>
+<script>
+for (const box of document.querySelectorAll(".diagram")) {
+  const src = box.querySelector("pre.mermaid").textContent.trim();
+  const host = document.createElement("div");
+  box.append(host);
+  try {
+    pele.mount(host, src, { autoDirection: false, onError: (e) => { host.className = "err"; host.textContent = String(e && e.message || e); } });
+  } catch (e) {
+    host.className = "err";
+    host.textContent = String(e && e.message || e);
+  }
+}
+const toc = document.getElementById("toc");
+const heads = [...document.querySelectorAll("main h2[id]")];
+for (const h of heads) {
+  const a = document.createElement("a");
+  a.href = "#" + h.id;
+  a.innerHTML = h.innerHTML;
+  const li = document.createElement("li");
+  li.append(a);
+  toc.append(li);
+}
+const links = [...toc.querySelectorAll("a")];
+const spy = () => {
+  let i = 0;
+  heads.forEach((h, j) => { if (h.getBoundingClientRect().top < 120) i = j; });
+  links.forEach((a, j) => a.classList.toggle("on", j === i));
+};
+addEventListener("scroll", spy, { passive: true });
+spy();
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+(() => {
+  const key = "weir.proto.theme";
+  const mq = matchMedia("(prefers-color-scheme: dark)");
+  const pref = () => { const p = localStorage.getItem(key); return p === "light" || p === "dark" ? p : "system"; };
+  const apply = () => { const p = pref(); document.documentElement.dataset.theme = p === "system" ? (mq.matches ? "dark" : "light") : p; };
+  apply();
+  mq.addEventListener("change", () => pref() === "system" && apply());
+})();
+</script>
+<title>weir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+</head>
+<body>
+<main id="app"></main>
+<div class="cap" role="region" aria-label="weir">
+  <div class="cap-q" role="search"><svg class="q-i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4l3.4 3.4"/></svg><span class="q-chips"></span><span class="q-br" aria-hidden="true">“</span><span class="q-box"><input class="q-in" type="text" size="1" enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search"></span><span class="q-br" aria-hidden="true">”</span><span class="q-st"></span><button class="q-x" data-q="close" aria-label="Close search" title="Close search"><svg class="x-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button></div>
+  <nav class="cap-nav" aria-label="Buckets"></nav>
+</div>
+<script src="app.js"></script>
+<script src="/ui/switch.js" defer></script>
+</body>
+</html>

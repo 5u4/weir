@@ -1,0 +1,986 @@
+{
+ "generatedAt": "2026-10-25T09:00:00Z",
+ "me": [
+  "sen@example.com"
+ ],
+ "seenCutoff": "2026-10-24T08:00:00Z",
+ "buckets": [
+  {
+   "id": "act",
+   "name": "要我处理"
+  },
+  {
+   "id": "know",
+   "name": "值得知道"
+  },
+  {
+   "id": "notify",
+   "name": "通知"
+  }
+ ],
+ "items": [
+  {
+   "id": "m001",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-budget-a",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Ana Torres",
+    "addr": "ana@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Raj Patel",
+     "addr": "raj@acme.com"
+    }
+   ],
+   "subject": "Q4 budget request – engineering",
+   "occurredAt": "2026-10-22T15:00:00Z",
+   "bodyNew": "Hi Sen,\n\nAttached is the Q4 engineering budget request. Total is $412k, up 8% from Q3, mostly from the new GPU cluster.\n\nCould you review and sign off?\n\nThanks,\nAna",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-budget-a"
+  },
+  {
+   "id": "m002",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-budget-b",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Raj Patel",
+    "addr": "raj@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Fwd: Q4 budget request – engineering",
+   "occurredAt": "2026-10-23T09:00:00Z",
+   "bodyNew": "Sen – finance needs this by Friday or it slips to next cycle. Can you prioritize?",
+   "bodyQuoted": "---------- Forwarded message ---------\nFrom: Ana Torres <ana@acme.com>\nSubject: Q4 budget request – engineering\n\nAttached is the Q4 engineering budget request...",
+   "link": "https://mail.google.com/mail/u/0/#all/t-budget-b"
+  },
+  {
+   "id": "m003",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-budget-a",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Ana Torres",
+    "addr": "ana@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Raj Patel",
+     "addr": "raj@acme.com"
+    }
+   ],
+   "subject": "Re: Q4 budget request – engineering",
+   "occurredAt": "2026-10-24T14:00:00Z",
+   "bodyNew": "Quick update: finance trimmed the GPU line to $120k. New total is $389k. Revised sheet attached.",
+   "bodyQuoted": "On Wed, Oct 22, Ana Torres wrote:\n> Attached is the Q4 engineering budget request.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-budget-a"
+  },
+  {
+   "id": "m004",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-budget-b",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Raj Patel",
+    "addr": "raj@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Ana Torres",
+     "addr": "ana@acme.com"
+    }
+   ],
+   "subject": "Re: Fwd: Q4 budget request – engineering",
+   "occurredAt": "2026-10-25T07:30:00Z",
+   "bodyNew": "Ana's revised number works for me. Please sign the DocuSign link before Friday 5pm.\n\nhttps://docusign.example/abc",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-budget-b"
+  },
+  {
+   "id": "m005",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Dan Wu",
+    "addr": "dan@vendor.io"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-14T10:00:00Z",
+   "bodyNew": "Hi Sen,\n\nAttached is our renewal proposal for 2027. Pricing is unchanged; we added a 99.9% SLA.",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m006",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Sen Hung",
+    "addr": "sen@example.com"
+   },
+   "to": [
+    {
+     "name": "Dan Wu",
+     "addr": "dan@vendor.io"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-15T11:00:00Z",
+   "bodyNew": "Thanks Dan. Legal will review. One question: does the SLA include the EU region?",
+   "bodyQuoted": "On Oct 14, Dan Wu wrote:\n> Attached is our renewal proposal for 2027.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m007",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Dan Wu",
+    "addr": "dan@vendor.io"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-16T09:00:00Z",
+   "bodyNew": "Yes, EU is included. Credits are 10% of monthly fee per 0.1% below target.",
+   "bodyQuoted": "On Oct 15, Sen Hung wrote:\n> does the SLA include the EU region?",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m008",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Kim Lee",
+    "addr": "kim@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    },
+    {
+     "name": "Dan Wu",
+     "addr": "dan@vendor.io"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-20T16:00:00Z",
+   "bodyNew": "Legal comments:\n1. Liability cap should be 12 months of fees, not 6.\n2. Termination for convenience needs 60 days, not 90.\n3. Data deletion within 30 days of termination.",
+   "bodyQuoted": "On Oct 16, Dan Wu wrote:\n> Yes, EU is included.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m009",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Dan Wu",
+    "addr": "dan@vendor.io"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    },
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-24T10:00:00Z",
+   "bodyNew": "We can accept 1 and 3. On 2, we can do 75 days as a compromise.",
+   "bodyQuoted": "On Oct 20, Kim Lee wrote:\n> Legal comments:\n> 1. Liability cap...",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m010",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Kim Lee",
+    "addr": "kim@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Dan Wu",
+     "addr": "dan@vendor.io"
+    }
+   ],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-24T13:00:00Z",
+   "bodyNew": "75 days is acceptable from legal's side if Sen is fine with it.",
+   "bodyQuoted": "On Oct 24, Dan Wu wrote:\n> We can accept 1 and 3.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m011",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Sen Hung",
+    "addr": "sen@example.com"
+   },
+   "to": [
+    {
+     "name": "Dan Wu",
+     "addr": "dan@vendor.io"
+    },
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-24T18:00:00Z",
+   "bodyNew": "75 days works. Dan, please send the redlined version.",
+   "bodyQuoted": "On Oct 24, Kim Lee wrote:\n> 75 days is acceptable from legal's side",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m012",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-contract",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Dan Wu",
+    "addr": "dan@vendor.io"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "subject": "Re: 2027 renewal proposal",
+   "occurredAt": "2026-10-25T08:00:00Z",
+   "bodyNew": "Redlined contract attached. If it looks good, we'll send it for signature today.",
+   "bodyQuoted": "On Oct 24, Sen Hung wrote:\n> 75 days works.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-contract"
+  },
+  {
+   "id": "m013",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-interview",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Priya Shah",
+    "addr": "priya@acme.com"
+   },
+   "to": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "subject": "Interview: Li Wei – Wed 2pm",
+   "occurredAt": "2026-10-24T11:00:00Z",
+   "bodyNew": "Kim, Sen,\n\nLi Wei (senior backend) is confirmed for Wednesday 2-4pm. Kim does system design, Sen does the culture round at 3:15.\n\nPriya",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-interview"
+  },
+  {
+   "id": "m014",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-interview",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Kim Lee",
+    "addr": "kim@acme.com"
+   },
+   "to": [
+    {
+     "name": "Priya Shah",
+     "addr": "priya@acme.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "subject": "Re: Interview: Li Wei – Wed 2pm",
+   "occurredAt": "2026-10-24T15:00:00Z",
+   "bodyNew": "Works for me. Sen, can you take the first 15 minutes too? I have a conflict until 2:15.",
+   "bodyQuoted": "On Oct 24, Priya Shah wrote:\n> Li Wei (senior backend) is confirmed",
+   "link": "https://mail.google.com/mail/u/0/#all/t-interview"
+  },
+  {
+   "id": "m015",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-weekly",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Raj Patel",
+    "addr": "raj@acme.com"
+   },
+   "to": [
+    {
+     "name": "Eng Team",
+     "addr": "eng@acme.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "subject": "Weekly: frontend migration",
+   "occurredAt": "2026-10-24T17:00:00Z",
+   "bodyNew": "Highlights:\n- 62% of routes migrated to the new router\n- Bundle size down 18%\n- Blocker: auth flow tests flaky on CI",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-weekly"
+  },
+  {
+   "id": "m016",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-maya",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Priya Shah",
+    "addr": "priya@acme.com"
+   },
+   "to": [
+    {
+     "name": "All",
+     "addr": "all@acme.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Welcome Maya!",
+   "occurredAt": "2026-10-20T09:00:00Z",
+   "bodyNew": "Please welcome Maya Chen, who joins as Staff Designer. She was previously at Figma. Say hi on Slack!",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-maya"
+  },
+  {
+   "id": "m017",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-arch",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Kim Lee",
+    "addr": "kim@acme.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    },
+    {
+     "name": "Raj Patel",
+     "addr": "raj@acme.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Arch review notes",
+   "occurredAt": "2026-10-21T16:00:00Z",
+   "bodyNew": "Notes from today:\n- Agreed to move search to a separate service\n- Open: do we keep Postgres FTS or adopt Typesense?",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-arch"
+  },
+  {
+   "id": "m018",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-arch",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Sen Hung",
+    "addr": "sen@example.com"
+   },
+   "to": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    },
+    {
+     "name": "Raj Patel",
+     "addr": "raj@acme.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: Arch review notes",
+   "occurredAt": "2026-10-22T10:00:00Z",
+   "bodyNew": "I lean Typesense. FTS ranking was a recurring complaint.",
+   "bodyQuoted": "On Oct 21, Kim Lee wrote:\n> Open: do we keep Postgres FTS or adopt Typesense?",
+   "link": "https://mail.google.com/mail/u/0/#all/t-arch"
+  },
+  {
+   "id": "m019",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-arch",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Raj Patel",
+    "addr": "raj@acme.com"
+   },
+   "to": [
+    {
+     "name": "Kim Lee",
+     "addr": "kim@acme.com"
+    },
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Re: Arch review notes",
+   "occurredAt": "2026-10-24T12:00:00Z",
+   "bodyNew": "Ran a quick benchmark: Typesense p95 is 14ms vs 90ms for FTS on our corpus. I'm convinced.",
+   "bodyQuoted": "On Oct 22, Sen Hung wrote:\n> I lean Typesense.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-arch"
+  },
+  {
+   "id": "m020",
+   "source": "gmail",
+   "sourceLabel": "Gmail · GitHub",
+   "threadId": "t-gh482",
+   "containerId": "GitHub",
+   "from": {
+    "name": "GitHub",
+    "addr": "notifications@github.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "[acme/web] PR #482: Migrate settings routes",
+   "occurredAt": "2026-10-24T09:00:00Z",
+   "bodyNew": "@kimlee commented: Can we split the auth changes into a separate PR?",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-gh482"
+  },
+  {
+   "id": "m021",
+   "source": "gmail",
+   "sourceLabel": "Gmail · GitHub",
+   "threadId": "t-gh482",
+   "containerId": "GitHub",
+   "from": {
+    "name": "GitHub",
+    "addr": "notifications@github.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "[acme/web] PR #482: Migrate settings routes",
+   "occurredAt": "2026-10-24T20:00:00Z",
+   "bodyNew": "@rajpatel approved these changes.",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-gh482"
+  },
+  {
+   "id": "m022",
+   "source": "gmail",
+   "sourceLabel": "Gmail · GitHub",
+   "threadId": "t-gh482",
+   "containerId": "GitHub",
+   "from": {
+    "name": "GitHub",
+    "addr": "notifications@github.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "[acme/web] PR #482: Migrate settings routes",
+   "occurredAt": "2026-10-25T06:00:00Z",
+   "bodyNew": "@kimlee commented: LGTM after the split, thanks!",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-gh482"
+  },
+  {
+   "id": "m023",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Updates",
+   "threadId": "t-aws",
+   "containerId": "Updates",
+   "from": {
+    "name": "AWS Billing",
+    "addr": "billing@aws.amazon.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "AWS budget alert: 80% of monthly budget",
+   "occurredAt": "2026-10-24T22:00:00Z",
+   "bodyNew": "Your account 1234 has reached 80% ($8,000) of the October budget of $10,000.",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-aws"
+  },
+  {
+   "id": "m024",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Updates",
+   "threadId": "t-cal",
+   "containerId": "Updates",
+   "from": {
+    "name": "Google Calendar",
+    "addr": "calendar-notification@google.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Updated invitation: All-hands @ Mon Oct 27 10am",
+   "occurredAt": "2026-10-22T08:00:00Z",
+   "bodyNew": "The all-hands has moved from 9am to 10am Monday.",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-cal"
+  },
+  {
+   "id": "m025",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Linear",
+   "threadId": "t-lin1",
+   "containerId": "Linear",
+   "from": {
+    "name": "Linear",
+    "addr": "notify@linear.app"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "3 issues assigned to you",
+   "occurredAt": "2026-10-24T10:00:00Z",
+   "bodyNew": "WEB-201 Settings page crash on Safari\nWEB-205 Flaky auth test\nWEB-210 Dark mode contrast",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-lin1"
+  },
+  {
+   "id": "m026",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Linear",
+   "threadId": "t-lin1",
+   "containerId": "Linear",
+   "from": {
+    "name": "Linear",
+    "addr": "notify@linear.app"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "WEB-205 moved to In Progress",
+   "occurredAt": "2026-10-25T05:00:00Z",
+   "bodyNew": "Raj Patel moved WEB-205 Flaky auth test to In Progress.",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-lin1"
+  },
+  {
+   "id": "m027",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Personal",
+   "threadId": "t-hike",
+   "containerId": "Personal",
+   "from": {
+    "name": "Tom Baker",
+    "addr": "tom@gmail.com"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    },
+    {
+     "name": "Jess",
+     "addr": "jess@gmail.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Weekend hike?",
+   "occurredAt": "2026-10-24T19:00:00Z",
+   "bodyNew": "Thinking Mt. Tam on Saturday, leaving 8am. You in?",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-hike"
+  },
+  {
+   "id": "m028",
+   "source": "gmail",
+   "sourceLabel": "Gmail · Personal",
+   "threadId": "t-hike",
+   "containerId": "Personal",
+   "from": {
+    "name": "Jess",
+    "addr": "jess@gmail.com"
+   },
+   "to": [
+    {
+     "name": "Tom Baker",
+     "addr": "tom@gmail.com"
+    }
+   ],
+   "cc": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "subject": "Re: Weekend hike?",
+   "occurredAt": "2026-10-25T07:00:00Z",
+   "bodyNew": "I'm in! I can drive, have room for 3.",
+   "bodyQuoted": "On Oct 24, Tom Baker wrote:\n> Thinking Mt. Tam on Saturday, leaving 8am.",
+   "link": "https://mail.google.com/mail/u/0/#all/t-hike"
+  },
+  {
+   "id": "m029",
+   "source": "gmail",
+   "sourceLabel": "Gmail · INBOX",
+   "threadId": "t-vendor",
+   "containerId": "INBOX",
+   "from": {
+    "name": "Zoe Park",
+    "addr": "zoe@labelco.ai"
+   },
+   "to": [
+    {
+     "name": "Sen Hung",
+     "addr": "sen@example.com"
+    }
+   ],
+   "cc": [],
+   "subject": "Data labeling for your ML team",
+   "occurredAt": "2026-10-19T14:00:00Z",
+   "bodyNew": "Hi Sen, we help teams like yours label data 3x faster. 15 min call next week?",
+   "bodyQuoted": "",
+   "link": "https://mail.google.com/mail/u/0/#all/t-vendor"
+  }
+ ],
+ "conversations": [
+  {
+   "id": "c01",
+   "title": "Q4 预算审批：周五前需要你签字",
+   "bucket": "act",
+   "summary": "Ana 提交了 Q4 工程预算（原 $412k），Raj 转发提醒财务周五截止。之后 GPU 预算被削减，新总额 $389k。",
+   "update": "Ana 把总额降到 $389k，Raj 已同意并请你周五 5 点前在 DocuSign 签字。",
+   "itemIds": [
+    "m001",
+    "m002",
+    "m003",
+    "m004"
+   ],
+   "threadIds": [
+    "t-budget-a",
+    "t-budget-b"
+   ],
+   "mergeReason": "两个 thread 讨论的是同一份 Q4 工程预算：Raj 的邮件是转发 Ana 的原始请求。",
+   "firstAt": "2026-10-22T15:00:00Z",
+   "lastAt": "2026-10-25T07:30:00Z"
+  },
+  {
+   "id": "c02",
+   "title": "合同续签：2027 年条款谈判",
+   "bucket": "act",
+   "summary": "Dan 提交 2027 续签方案（价格不变，加 99.9% SLA）。法务 Kim 提出责任上限、解约通知期、数据删除三点修改。",
+   "update": "Dan 接受了两条修改，解约通知期折中为 75 天，你已同意；红线版合同已发来等你确认。",
+   "itemIds": [
+    "m005",
+    "m006",
+    "m007",
+    "m008",
+    "m009",
+    "m010",
+    "m011",
+    "m012"
+   ],
+   "threadIds": [
+    "t-contract"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-14T10:00:00Z",
+   "lastAt": "2026-10-25T08:00:00Z"
+  },
+  {
+   "id": "c03",
+   "title": "面试安排：周三下午候选人 Li Wei",
+   "bucket": "act",
+   "summary": "Priya 安排周三 2–4 点面试资深后端候选人 Li Wei，你负责 3:15 的文化面。",
+   "update": "Kim 2:15 前有冲突，请你也负责开头 15 分钟。",
+   "itemIds": [
+    "m013",
+    "m014"
+   ],
+   "threadIds": [
+    "t-interview"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T11:00:00Z",
+   "lastAt": "2026-10-24T15:00:00Z"
+  },
+  {
+   "id": "c04",
+   "title": "团队周报：前端迁移进度 62%",
+   "bucket": "know",
+   "summary": "Raj 的周报：62% 路由已迁移，包体积降 18%，CI 上 auth 测试不稳定。",
+   "update": "迁移进度到 62%，CI 上 auth 测试不稳定是当前阻塞点。",
+   "itemIds": [
+    "m015"
+   ],
+   "threadIds": [
+    "t-weekly"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T17:00:00Z",
+   "lastAt": "2026-10-24T17:00:00Z"
+  },
+  {
+   "id": "c05",
+   "title": "新同事入职：Staff Designer Maya Chen",
+   "bucket": "know",
+   "summary": "Maya Chen 以 Staff Designer 身份加入，之前在 Figma。",
+   "update": null,
+   "itemIds": [
+    "m016"
+   ],
+   "threadIds": [
+    "t-maya"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-20T09:00:00Z",
+   "lastAt": "2026-10-20T09:00:00Z"
+  },
+  {
+   "id": "c06",
+   "title": "架构评审：搜索服务选型",
+   "bucket": "know",
+   "summary": "评审决定把搜索拆为独立服务；在 Postgres FTS 和 Typesense 之间，你倾向 Typesense。",
+   "update": "Raj 的测试显示 Typesense p95 14ms，FTS 90ms，他也支持 Typesense。",
+   "itemIds": [
+    "m017",
+    "m018",
+    "m019"
+   ],
+   "threadIds": [
+    "t-arch"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-21T16:00:00Z",
+   "lastAt": "2026-10-24T12:00:00Z"
+  },
+  {
+   "id": "c07",
+   "title": "GitHub：PR #482 有新评论",
+   "bucket": "notify",
+   "summary": "PR #482（迁移 settings 路由）的评审通知。",
+   "update": "Raj 已批准；Kim 要求拆分 auth 改动后即可合并。",
+   "itemIds": [
+    "m020",
+    "m021",
+    "m022"
+   ],
+   "threadIds": [
+    "t-gh482"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T09:00:00Z",
+   "lastAt": "2026-10-25T06:00:00Z"
+  },
+  {
+   "id": "c08",
+   "title": "AWS 账单：本月预算已用 80%",
+   "bucket": "notify",
+   "summary": "AWS 账户本月花费达到 $8,000，占预算 80%。",
+   "update": "本月 AWS 已用掉 $8,000（预算的 80%）。",
+   "itemIds": [
+    "m023"
+   ],
+   "threadIds": [
+    "t-aws"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T22:00:00Z",
+   "lastAt": "2026-10-24T22:00:00Z"
+  },
+  {
+   "id": "c09",
+   "title": "日历：周一 all-hands 改到 10 点",
+   "bucket": "notify",
+   "summary": "周一 all-hands 从 9 点改到 10 点。",
+   "update": null,
+   "itemIds": [
+    "m024"
+   ],
+   "threadIds": [
+    "t-cal"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-22T08:00:00Z",
+   "lastAt": "2026-10-22T08:00:00Z"
+  },
+  {
+   "id": "c10",
+   "title": "Linear：分配给你的 3 个 issue",
+   "bucket": "notify",
+   "summary": "Linear 给你分配了 3 个 issue：Safari 崩溃、auth 测试不稳定、暗色模式对比度。",
+   "update": "Raj 已开始处理 WEB-205（auth 测试不稳定）。",
+   "itemIds": [
+    "m025",
+    "m026"
+   ],
+   "threadIds": [
+    "t-lin1"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T10:00:00Z",
+   "lastAt": "2026-10-25T05:00:00Z"
+  },
+  {
+   "id": "c11",
+   "title": "周末徒步：周六 Mt. Tam",
+   "bucket": null,
+   "summary": "Tom 约周六早 8 点去 Mt. Tam 徒步。",
+   "update": "Jess 加入并可以开车，还能带 3 人。",
+   "itemIds": [
+    "m027",
+    "m028"
+   ],
+   "threadIds": [
+    "t-hike"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-24T19:00:00Z",
+   "lastAt": "2026-10-25T07:00:00Z"
+  },
+  {
+   "id": "c12",
+   "title": "供应商推介：数据标注服务",
+   "bucket": null,
+   "summary": "LabelCo 推销数据标注服务，约 15 分钟电话。",
+   "update": null,
+   "itemIds": [
+    "m029"
+   ],
+   "threadIds": [
+    "t-vendor"
+   ],
+   "mergeReason": null,
+   "firstAt": "2026-10-19T14:00:00Z",
+   "lastAt": "2026-10-19T14:00:00Z"
+  }
+ ],
+ "enrichRuns": []
+}

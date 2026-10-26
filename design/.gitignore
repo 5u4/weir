@@ -1,0 +1,8 @@
+# Real mailbox content and everything derived from it (regenerate with data/fetch.ts + enrich scripts)
+prototype/data/raw/
+prototype/data/logs/
+prototype/data/runs/
+prototype/data/fetched.json
+prototype/data/data.json
+prototype/data/timing.md
+prototype/data/update-eval.md
