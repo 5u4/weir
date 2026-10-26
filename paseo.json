@@ -1,6 +1,8 @@
 {
   "worktree": {
     "setup": [
+      "bun install --frozen-lockfile",
+      "bun run vendor:effect",
       "(cd \"$PASEO_SOURCE_CHECKOUT_PATH\" && git ls-files -z --others --ignored --exclude-standard -- design/prototype/data) | rsync -a --from0 --files-from=- \"$PASEO_SOURCE_CHECKOUT_PATH/\" ./"
     ]
   },

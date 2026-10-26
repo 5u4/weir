@@ -1,0 +1,13 @@
+language js
+
+`$callee($...)` where {
+  $callee <: or {
+    `React.useEffect`,
+    `React.useLayoutEffect`,
+    `React.useInsertionEffect`,
+    `useEffect`,
+    `useLayoutEffect`,
+    `useInsertionEffect`
+  },
+  register_diagnostic(span=$callee, message="No effects. Derive the value during render, adjust state during render when a prop changes, or move subscriptions and timers into an Atom.", severity="error")
+}
