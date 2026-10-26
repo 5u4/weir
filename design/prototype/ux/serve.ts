@@ -24,7 +24,7 @@ setInterval(() => {
 }, 15000);
 
 const server = Bun.serve({
-  port: 9347,
+  port: Number(process.env.PORT ?? 9347),
   idleTimeout: 0,
   async fetch(req) {
     const url = new URL(req.url);
