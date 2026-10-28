@@ -22,6 +22,7 @@ import { Api, type ConversationSummary, NotFound, type Status, type TagTest } fr
 import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
+import { isLoopbackRequest } from "./Loopback.ts";
 
 const tagTestBatch = 200;
 const tagTestSamples = 3;
@@ -268,18 +269,12 @@ const advertise = (home: WeirHome) =>
 const loopbackOnly = HttpRouter.middleware(
   Effect.gen(function* () {
     const { port } = yield* Daemon;
-    const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
-    const origins = hosts.map((host) => `http://${host}`);
     return (httpEffect) =>
-      Effect.flatMap(HttpServerRequest.HttpServerRequest, ({ headers }) => {
-        const host = headers.host;
-        const origin = headers.origin;
-        return host !== undefined &&
-          hosts.includes(host) &&
-          (origin === undefined || origins.includes(origin))
+      Effect.flatMap(HttpServerRequest.HttpServerRequest, ({ headers }) =>
+        isLoopbackRequest(headers.host, headers.origin, port)
           ? httpEffect
-          : Effect.succeed(HttpServerResponse.empty({ status: 403 }));
-      });
+          : Effect.succeed(HttpServerResponse.empty({ status: 403 })),
+      );
   }),
   { global: true },
 );
