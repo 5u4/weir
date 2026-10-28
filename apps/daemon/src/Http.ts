@@ -1,3 +1,4 @@
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
@@ -8,14 +9,16 @@ import * as Arr from "effect/Array";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServer from "effect/http/HttpServer";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { Api, type ConversationSummary, NotFound, type Status, type TagTest } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
-import type { WeirHome } from "./Home.ts";
+import { DaemonFile, type WeirHome } from "./Home.ts";
 
 const tagTestBatch = 200;
 const tagTestSamples = 3;
@@ -231,11 +234,42 @@ const handlers = HttpApiBuilder.group(
   }),
 );
 
+const advertise = (home: WeirHome) =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const { address } = yield* HttpServer.HttpServer;
+      if (address._tag === "UnixPathAddress") {
+        return yield* Effect.die(new Error(`weir daemon listens on ${address.path}, not TCP`));
+      }
+      const temp = `${home.daemon}.${process.pid}.tmp`;
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          writeFileSync(
+            temp,
+            JSON.stringify({ port: address.port, pid: process.pid } satisfies DaemonFile),
+          );
+          renameSync(temp, home.daemon);
+        }),
+        () =>
+          Effect.try(() => readFileSync(home.daemon, "utf8")).pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(DaemonFile))),
+            Effect.flatMap(({ pid }) =>
+              pid === process.pid ? Effect.sync(() => rmSync(home.daemon)) : Effect.void,
+            ),
+            Effect.ignore,
+          ),
+      );
+    }),
+  );
+
 export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
-  HttpRouter.serve(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), {
-    disableLogger: true,
-    disableListenLog: true,
-  }).pipe(
+  advertise(home).pipe(
+    Layer.provide(
+      HttpRouter.serve(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), {
+        disableLogger: true,
+        disableListenLog: true,
+      }),
+    ),
     Layer.provide(
       Layer.unwrap(
         Effect.gen(function* () {

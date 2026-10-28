@@ -3,7 +3,7 @@ import * as BunRuntime from "@effect/platform-bun/BunRuntime";
 import * as BunServices from "@effect/platform-bun/BunServices";
 import { encode } from "@toon-format/toon";
 import { DurationShorthand } from "@weir/contract/Config";
-import { Api, defaultPort } from "@weir/daemon/Api";
+import { Api } from "@weir/daemon/Api";
 import * as Home from "@weir/daemon/Home";
 import * as Console from "effect/Console";
 import * as Argument from "effect/cli/Argument";
@@ -20,23 +20,21 @@ const bodyLimit = 400;
 
 class AxiError extends Schema.TaggedError<AxiError>()("AxiError", { message: Schema.String }) {}
 
-const PortConfig = Schema.Struct({ port: Schema.optionalKey(Schema.Int) });
-
 const daemon = Effect.gen(function* () {
   const home = yield* Home.fromEnv;
   const text = yield* Effect.tryPromise({
-    try: () => Bun.file(home.config).text(),
-    catch: () => new AxiError({ message: `cannot read ${home.config}; set WEIR_HOME` }),
-  });
-  const parsed = yield* Effect.try({
-    try: () => Bun.TOML.parse(text),
-    catch: (cause) =>
+    try: () => Bun.file(home.daemon).text(),
+    catch: () =>
       new AxiError({
-        message: `invalid TOML in ${home.config}: ${cause instanceof Error ? cause.message : cause}`,
+        message: `weir daemon is not running (no ${home.daemon}); start it with weir-daemon`,
       }),
   });
-  const { port = defaultPort } = yield* Schema.decodeUnknownEffect(PortConfig)(parsed).pipe(
-    Effect.mapError(() => new AxiError({ message: `port in ${home.config} must be an integer` })),
+  const { port } = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Home.DaemonFile))(
+    text,
+  ).pipe(
+    Effect.mapError(
+      () => new AxiError({ message: `${home.daemon} is not valid; restart weir-daemon` }),
+    ),
   );
   return yield* HttpApiClient.make(Api, { baseUrl: `http://127.0.0.1:${port}` });
 });
@@ -244,10 +242,13 @@ home.pipe(
     ConfigInvalid: ({ message, file, issues }) => fail({ error: message, file, issues }),
     NotFound: ({ message }) => fail({ error: message }),
     AxiError: ({ message }) => fail({ error: message }),
-    HttpClientError: ({ message }) =>
-      fail({
-        error: `weir daemon is not reachable: ${message}`,
-        help: ["weir-daemon", "check port in $WEIR_HOME/config.toml"],
+    HttpClientError: ({ message, request }) =>
+      Effect.gen(function* () {
+        const { daemon } = yield* Home.fromEnv;
+        yield* fail({
+          error: `cannot reach weir daemon at ${new URL(request.url).host} from ${daemon}: ${message}`,
+          help: ["weir-daemon"],
+        });
       }),
   }),
   Effect.provide(Layer.mergeAll(BunServices.layer, FetchHttpClient.layer)),

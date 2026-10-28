@@ -145,13 +145,47 @@ describe("weir-axi", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("reaches the daemon when config.toml is not valid TOML", () =>
+    Effect.gen(function* () {
+      const { home } = yield* startDaemon;
+      writeFileSync(home.config, "[[source]\n");
+      const status = yield* axi(home.root);
+      expect(status.exitCode).toBe(0);
+      expect(status.output.weir).toBe(home.root);
+      const found = yield* axi(home.root, "search", "invoice");
+      expect(found.exitCode).toBe(0);
+      expect(found.output.conversations).toMatchObject([{ title: "Quarterly invoice review" }]);
+      const reloaded = yield* axi(home.root, "reload");
+      expect(reloaded.exitCode).toBe(1);
+      expect(reloaded.output.file).toBe(home.config);
+      expect(reloaded.output.error).toContain("invalid TOML");
+    }).pipe(Effect.scoped),
+  );
+
   it.live("tells the agent when the daemon is not running", () =>
     Effect.gen(function* () {
-      const home = mkdtempSync(join(tmpdir(), "weir-axi-"));
-      writeFileSync(join(home, "config.toml"), "port = 1\n");
-      const { output, exitCode } = yield* axi(home, "search", "invoice");
+      const home = Home.make(mkdtempSync(join(tmpdir(), "weir-axi-")));
+      writeFileSync(home.config, "port = 1\n");
+      const { output, exitCode } = yield* axi(home.root, "search", "invoice");
       expect(exitCode).toBe(1);
-      expect(output.error).toContain("weir daemon is not reachable");
+      expect(output.error).toBe(
+        `weir daemon is not running (no ${home.daemon}); start it with weir-daemon`,
+      );
+    }),
+  );
+
+  it.live("names daemon.json when the daemon it points at is gone", () =>
+    Effect.gen(function* () {
+      const home = Home.make(mkdtempSync(join(tmpdir(), "weir-axi-")));
+      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+      const port = server.port;
+      server.stop(true);
+      writeFileSync(home.daemon, JSON.stringify({ port, pid: 1 }));
+      const { output, exitCode } = yield* axi(home.root, "search", "invoice");
+      expect(exitCode).toBe(1);
+      expect(output.error).toContain(
+        `cannot reach weir daemon at 127.0.0.1:${port} from ${home.daemon}`,
+      );
     }),
   );
 });

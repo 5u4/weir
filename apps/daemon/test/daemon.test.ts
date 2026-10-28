@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -80,6 +81,17 @@ describe("startup", () => {
         expect(error.message).toContain(expected);
       }
     }).pipe(Effect.scoped),
+  );
+
+  it.live("advertises the bound port in daemon.json until it shuts down", () =>
+    Effect.gen(function* () {
+      const { home, port } = makeHome(sourceConfig("1h"));
+      yield* Effect.gen(function* () {
+        yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource([])) }));
+        expect(JSON.parse(readFileSync(home.daemon, "utf8"))).toEqual({ port, pid: process.pid });
+      }).pipe(Effect.scoped);
+      expect(existsSync(home.daemon)).toBe(false);
+    }),
   );
 });
 
