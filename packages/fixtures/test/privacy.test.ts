@@ -1,10 +1,39 @@
 import { describe, expect, it } from "vitest";
 import scenarios from "../scenarios.json" with { type: "json" };
+import { gmail, listAllIds } from "./fake-gws.ts";
 import { privacyReport } from "./privacy.ts";
 
+const fakeGwsOutputs = () => {
+  const outputs: [string, unknown][] = [];
+  const call = (command: string, params: Record<string, unknown>) => {
+    const output = gmail(command, params);
+    outputs.push([`fake-gws gmail users ${command} ${JSON.stringify(params)}`, output]);
+    return output;
+  };
+  call("getProfile", { userId: "me" });
+  call("settings sendAs list", { userId: "me" });
+  const { messages } = listAllIds("");
+  outputs.push(["fake-gws gmail users messages list (all pages)", messages]);
+  for (const m of messages) call("messages get", { userId: "me", id: m.id });
+  let pageToken: string | undefined;
+  do {
+    const page = call("history list", {
+      userId: "me",
+      startHistoryId: "100000",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return outputs;
+};
+
 describe("privacy", () => {
-  it("keeps every address, host and IP in the fixtures reserved", () => {
-    expect(privacyReport("scenarios.json", scenarios).join("\n")).toBe("");
+  it("keeps every address, host and IP in the fixtures and fake-gws output reserved", () => {
+    const report = [
+      ...privacyReport("scenarios.json", scenarios),
+      ...fakeGwsOutputs().flatMap(([source, output]) => privacyReport(source, output)),
+    ];
+    expect(report.join("\n")).toBe("");
   });
 
   it("names a real address injected into the scenarios", () => {
