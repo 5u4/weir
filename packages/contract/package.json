@@ -1,0 +1,12 @@
+{
+  "name": "@weir/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Source": "./src/Source.ts"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  }
+}
