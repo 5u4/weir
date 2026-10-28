@@ -1,0 +1,27 @@
+{
+  "source": "gmail",
+  "conversations": 14,
+  "items": 31,
+  "tags": {
+    "Me": {
+      "conversations": 2,
+      "items": 4
+    },
+    "On-call": {
+      "conversations": 0,
+      "items": 0
+    },
+    "GitHub": {
+      "conversations": 4,
+      "items": 9
+    },
+    "Promos": {
+      "conversations": 2,
+      "items": 2
+    }
+  },
+  "untagged": {
+    "conversations": 6,
+    "items": 6
+  }
+}

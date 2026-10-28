@@ -11,7 +11,8 @@ migrate every caller and delete the old path in the same change, with no compati
 ## Layout
 
 - Workspaces live under three roots: `packages/`, `plugins/`, and `apps/`.
-- A package under `plugins/` depends only on `packages/contract`.
+- A package under `plugins/` has runtime dependencies on workspace packages: only
+  `packages/contract`. Dev and test dependencies on other workspace packages are allowed.
 - Nothing under `packages/`, `plugins/`, or `apps/` imports from `design/`.
 
 ## Reference
@@ -46,4 +47,5 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 - State the problem in a sentence or two, then how it was fixed.
 - Rebase onto the latest main before opening.
 - UI changes need before/after images; motion or timing needs a short video.
+- UI images and videos come only from `bun run demo` (synthetic data), never from a real mailbox.
 - Use squash merge and delete the source branch.

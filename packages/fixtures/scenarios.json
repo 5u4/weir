@@ -1,0 +1,2770 @@
+{
+  "seenCutoff": "2026-10-22T11:00:00-07:00",
+  "me": "me",
+  "people": {
+    "me": {
+      "name": "Robin Ellis",
+      "addr": "robin.ellis@example.com",
+      "signature": "Robin Ellis | Ledgerline\nSenior Software Engineer"
+    },
+    "priya": {
+      "name": "Priya Raman",
+      "addr": "priya.raman@example.com"
+    },
+    "marcus": {
+      "name": "Marcus Lee",
+      "addr": "marcus.lee@example.com"
+    },
+    "tomas": {
+      "name": "Tomás Silva",
+      "addr": "tomas.silva@example.com"
+    },
+    "hannah": {
+      "name": "Hannah Kim",
+      "addr": "hannah.kim@example.com"
+    },
+    "jenna": {
+      "name": "Jenna Ortiz",
+      "addr": "jenna.ortiz@example.com"
+    },
+    "dev": {
+      "name": "Dev Patel",
+      "addr": "dev.patel@example.com"
+    },
+    "lisa": {
+      "name": "Lisa Chen",
+      "addr": "lisa.chen@example.com",
+      "signature": "Lisa Chen\nDirector of Engineering | Ledgerline\nSent from my iPhone"
+    },
+    "ben": {
+      "name": "Ben Foster",
+      "addr": "ben.foster@example.com",
+      "signature": "Ben Foster\nFinance Manager, Ledgerline\nben.foster@example.com | ext. 4417"
+    },
+    "sofia": {
+      "name": "Sofia Mendes",
+      "addr": "sofia.mendes@example.com"
+    },
+    "kwame": {
+      "name": "Kwame Asante",
+      "addr": "kwame.asante@example.com"
+    },
+    "nina": {
+      "name": "Nina Volkova",
+      "addr": "nina.volkova@example.com"
+    },
+    "pagerduty": {
+      "name": "PagerDuty",
+      "addr": "pagerduty-bot@example.com",
+      "bot": true
+    },
+    "grafana": {
+      "name": "Grafana Alerts",
+      "addr": "grafana-alerts-bot@example.com",
+      "bot": true
+    },
+    "rachel": {
+      "name": "Rachel Gomez",
+      "addr": "rachel.gomez@northwind.example",
+      "signature": "Rachel Gomez\nImplementation Project Manager | Northwind Systems\n+1 (604) 555-0182 | northwind.example"
+    },
+    "omar": {
+      "name": "Omar Haddad",
+      "addr": "omar.haddad@northwind.example",
+      "signature": "Omar Haddad\nSenior Data Engineer, Northwind Systems"
+    },
+    "dan": {
+      "name": "Daniel Ellis",
+      "addr": "dan.ellis@mail.example",
+      "signature": "Dan"
+    },
+    "gh-tomas": {
+      "name": "Tomás Silva",
+      "addr": "notifications@github.example"
+    },
+    "gh-hannah": {
+      "name": "Hannah Kim",
+      "addr": "notifications@github.example"
+    },
+    "gh-marcus": {
+      "name": "Marcus Lee",
+      "addr": "notifications@github.example"
+    },
+    "gh-nina": {
+      "name": "Nina Volkova",
+      "addr": "notifications@github.example"
+    },
+    "gh-actions": {
+      "name": "github-actions[bot]",
+      "addr": "notifications@github.example"
+    },
+    "repo-billing": {
+      "name": "ledgerline/billing-api",
+      "addr": "billing-api@noreply.github.example"
+    },
+    "repo-web": {
+      "name": "ledgerline/ledger-web",
+      "addr": "ledger-web@noreply.github.example"
+    },
+    "gh-review": {
+      "name": "Review requested",
+      "addr": "review_requested@noreply.github.example"
+    },
+    "gh-mention": {
+      "name": "Mention",
+      "addr": "mention@noreply.github.example"
+    },
+    "gh-comment": {
+      "name": "Comment",
+      "addr": "comment@noreply.github.example"
+    },
+    "gh-ci": {
+      "name": "CI activity",
+      "addr": "ci_activity@noreply.github.example"
+    },
+    "ridgeway": {
+      "name": "Ridgeway Outfitters",
+      "addr": "deals@ridgeway.example"
+    },
+    "saltmarsh": {
+      "name": "Saltmarsh Travel",
+      "addr": "offers@saltmarsh.example"
+    },
+    "kokoro": {
+      "name": "Kokoro Ramen",
+      "addr": "hello@kokoro-ramen.example"
+    },
+    "bank": {
+      "name": "Northbank Alerts",
+      "addr": "alerts@northbank.example"
+    },
+    "ledgerletter": {
+      "name": "The Pragmatic Ledger",
+      "addr": "newsletter@pragmaticledger.example"
+    }
+  },
+  "chats": [
+    {
+      "id": "payments-oncall",
+      "kind": "chat",
+      "title": "payments-oncall",
+      "members": ["me", "sofia", "kwame", "nina", "dev", "tomas", "pagerduty", "grafana"],
+      "messages": [
+        {
+          "at": "2026-10-21T06:31:00-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48213 triggered: payments-api p99 latency above 2s (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-21T06:31:18-07:00",
+          "from": "kwame",
+          "text": "Ack, taking this."
+        },
+        {
+          "at": "2026-10-21T06:32:04-07:00",
+          "from": "grafana",
+          "text": "[FIRING] Adyen webhook processing latency p95 > 5s (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-21T06:32:29-07:00",
+          "from": "sofia",
+          "text": "Looking. The connector queue is climbing too."
+        },
+        {
+          "at": "2026-10-21T06:33:01-07:00",
+          "from": "dev",
+          "text": "on it"
+        },
+        {
+          "at": "2026-10-21T06:34:12-07:00",
+          "from": "kwame",
+          "text": "Payments API is at 2.8s p99, mostly waiting on Adyen callbacks. No elevated DB time so far."
+        },
+        {
+          "at": "2026-10-21T06:35:10-07:00",
+          "from": "nina",
+          "text": "I see retries on merchant mrc_84192. Checking whether this is isolated."
+        },
+        {
+          "at": "2026-10-21T06:36:03-07:00",
+          "from": "tomas",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T06:37:40-07:00",
+          "from": "sofia",
+          "text": "Adyen status page is green. Our webhook worker pool is only at 60%, which is odd."
+        },
+        {
+          "at": "2026-10-21T06:39:05-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48213 acknowledged by Kwame Asante."
+        },
+        {
+          "at": "2026-10-21T06:40:18-07:00",
+          "from": "dev",
+          "text": "Found a spike in callback duration starting 06:27. Requests are arriving in bursts from eu-west-1 too."
+        },
+        {
+          "at": "2026-10-21T06:41:00-07:00",
+          "from": "me",
+          "text": "I can check the connector deploy diff. Was there a rollout overnight?"
+        },
+        {
+          "at": "2026-10-21T06:41:43-07:00",
+          "from": "sofia",
+          "text": "Yes, connector 3.18.2 went out at 05:55. I’ll compare the retry changes."
+        },
+        {
+          "at": "2026-10-21T06:42:10-07:00",
+          "from": "me",
+          "text": "I’m seeing the new backoff cap at 90s. Could be holding slots longer than expected."
+        },
+        {
+          "at": "2026-10-21T06:43:02-07:00",
+          "from": "kwame",
+          "text": "Same thought. Let’s hold off on restarting workers until we know if the queue drains."
+        },
+        {
+          "at": "2026-10-21T06:44:27-07:00",
+          "from": "nina",
+          "text": "Separate issue: EU payout batch eu_20261021_03 has been in processing for 24 minutes."
+        },
+        {
+          "at": "2026-10-21T06:44:54-07:00",
+          "from": "grafana",
+          "text": "[FIRING] payout batch oldest processing age > 20m (env=prod, region=eu-west-1, batch=eu_20261021_03)."
+        },
+        {
+          "at": "2026-10-21T06:45:16-07:00",
+          "from": "tomas",
+          "text": "I’ll take the payout batch. Is this the same merchant set as yesterday?"
+        },
+        {
+          "at": "2026-10-21T06:46:05-07:00",
+          "from": "nina",
+          "text": "Mostly. 18 merchants, €412,870 total. No ledger entries emitted yet."
+        },
+        {
+          "at": "2026-10-21T06:47:21-07:00",
+          "from": "me",
+          "text": "Batch query is waiting on the settlement lock, not the Adyen worker path. Two incidents for the price of one."
+        },
+        {
+          "at": "2026-10-21T06:48:09-07:00",
+          "from": "dev",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T06:49:30-07:00",
+          "from": "kwame",
+          "text": "Webhook queue has stopped growing, currently 1,842. I’m watching the next few minutes."
+        },
+        {
+          "at": "2026-10-21T06:50:12-07:00",
+          "from": "sofia",
+          "text": "Diff confirms the backoff change. It also retries 429s without releasing the per-account semaphore."
+        },
+        {
+          "at": "2026-10-21T06:51:38-07:00",
+          "from": "me",
+          "text": "That would explain the slow drain. I can prep a revert if the queue doesn’t turn."
+        },
+        {
+          "at": "2026-10-21T06:53:06-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48214 triggered: EU payout batch processing age above 20m (batch=eu_20261021_03)."
+        },
+        {
+          "at": "2026-10-21T06:54:27-07:00",
+          "from": "tomas",
+          "text": "The settlement lock is held by reconciliation for merchant mrc_22017. Looking at the query."
+        },
+        {
+          "at": "2026-10-21T06:55:11-07:00",
+          "from": "nina",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T06:56:49-07:00",
+          "from": "sofia",
+          "text": "Could hotfix semaphore release only, or do we want to roll back 3.18.2?"
+        },
+        {
+          "at": "2026-10-21T06:58:02-07:00",
+          "from": "kwame",
+          "text": "Queue is down to 1,390. Let’s give it five minutes before a change."
+        },
+        {
+          "at": "2026-10-21T07:00:15-07:00",
+          "from": "me",
+          "text": "Agree. If it plateaus, rollback is lower risk than a targeted patch right now."
+        },
+        {
+          "at": "2026-10-21T07:02:46-07:00",
+          "from": "tomas",
+          "text": "Reconciliation query is scanning 41M rows because the date predicate isn’t using the tenant index. I can cancel this run safely."
+        },
+        {
+          "at": "2026-10-21T07:03:18-07:00",
+          "from": "nina",
+          "text": "Please cancel it; payouts haven’t reached the posting step yet."
+        },
+        {
+          "at": "2026-10-21T07:04:01-07:00",
+          "from": "tomas",
+          "text": "Done. Lock released."
+        },
+        {
+          "at": "2026-10-21T07:05:36-07:00",
+          "from": "grafana",
+          "text": "[RESOLVED] payout batch oldest processing age > 20m (env=prod, region=eu-west-1)."
+        },
+        {
+          "at": "2026-10-21T07:07:04-07:00",
+          "from": "tomas",
+          "text": "Batch is moving again. 11 of 18 merchants posted, no duplicate ledger rows."
+        },
+        {
+          "at": "2026-10-21T07:08:17-07:00",
+          "from": "dev",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-21T07:10:50-07:00",
+          "from": "sofia",
+          "text": "Webhook queue is down to 980. I’m leaning toward letting it drain, then reverting before the next peak."
+        },
+        {
+          "at": "2026-10-21T07:12:09-07:00",
+          "from": "kwame",
+          "text": "Same. p99 is back to 1.9s but still noisy."
+        },
+        {
+          "at": "2026-10-21T07:14:32-07:00",
+          "from": "me",
+          "text": "I’ll write up the semaphore finding in the incident notes. The new retry test missed the 429 path."
+        },
+        {
+          "at": "2026-10-21T07:17:06-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48214 acknowledged by Tomás Silva."
+        },
+        {
+          "at": "2026-10-21T07:19:41-07:00",
+          "from": "nina",
+          "text": "Payout batch fully posted. €412,870 reconciles to the settlement export."
+        },
+        {
+          "at": "2026-10-21T07:20:10-07:00",
+          "from": "tomas",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T07:23:55-07:00",
+          "from": "grafana",
+          "text": "[RESOLVED] Adyen webhook processing latency p95 > 5s (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-21T07:25:02-07:00",
+          "from": "kwame",
+          "text": "Queue is under 300 now. Keeping the incident open until it’s clear."
+        },
+        {
+          "at": "2026-10-21T07:27:18-07:00",
+          "from": "sofia",
+          "text": "I’ve got rollback PR #5841 ready, but that’s just the revert commit. Waiting for the queue to clear."
+        },
+        {
+          "at": "2026-10-21T07:29:43-07:00",
+          "from": "me",
+          "text": "Looks good. Please include the affected version range in the PR description."
+        },
+        {
+          "at": "2026-10-21T07:32:19-07:00",
+          "from": "dev",
+          "text": "Looking at the reconciliation query plan now. The missing tenant/date index is probably older than today’s issue."
+        },
+        {
+          "at": "2026-10-21T07:35:00-07:00",
+          "from": "nina",
+          "text": "Batch monitor is quiet. I’ll check the next EU run as well."
+        },
+        {
+          "at": "2026-10-21T07:38:14-07:00",
+          "from": "kwame",
+          "text": "Webhook queue drained. p99 is steady at 1.2s."
+        },
+        {
+          "at": "2026-10-21T07:40:03-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48213 resolved by Kwame Asante."
+        },
+        {
+          "at": "2026-10-21T07:41:52-07:00",
+          "from": "sofia",
+          "text": "Starting the connector rollback now. Queue is empty and we have no active callback backlog."
+        },
+        {
+          "at": "2026-10-21T07:44:08-07:00",
+          "from": "tomas",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T07:46:27-07:00",
+          "from": "sofia",
+          "text": "Rollback complete, connector is on 3.18.1 in us-east-1 and eu-west-1."
+        },
+        {
+          "at": "2026-10-21T07:49:03-07:00",
+          "from": "grafana",
+          "text": "[OK] Adyen connector error rate within baseline (env=prod, regions=us-east-1,eu-west-1)."
+        },
+        {
+          "at": "2026-10-21T07:52:41-07:00",
+          "from": "me",
+          "text": "Thanks. I’ll add the 429/semaphore case to the connector test matrix."
+        },
+        {
+          "at": "2026-10-21T08:03:26-07:00",
+          "from": "dev",
+          "text": "The reconciliation query plan uses the index in staging once I add tenant_id to the predicate. No prod change yet."
+        },
+        {
+          "at": "2026-10-21T08:07:12-07:00",
+          "from": "nina",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-21T08:12:48-07:00",
+          "from": "kwame",
+          "text": "Heads-up, Stripe key rotation job failed at 08:10 UTC. No payment failures reported, but the next scheduled sync will use the old secret."
+        },
+        {
+          "at": "2026-10-21T08:13:16-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48215 triggered: Stripe credential refresh cron failed (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-21T08:14:03-07:00",
+          "from": "sofia",
+          "text": "I’ll take the Stripe job."
+        },
+        {
+          "at": "2026-10-21T08:14:27-07:00",
+          "from": "dev",
+          "text": "on it"
+        },
+        {
+          "at": "2026-10-21T08:16:54-07:00",
+          "from": "sofia",
+          "text": "Cron started failing after the key rotation at 08:00. Secret is in the vault, but the job’s role can’t read the new version."
+        },
+        {
+          "at": "2026-10-21T08:18:21-07:00",
+          "from": "me",
+          "text": "Is the role pinned to a secret version, or did the rotation change the secret path too?"
+        },
+        {
+          "at": "2026-10-21T08:19:46-07:00",
+          "from": "sofia",
+          "text": "Pinned version. The rotation updated the alias but the cron config still requests version 17."
+        },
+        {
+          "at": "2026-10-21T08:21:38-07:00",
+          "from": "kwame",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T08:23:05-07:00",
+          "from": "sofia",
+          "text": "I can update the version reference and rerun the dry-run. No need to rotate the key again."
+        },
+        {
+          "at": "2026-10-21T08:24:52-07:00",
+          "from": "nina",
+          "text": "Reconciliation query is still slow in the hourly report, but payouts are clear now."
+        },
+        {
+          "at": "2026-10-21T08:26:10-07:00",
+          "from": "dev",
+          "text": "Same, and it’s separate from the payout lock. Query takes 96s for the full day."
+        },
+        {
+          "at": "2026-10-21T08:28:37-07:00",
+          "from": "tomas",
+          "text": "I can review the index migration when it’s ready."
+        },
+        {
+          "at": "2026-10-21T08:30:14-07:00",
+          "from": "sofia",
+          "text": "Cron role updated in staging; dry-run passed against the new key. Moving the config now."
+        },
+        {
+          "at": "2026-10-21T08:31:02-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48215 acknowledged by Sofia Mendes."
+        },
+        {
+          "at": "2026-10-21T08:33:45-07:00",
+          "from": "me",
+          "text": "Please verify the next scheduled run uses the alias, not a hardcoded version. That should prevent the next rotation from breaking it."
+        },
+        {
+          "at": "2026-10-21T08:36:11-07:00",
+          "from": "sofia",
+          "text": "Confirmed. Config now reads current; manual run completed and Stripe returned 200."
+        },
+        {
+          "at": "2026-10-21T08:37:05-07:00",
+          "from": "dev",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T08:40:32-07:00",
+          "from": "grafana",
+          "text": "[RESOLVED] Stripe credential refresh cron failed (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-21T08:42:19-07:00",
+          "from": "kwame",
+          "text": "No failed payment attempts in the rotation window. I’ll keep an eye on the next sync."
+        },
+        {
+          "at": "2026-10-21T08:44:56-07:00",
+          "from": "sofia",
+          "text": "I’ve opened PR #5844 to remove the pinned secret version and add a rotation check."
+        },
+        {
+          "at": "2026-10-21T08:47:03-07:00",
+          "from": "me",
+          "text": "Nice catch on the alias. I’ll review #5844 after standup."
+        },
+        {
+          "at": "2026-10-21T08:51:27-07:00",
+          "from": "nina",
+          "text": "The hourly reconciliation report just finished in 92s. Still slow, no customer impact so far."
+        },
+        {
+          "at": "2026-10-21T08:54:10-07:00",
+          "from": "dev",
+          "text": "I’ll put together an index migration in staging. Query shape is stable, but I want to compare write overhead."
+        },
+        {
+          "at": "2026-10-21T09:00:05-07:00",
+          "from": "tomas",
+          "text": "brb, back in 10"
+        },
+        {
+          "at": "2026-10-21T09:07:46-07:00",
+          "from": "sofia",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-21T09:12:38-07:00",
+          "from": "me",
+          "text": "Quick note: I’m in standup, but reachable here if either incident regresses."
+        },
+        {
+          "at": "2026-10-21T09:20:17-07:00",
+          "from": "kwame",
+          "text": "Everything’s quiet. Adyen callback p95 at 1.1s, Stripe sync healthy."
+        },
+        {
+          "at": "2026-10-21T09:27:09-07:00",
+          "from": "nina",
+          "text": "EU batch monitor is green."
+        },
+        {
+          "at": "2026-10-21T09:34:53-07:00",
+          "from": "dev",
+          "text": "Index build in staging cut the report query from 92s to 7.4s on yesterday’s data."
+        },
+        {
+          "at": "2026-10-21T09:36:02-07:00",
+          "from": "tomas",
+          "text": "+1, that’s a big improvement."
+        },
+        {
+          "at": "2026-10-21T09:40:28-07:00",
+          "from": "me",
+          "text": "Check the write impact with a representative settlement load before proposing prod. The ledger table is busy around 16:00 UTC."
+        },
+        {
+          "at": "2026-10-21T09:45:16-07:00",
+          "from": "dev",
+          "text": "Will do. The index is tenant_id, created_at, status; no change to the write path."
+        },
+        {
+          "at": "2026-10-21T10:02:37-07:00",
+          "from": "sofia",
+          "text": "Stripe scheduled sync ran at 10:00 and picked up the new key alias."
+        },
+        {
+          "at": "2026-10-21T10:03:11-07:00",
+          "from": "kwame",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T10:11:43-07:00",
+          "from": "nina",
+          "text": "One merchant, mrc_93104, has a payout marked pending at the provider. Batch itself is complete; checking provider status."
+        },
+        {
+          "at": "2026-10-21T10:13:05-07:00",
+          "from": "tomas",
+          "text": "Looking"
+        },
+        {
+          "at": "2026-10-21T10:17:28-07:00",
+          "from": "nina",
+          "text": "Provider confirmed it’s accepted, just no settlement reference yet. Not the earlier batch issue."
+        },
+        {
+          "at": "2026-10-21T10:22:49-07:00",
+          "from": "dev",
+          "text": "Staging write load is within 1.5% of baseline. I’ll post the plan and numbers."
+        },
+        {
+          "at": "2026-10-21T10:30:04-07:00",
+          "from": "me",
+          "text": "Thanks. Please include the explain plan before/after in the PR."
+        },
+        {
+          "at": "2026-10-21T10:48:39-07:00",
+          "from": "sofia",
+          "text": "PR #5844 approved and merged. The next rotation test is scheduled for Thursday."
+        },
+        {
+          "at": "2026-10-21T10:49:13-07:00",
+          "from": "kwame",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-21T11:03:27-07:00",
+          "from": "grafana",
+          "text": "[OK] payments-api p99 latency within SLO (env=prod, regions=us-east-1,eu-west-1)."
+        },
+        {
+          "at": "2026-10-21T11:15:52-07:00",
+          "from": "nina",
+          "text": "Provider reference arrived for mrc_93104. Marked reconciled; no manual action needed."
+        },
+        {
+          "at": "2026-10-21T11:18:21-07:00",
+          "from": "tomas",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T11:40:06-07:00",
+          "from": "dev",
+          "text": "Index migration PR #5847 is up. It’s concurrent in prod and includes a rollback note."
+        },
+        {
+          "at": "2026-10-21T11:48:33-07:00",
+          "from": "me",
+          "text": "I’ll review after lunch."
+        },
+        {
+          "at": "2026-10-21T12:06:57-07:00",
+          "from": "sofia",
+          "text": "Adyen dashboard shows normal delivery rates. Leaving the incident notes with the retry timeline."
+        },
+        {
+          "at": "2026-10-21T12:08:14-07:00",
+          "from": "kwame",
+          "text": "same"
+        },
+        {
+          "at": "2026-10-21T12:27:40-07:00",
+          "from": "nina",
+          "text": "Lunch, back at 13:00"
+        },
+        {
+          "at": "2026-10-21T12:55:19-07:00",
+          "from": "dev",
+          "text": "Can someone sanity-check the index column order? The tenant filter is always equality, date is a range."
+        },
+        {
+          "at": "2026-10-21T13:02:08-07:00",
+          "from": "tomas",
+          "text": "That order looks right to me."
+        },
+        {
+          "at": "2026-10-21T13:06:51-07:00",
+          "from": "me",
+          "text": "Agreed. Keep status out unless the planner shows it helps; it adds index size."
+        },
+        {
+          "at": "2026-10-21T13:18:24-07:00",
+          "from": "dev",
+          "text": "Good point, removed status from the index. Updated plan attached to #5847."
+        },
+        {
+          "at": "2026-10-21T13:26:39-07:00",
+          "from": "sofia",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T13:45:03-07:00",
+          "from": "kwame",
+          "text": "New Adyen warning: webhook acknowledgements are delayed for 3 merchants in ap-southeast-1. Latency is only 3.2s so far."
+        },
+        {
+          "at": "2026-10-21T13:46:16-07:00",
+          "from": "grafana",
+          "text": "[FIRING] Adyen webhook ack p95 > 3s (env=prod, region=ap-southeast-1)."
+        },
+        {
+          "at": "2026-10-21T13:47:09-07:00",
+          "from": "sofia",
+          "text": "Looking. This region is on the rolled-back connector version."
+        },
+        {
+          "at": "2026-10-21T13:48:32-07:00",
+          "from": "nina",
+          "text": "I’m checking whether those merchants share a provider endpoint."
+        },
+        {
+          "at": "2026-10-21T13:50:48-07:00",
+          "from": "tomas",
+          "text": "on it"
+        },
+        {
+          "at": "2026-10-21T13:54:17-07:00",
+          "from": "kwame",
+          "text": "All three are routed through the same Adyen account. No queue growth yet."
+        },
+        {
+          "at": "2026-10-21T13:57:04-07:00",
+          "from": "me",
+          "text": "Could be provider-side. Any 429s or just slow acknowledgements?"
+        },
+        {
+          "at": "2026-10-21T13:59:31-07:00",
+          "from": "sofia",
+          "text": "Slow acknowledgements, no 429s. Adyen support says they’re investigating that account shard."
+        },
+        {
+          "at": "2026-10-21T14:01:08-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48219 triggered: Adyen webhook ack latency elevated (env=prod, region=ap-southeast-1)."
+        },
+        {
+          "at": "2026-10-21T14:03:16-07:00",
+          "from": "kwame",
+          "text": "Ack"
+        },
+        {
+          "at": "2026-10-21T14:07:42-07:00",
+          "from": "nina",
+          "text": "No duplicate deliveries observed for mrc_41280, mrc_41291, or mrc_41503."
+        },
+        {
+          "at": "2026-10-21T14:11:30-07:00",
+          "from": "dev",
+          "text": "Reconciliation index PR is ready for review, test run is clean."
+        },
+        {
+          "at": "2026-10-21T14:18:05-07:00",
+          "from": "me",
+          "text": "Reviewed #5847. Query plan looks good; I left a question about the migration timeout."
+        },
+        {
+          "at": "2026-10-21T14:23:48-07:00",
+          "from": "dev",
+          "text": "Addressed. Set statement_timeout to 5m for the index build and documented the rollback."
+        },
+        {
+          "at": "2026-10-21T14:25:12-07:00",
+          "from": "tomas",
+          "text": "+1"
+        },
+        {
+          "at": "2026-10-21T14:37:09-07:00",
+          "from": "sofia",
+          "text": "Adyen says shard recovery is underway. Our p95 is back to 2.4s."
+        },
+        {
+          "at": "2026-10-21T14:41:23-07:00",
+          "from": "grafana",
+          "text": "[RESOLVED] Adyen webhook ack p95 > 3s (env=prod, region=ap-southeast-1)."
+        },
+        {
+          "at": "2026-10-21T14:43:17-07:00",
+          "from": "kwame",
+          "text": "No backlog. Keeping an eye on it for another 15 minutes."
+        },
+        {
+          "at": "2026-10-21T14:46:55-07:00",
+          "from": "nina",
+          "text": "same"
+        },
+        {
+          "at": "2026-10-21T14:58:40-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48219 resolved by Kwame Asante."
+        },
+        {
+          "at": "2026-10-21T15:04:31-07:00",
+          "from": "dev",
+          "text": "#5847 merged. We’ll schedule the index build outside the settlement peak."
+        },
+        {
+          "at": "2026-10-21T15:07:12-07:00",
+          "from": "me",
+          "text": "Thanks. I’m handing off at 15:30; notes are in the incident doc."
+        },
+        {
+          "at": "2026-10-21T15:22:46-07:00",
+          "from": "sofia",
+          "text": "All quiet across Adyen and Stripe."
+        },
+        {
+          "at": "2026-10-21T15:28:13-07:00",
+          "from": "kwame",
+          "text": "I’ve got the next watch."
+        },
+        {
+          "at": "2026-10-21T15:29:59-07:00",
+          "from": "me",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T15:42:08-07:00",
+          "from": "nina",
+          "text": "EU payout run completed, 0 stuck batches."
+        },
+        {
+          "at": "2026-10-21T16:05:34-07:00",
+          "from": "tomas",
+          "text": "Reconciliation report finished in 8s after the staging plan change; prod migration is still pending."
+        },
+        {
+          "at": "2026-10-21T16:18:46-07:00",
+          "from": "kwame",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-21T16:37:20-07:00",
+          "from": "sofia",
+          "text": "Stripe sync passed again at 16:30. Rotation alert is cleared."
+        },
+        {
+          "at": "2026-10-21T17:02:51-07:00",
+          "from": "dev",
+          "text": "Preparing the prod index build for 18:00 UTC, when settlement writes are lower."
+        },
+        {
+          "at": "2026-10-21T17:15:06-07:00",
+          "from": "tomas",
+          "text": "I’ll watch the lock metrics during the build."
+        },
+        {
+          "at": "2026-10-21T17:33:42-07:00",
+          "from": "nina",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-21T18:01:11-07:00",
+          "from": "dev",
+          "text": "Starting concurrent index build on ledger_entries (tenant_id, created_at)."
+        },
+        {
+          "at": "2026-10-21T18:03:26-07:00",
+          "from": "grafana",
+          "text": "[OK] ledger write latency within baseline (env=prod, region=eu-west-1)."
+        },
+        {
+          "at": "2026-10-21T18:16:58-07:00",
+          "from": "tomas",
+          "text": "No lock increase so far."
+        },
+        {
+          "at": "2026-10-21T18:29:37-07:00",
+          "from": "dev",
+          "text": "Build is 63% complete. Write latency remains normal."
+        },
+        {
+          "at": "2026-10-21T18:35:04-07:00",
+          "from": "kwame",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-21T18:52:43-07:00",
+          "from": "dev",
+          "text": "Index build completed in 51 minutes. Validated the index is usable."
+        },
+        {
+          "at": "2026-10-21T18:54:10-07:00",
+          "from": "tomas",
+          "text": "Report query now 7.1s on prod. Nice."
+        },
+        {
+          "at": "2026-10-21T19:02:36-07:00",
+          "from": "nina",
+          "text": "No payout delays during the build."
+        },
+        {
+          "at": "2026-10-21T19:17:58-07:00",
+          "from": "sofia",
+          "text": "I’m off. Kwame has the overnight watch."
+        },
+        {
+          "at": "2026-10-21T19:18:22-07:00",
+          "from": "kwame",
+          "text": "Got it"
+        },
+        {
+          "at": "2026-10-21T20:06:45-07:00",
+          "from": "pagerduty",
+          "text": "Daily payments health check: no active incidents."
+        },
+        {
+          "at": "2026-10-21T21:24:13-07:00",
+          "from": "kwame",
+          "text": "Quiet so far. Adyen and Stripe checks are green."
+        },
+        {
+          "at": "2026-10-21T22:51:09-07:00",
+          "from": "nina",
+          "text": "EU settlements closed cleanly."
+        },
+        {
+          "at": "2026-10-22T00:12:31-07:00",
+          "from": "kwame",
+          "text": "Small bump in ledger query time, 11s, but no timeout or lock wait."
+        },
+        {
+          "at": "2026-10-22T00:34:08-07:00",
+          "from": "tomas",
+          "text": "Looking"
+        },
+        {
+          "at": "2026-10-22T00:47:50-07:00",
+          "from": "kwame",
+          "text": "Back to 7s now. Probably the nightly partition maintenance."
+        },
+        {
+          "at": "2026-10-22T01:12:03-07:00",
+          "from": "me",
+          "text": "I’m heading offline. Please page me only if the ledger write path or payout posting is affected."
+        },
+        {
+          "at": "2026-10-22T01:18:39-07:00",
+          "from": "sofia",
+          "text": "Understood, sleep well."
+        },
+        {
+          "at": "2026-10-22T02:08:14-07:00",
+          "from": "dev",
+          "text": "The query started timing out again for two large tenants. @Robin Ellis, can you confirm whether we can pause the reconciliation job until the morning?"
+        },
+        {
+          "at": "2026-10-22T02:10:02-07:00",
+          "from": "kwame",
+          "text": "I’ll check the active run and pause it if it’s still holding resources."
+        },
+        {
+          "at": "2026-10-22T02:12:47-07:00",
+          "from": "grafana",
+          "text": "[FIRING] ledger reconciliation query duration > 60s (env=prod, region=us-east-1, tenant=mrc_77831)."
+        },
+        {
+          "at": "2026-10-22T02:13:21-07:00",
+          "from": "tomas",
+          "text": "Query is read-only, but it’s saturating one replica. Checking the job schedule."
+        },
+        {
+          "at": "2026-10-22T02:15:09-07:00",
+          "from": "kwame",
+          "text": "Job paused. No payout batch is waiting on it."
+        },
+        {
+          "at": "2026-10-22T02:18:36-07:00",
+          "from": "nina",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-22T02:25:55-07:00",
+          "from": "dev",
+          "text": "Replica CPU is falling, 88% to 54%. I’ll inspect the tenant-specific plan in the morning."
+        },
+        {
+          "at": "2026-10-22T02:32:41-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48222 triggered: ledger reconciliation query duration above 60s (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-22T02:34:17-07:00",
+          "from": "kwame",
+          "text": "Acknowledged. It’s contained with the scheduled job paused."
+        },
+        {
+          "at": "2026-10-22T02:47:03-07:00",
+          "from": "grafana",
+          "text": "[RESOLVED] ledger reconciliation query duration > 60s (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-22T02:49:22-07:00",
+          "from": "tomas",
+          "text": "No lock waits now. I’ve left the job paused."
+        },
+        {
+          "at": "2026-10-22T03:06:08-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48222 acknowledged by Kwame Asante."
+        },
+        {
+          "at": "2026-10-22T03:17:44-07:00",
+          "from": "kwame",
+          "text": "Night shift handoff: reconciliation job paused, no payout impact. Other monitors green."
+        },
+        {
+          "at": "2026-10-22T04:41:10-07:00",
+          "from": "nina",
+          "text": "EU provider settlement file arrived; all expected batches matched."
+        },
+        {
+          "at": "2026-10-22T05:23:37-07:00",
+          "from": "kwame",
+          "text": "No changes overnight. Leaving the reconciliation job paused for day team."
+        },
+        {
+          "at": "2026-10-22T06:02:51-07:00",
+          "from": "sofia",
+          "text": "Morning, I’m looking at the query samples now."
+        },
+        {
+          "at": "2026-10-22T06:18:29-07:00",
+          "from": "dev",
+          "text": "The two affected tenants have 10x the normal ledger volume. We should run each reconciliation in date chunks rather than one full range."
+        },
+        {
+          "at": "2026-10-22T06:24:03-07:00",
+          "from": "tomas",
+          "text": "Makes sense. I’ll check whether the job supports chunking already."
+        },
+        {
+          "at": "2026-10-22T06:30:48-07:00",
+          "from": "kwame",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-22T06:47:16-07:00",
+          "from": "nina",
+          "text": "Payouts are clear; no customer tickets overnight."
+        },
+        {
+          "at": "2026-10-22T07:02:34-07:00",
+          "from": "grafana",
+          "text": "[OK] payments-api p99 latency within SLO (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-22T07:15:22-07:00",
+          "from": "sofia",
+          "text": "The job has a max window setting, but it’s disabled for these tenants. I’m testing 6-hour chunks in staging."
+        },
+        {
+          "at": "2026-10-22T07:26:50-07:00",
+          "from": "dev",
+          "text": "I found the plan regression: the query casts created_at to date, so the index can’t help. I’ll remove the cast."
+        },
+        {
+          "at": "2026-10-22T07:31:09-07:00",
+          "from": "tomas",
+          "text": "The chunk setting is safe to enable per tenant, no code deploy needed."
+        },
+        {
+          "at": "2026-10-22T07:44:36-07:00",
+          "from": "kwame",
+          "text": "Incident stays open until we get a clean reconciliation run."
+        },
+        {
+          "at": "2026-10-22T08:01:17-07:00",
+          "from": "sofia",
+          "text": "Staging run with 6-hour chunks finished in 18s for mrc_77831. Checking totals against the full-range output."
+        },
+        {
+          "at": "2026-10-22T08:09:52-07:00",
+          "from": "nina",
+          "text": "Totals match to the cent for the sample tenant."
+        },
+        {
+          "at": "2026-10-22T08:16:40-07:00",
+          "from": "dev",
+          "text": "PR #5852 removes the cast and adds a plan assertion for the date range."
+        },
+        {
+          "at": "2026-10-22T08:20:14-07:00",
+          "from": "tomas",
+          "text": "I’ll review #5852."
+        },
+        {
+          "at": "2026-10-22T08:25:37-07:00",
+          "from": "sofia",
+          "text": "Canary config is ready for the two large tenants, but I’m holding until the query fix is merged."
+        },
+        {
+          "at": "2026-10-22T08:31:08-07:00",
+          "from": "kwame",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-22T08:42:55-07:00",
+          "from": "tomas",
+          "text": "Reviewed #5852. Looks good; the plan assertion catches the cast regression."
+        },
+        {
+          "at": "2026-10-22T08:46:13-07:00",
+          "from": "dev",
+          "text": "Merged. Deploying to canary only."
+        },
+        {
+          "at": "2026-10-22T08:54:27-07:00",
+          "from": "grafana",
+          "text": "[OK] ledger replica CPU below 60% (env=prod, region=us-east-1)."
+        },
+        {
+          "at": "2026-10-22T09:02:39-07:00",
+          "from": "sofia",
+          "text": "Canary reconciliation completed in 14s. Totals match the previous run."
+        },
+        {
+          "at": "2026-10-22T09:08:04-07:00",
+          "from": "nina",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-22T09:16:51-07:00",
+          "from": "kwame",
+          "text": "Enabling the 6-hour chunks for mrc_77831 and mrc_90211."
+        },
+        {
+          "at": "2026-10-22T09:25:20-07:00",
+          "from": "dev",
+          "text": "Both tenants reconciled, no duplicate entries. Replica CPU is 38%."
+        },
+        {
+          "at": "2026-10-22T09:29:48-07:00",
+          "from": "pagerduty",
+          "text": "Incident #PD-48222 resolved by Kwame Asante."
+        },
+        {
+          "at": "2026-10-22T09:32:11-07:00",
+          "from": "sofia",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-22T09:47:56-07:00",
+          "from": "tomas",
+          "text": "I’ll leave the chunk setting enabled and watch the next scheduled run."
+        },
+        {
+          "at": "2026-10-22T10:03:33-07:00",
+          "from": "kwame",
+          "text": "Quiet now. Thanks all."
+        },
+        {
+          "at": "2026-10-22T10:15:40-07:00",
+          "from": "nina",
+          "text": "There’s a Stripe sync warning for one sandbox tenant, but production is green."
+        },
+        {
+          "at": "2026-10-22T10:18:07-07:00",
+          "from": "sofia",
+          "text": "Confirmed sandbox key expired; unrelated to the production rotation. I’ll notify that tenant’s owner."
+        },
+        {
+          "at": "2026-10-22T10:24:50-07:00",
+          "from": "dev",
+          "text": "The prod query plan is using the index now. Explain output is in #5852."
+        },
+        {
+          "at": "2026-10-22T10:39:22-07:00",
+          "from": "tomas",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-22T11:06:15-07:00",
+          "from": "kwame",
+          "text": "EU payout batch eu_20261022_02 started and completed in 3m 12s."
+        },
+        {
+          "at": "2026-10-22T11:21:49-07:00",
+          "from": "sofia",
+          "text": "Adyen callbacks are within baseline across all regions."
+        },
+        {
+          "at": "2026-10-22T11:35:02-07:00",
+          "from": "nina",
+          "text": "Same"
+        },
+        {
+          "at": "2026-10-22T12:04:26-07:00",
+          "from": "dev",
+          "text": "I’m adding the incident timeline and query plan to the postmortem."
+        },
+        {
+          "at": "2026-10-22T12:17:38-07:00",
+          "from": "kwame",
+          "text": "The reconciliation job ran its normal schedule with chunking enabled; 6.8s total."
+        },
+        {
+          "at": "2026-10-22T12:28:54-07:00",
+          "from": "tomas",
+          "text": "That’s much better."
+        },
+        {
+          "at": "2026-10-22T13:03:11-07:00",
+          "from": "sofia",
+          "text": "Stripe rotation dry-run passed in staging with a fresh key."
+        },
+        {
+          "at": "2026-10-22T13:22:47-07:00",
+          "from": "nina",
+          "text": "No new payout exceptions."
+        },
+        {
+          "at": "2026-10-22T14:01:30-07:00",
+          "from": "grafana",
+          "text": "[OK] Adyen webhook latency and payments-api error rate within baseline (env=prod, regions=us-east-1,eu-west-1,ap-southeast-1)."
+        },
+        {
+          "at": "2026-10-22T14:15:09-07:00",
+          "from": "kwame",
+          "text": "I’m handing over to Tomas at 15:00. All four incidents have clean follow-up notes."
+        },
+        {
+          "at": "2026-10-22T14:21:58-07:00",
+          "from": "tomas",
+          "text": "Got it, I’ll take the afternoon watch."
+        },
+        {
+          "at": "2026-10-22T14:40:36-07:00",
+          "from": "sofia",
+          "text": "@Robin Ellis PR #5858 adds a dashboard for reconciliation duration by tenant. You wrote the original recon job, can you review it before EOD?"
+        },
+        {
+          "at": "2026-10-22T15:02:17-07:00",
+          "from": "nina",
+          "text": "👍"
+        },
+        {
+          "at": "2026-10-22T15:19:42-07:00",
+          "from": "dev",
+          "text": "Dashboard is useful; added p95 and max duration panels."
+        },
+        {
+          "at": "2026-10-22T15:37:04-07:00",
+          "from": "tomas",
+          "text": "Next EU payout run is clean, 16 merchants posted."
+        },
+        {
+          "at": "2026-10-22T16:05:28-07:00",
+          "from": "sofia",
+          "text": "Stripe production sync completed at 16:00, key alias still current."
+        },
+        {
+          "at": "2026-10-22T16:07:51-07:00",
+          "from": "kwame",
+          "text": "ty"
+        },
+        {
+          "at": "2026-10-22T16:24:33-07:00",
+          "from": "nina",
+          "text": "Reconciliation is back under 8s for every tenant in today’s sample."
+        },
+        {
+          "at": "2026-10-22T16:41:18-07:00",
+          "from": "tomas",
+          "text": "No alerts for the last two hours."
+        },
+        {
+          "at": "2026-10-22T17:03:44-07:00",
+          "from": "dev",
+          "text": "#5858 merged. Dashboard should make the large-tenant outliers easier to spot."
+        },
+        {
+          "at": "2026-10-22T17:27:09-07:00",
+          "from": "sofia",
+          "text": "I’ll update the runbook with the chunking toggle and the rollback steps."
+        },
+        {
+          "at": "2026-10-22T17:49:56-07:00",
+          "from": "kwame",
+          "text": "Night handoff notes are up: all monitors green, no paused jobs."
+        },
+        {
+          "at": "2026-10-22T18:06:13-07:00",
+          "from": "nina",
+          "text": "EU settlement export reconciles with the ledger."
+        },
+        {
+          "at": "2026-10-22T18:21:40-07:00",
+          "from": "tomas",
+          "text": "ack"
+        },
+        {
+          "at": "2026-10-22T18:37:25-07:00",
+          "from": "sofia",
+          "text": "Runbook updated. I’ve linked the four incident timelines."
+        },
+        {
+          "at": "2026-10-22T18:52:08-07:00",
+          "from": "kwame",
+          "text": "Looks good, thanks."
+        },
+        {
+          "at": "2026-10-22T18:59:11-07:00",
+          "from": "tomas",
+          "text": "All clear for the evening."
+        }
+      ]
+    },
+    {
+      "id": "q4-billing-migration",
+      "kind": "chat",
+      "title": "Q4 billing migration",
+      "members": ["me", "ben", "lisa", "marcus", "priya", "hannah"],
+      "messages": [
+        {
+          "at": "2026-10-02T09:00:00-07:00",
+          "from": "ben",
+          "text": "Kicking off the Q4 billing migration. Goal is to move Ledgerline's own invoicing from Zuora to the in-house billing service before close. Let's keep this thread for decisions and blockers."
+        },
+        {
+          "at": "2026-10-02T09:07:00-07:00",
+          "from": "me",
+          "text": "I can own the proration and rounding path in the migration code. I'll map the current Zuora behavior first so we're not guessing at the edge cases."
+        },
+        {
+          "at": "2026-10-02T09:14:00-07:00",
+          "from": "lisa",
+          "text": "I'll own the plan and coupon data mapping. I can compare the Zuora export with the billing service's catalog and call out anything that doesn't translate cleanly."
+        },
+        {
+          "at": "2026-10-02T09:21:00-07:00",
+          "from": "marcus",
+          "text": "I'll handle the migration runner and dry-run reporting. We need a repeatable way to compare invoice totals before we touch production data."
+        },
+        {
+          "at": "2026-10-02T09:28:00-07:00",
+          "from": "priya",
+          "text": "I can take tax behavior and coordinate with Finance on the expected treatment. I'll also check what we need to preserve for invoice history."
+        },
+        {
+          "at": "2026-10-02T09:36:00-07:00",
+          "from": "hannah",
+          "text": "I'll cover QA and the cutover checklist. Can everyone add the cases they think are easy to miss as we learn more?"
+        },
+        {
+          "at": "2026-10-02T10:12:00-07:00",
+          "from": "ben",
+          "text": "Thanks. Let's target a first end-to-end dry run next week, then decide whether the scope is still realistic. Cutover has to leave enough time for Finance to reconcile."
+        },
+        {
+          "at": "2026-10-02T11:03:00-07:00",
+          "from": "me",
+          "text": "I found two proration modes in our old setup: calendar-day and 30-day month. We should confirm which plans actually use each before I match the new service to them."
+        },
+        {
+          "at": "2026-10-02T13:26:00-07:00",
+          "from": "lisa",
+          "text": "The export has 14 active plan variants and 9 coupons with current subscriptions. Most plan names line up, but a couple of legacy annual plans have different price IDs than the catalog."
+        },
+        {
+          "at": "2026-10-02T15:10:00-07:00",
+          "from": "priya",
+          "text": "Tax note: Zuora stores a tax-inclusive total for a small set of EU accounts, while the new service calculates tax separately. I'll check whether those are still active and get Finance's expected result."
+        },
+        {
+          "at": "2026-10-05T09:11:00-07:00",
+          "from": "marcus",
+          "text": "Migration runner can read the Zuora export and stage records in the billing service now. The comparison report is still rough, but it gives us a per-account total to start from."
+        },
+        {
+          "at": "2026-10-05T09:44:00-07:00",
+          "from": "lisa",
+          "text": "I matched the annual plan IDs. The old 'Growth Legacy' plan maps to Growth Annual, but we need to preserve its renewal price rather than use today's catalog price."
+        },
+        {
+          "at": "2026-10-05T10:18:00-07:00",
+          "from": "me",
+          "text": "Good catch on renewal price. I'll make the proration calculation use the subscription's stored price and interval, not the current plan catalog entry."
+        },
+        {
+          "at": "2026-10-05T11:32:00-07:00",
+          "from": "hannah",
+          "text": "For QA I'll cover mid-cycle upgrades, downgrades, annual renewals, and coupons that expire on the same day as a plan change. Please send me any specific examples you find."
+        },
+        {
+          "at": "2026-10-05T13:06:00-07:00",
+          "from": "priya",
+          "text": "Finance confirmed the EU tax-inclusive accounts are all historical; none have an active subscription today. We still need to retain their invoice records, but they shouldn't affect the live migration totals."
+        },
+        {
+          "at": "2026-10-05T15:21:00-07:00",
+          "from": "ben",
+          "text": "Let's treat invoice history as read-only data and migrate active subscription state separately. That keeps the cutover path smaller, provided Finance is comfortable with the reconciliation report."
+        },
+        {
+          "at": "2026-10-06T09:05:00-07:00",
+          "from": "lisa",
+          "text": "Coupon mapping is mostly straightforward. Two coupons have a fixed amount in Zuora but a percentage value in the newer catalog, so I'm checking the original subscription records before mapping them."
+        },
+        {
+          "at": "2026-10-06T09:48:00-07:00",
+          "from": "me",
+          "text": "I added the legacy 30-day proration mode to my notes. For a $120 monthly plan, a 10-day remainder is $40 before rounding; I'll use examples like that to compare old and new behavior."
+        },
+        {
+          "at": "2026-10-06T10:37:00-07:00",
+          "from": "priya",
+          "text": "Finance says coupon discounts apply before tax, including fixed-amount coupons. That matches the current invoices I sampled."
+        },
+        {
+          "at": "2026-10-06T11:54:00-07:00",
+          "from": "marcus",
+          "text": "The runner can now emit the source amount, migrated amount, and delta in the same row. That should make it easier to isolate whether a difference comes from mapping or calculation."
+        },
+        {
+          "at": "2026-10-06T14:16:00-07:00",
+          "from": "hannah",
+          "text": "I have the mid-cycle upgrade case set up with a coupon and tax. I'll wait for the calculation branch before treating the expected amount as final."
+        },
+        {
+          "at": "2026-10-07T09:17:00-07:00",
+          "from": "ben",
+          "text": "Quick status check: plan mapping is close, runner is usable, and the proration behavior is the main open implementation question. Tax looks bounded to historical records so far."
+        },
+        {
+          "at": "2026-10-07T09:55:00-07:00",
+          "from": "me",
+          "text": "I compared three Zuora invoices. It rounds each line's proration to cents before summing, while our service currently keeps fractional cents until the invoice total. That could explain small differences."
+        },
+        {
+          "at": "2026-10-07T10:41:00-07:00",
+          "from": "lisa",
+          "text": "Confirmed the two fixed coupons were grandfathered at subscription level. I'll map the stored discount amount, not the current catalog coupon definition."
+        },
+        {
+          "at": "2026-10-07T13:12:00-07:00",
+          "from": "priya",
+          "text": "I checked 20 recent invoices, and discount-before-tax is consistent. The tax rates themselves match our service for the active accounts in that sample."
+        },
+        {
+          "at": "2026-10-07T15:03:00-07:00",
+          "from": "marcus",
+          "text": "First dry run is scheduled for Thursday morning. I'll snapshot the source export so we all compare against the same input."
+        },
+        {
+          "at": "2026-10-08T09:02:00-07:00",
+          "from": "marcus",
+          "text": "Dry run is underway. The staging migration completed in 11 minutes for 486 active subscriptions, and the comparison report has 17 nonzero deltas."
+        },
+        {
+          "at": "2026-10-08T09:08:00-07:00",
+          "from": "me",
+          "text": "I'm looking at the deltas now. Most are small, but one account is off by $6.42, so I'll separate calculation issues from any bad source mapping before we call it."
+        },
+        {
+          "at": "2026-10-08T09:16:00-07:00",
+          "from": "lisa",
+          "text": "I checked the larger delta. The plan and coupon IDs are correct on that account, and the stored renewal price matches the Zuora record."
+        },
+        {
+          "at": "2026-10-08T09:24:00-07:00",
+          "from": "priya",
+          "text": "Tax on the $6.42 case is also correct against the source invoice. The difference is already present in the pre-tax subtotal."
+        },
+        {
+          "at": "2026-10-08T09:37:00-07:00",
+          "from": "marcus",
+          "text": "The 17 deltas are all on subscriptions with a mid-cycle change. I can group the report by change type if that helps narrow the comparison."
+        },
+        {
+          "at": "2026-10-08T09:43:00-07:00",
+          "from": "me",
+          "text": "Yes, please group by change type and include the unrounded line values if possible. I suspect our per-line rounding is happening at a different point than Zuora's."
+        },
+        {
+          "at": "2026-10-08T10:02:00-07:00",
+          "from": "hannah",
+          "text": "I reproduced the $6.42 case in the QA fixture. It has an upgrade and a coupon on the same day, but the remaining mismatch looks tied to the prorated credit."
+        },
+        {
+          "at": "2026-10-08T10:18:00-07:00",
+          "from": "me",
+          "text": "The report confirms it: 15 of 17 differences are proration credits, and the rest are the same accounts with a second changed line. No plan or tax mismatches so far."
+        },
+        {
+          "at": "2026-10-08T10:29:00-07:00",
+          "from": "ben",
+          "text": "Good, that's narrower than it looked. Let's not adjust mappings based on a calculation delta; Robin, can you pin down the exact rounding rule from a few source invoices?"
+        },
+        {
+          "at": "2026-10-08T10:46:00-07:00",
+          "from": "me",
+          "text": "On the sampled invoices Zuora rounds each prorated line to two decimals using half-up, then sums the rounded lines. Our service sums the fractional values first and rounds the invoice subtotal."
+        },
+        {
+          "at": "2026-10-08T11:13:00-07:00",
+          "from": "marcus",
+          "text": "I added unrounded line amounts to the report. On the $6.42 account, the raw difference is only $0.014 across the changed lines, but it accumulates across the subscription set."
+        },
+        {
+          "at": "2026-10-08T11:28:00-07:00",
+          "from": "me",
+          "text": "That lines up with the observed deltas. I'll change the migration calculation to round each proration line with half-up before summing, then rerun the same snapshot."
+        },
+        {
+          "at": "2026-10-08T12:06:00-07:00",
+          "from": "hannah",
+          "text": "I'll keep the QA fixture and add a case with several fractional-cent lines. That should catch the difference between line-level and invoice-level rounding."
+        },
+        {
+          "at": "2026-10-08T13:41:00-07:00",
+          "from": "priya",
+          "text": "Finance confirmed line-level rounding is what they expect from the existing invoices. They don't want us to normalize the old totals to the newer service's current behavior during this migration."
+        },
+        {
+          "at": "2026-10-08T15:02:00-07:00",
+          "from": "ben",
+          "text": "We'll use the old invoice behavior as the migration reference. Please keep the scope debate for tomorrow's planning slot; we need the proration fix and a clean rerun first."
+        },
+        {
+          "at": "2026-10-09T09:12:00-07:00",
+          "from": "me",
+          "text": "The line-level rounding change is in my branch. For the sample account, the prorated lines now round to $18.37 and $4.12 before the $22.49 subtotal, matching Zuora."
+        },
+        {
+          "at": "2026-10-09T09:39:00-07:00",
+          "from": "marcus",
+          "text": "I reran the snapshot with Robin's branch. The report is down from 17 nonzero deltas to 3, and those three are all usage-based plans."
+        },
+        {
+          "at": "2026-10-09T10:05:00-07:00",
+          "from": "me",
+          "text": "The remaining three don't look like rounding. The usage records have different cutoff timestamps in the two systems, so we need to decide whether those plans belong in this migration."
+        },
+        {
+          "at": "2026-10-09T10:24:00-07:00",
+          "from": "lisa",
+          "text": "Those are the only usage-based subscriptions in the active set, but the mapping isn't one-to-one. The legacy records combine metered usage and a fixed platform fee."
+        },
+        {
+          "at": "2026-10-09T11:01:00-07:00",
+          "from": "ben",
+          "text": "Let's put the usage-plan question on the scope agenda. If we include them, we need a clear answer on usage cutoff and how to reconcile the platform fee."
+        },
+        {
+          "at": "2026-10-09T13:46:00-07:00",
+          "from": "hannah",
+          "text": "QA passed the fixed monthly and annual cases on the new rounding behavior. I'll hold the overall dry-run result open until we settle those three usage records."
+        },
+        {
+          "at": "2026-10-09T15:17:00-07:00",
+          "from": "priya",
+          "text": "Finance can review the standard subscription reconciliation next week. They don't yet have a defensible expected amount for those mixed usage invoices."
+        },
+        {
+          "at": "2026-10-12T09:03:00-07:00",
+          "from": "ben",
+          "text": "Scope review today: we have standard plans reconciled to three remaining usage-based subscriptions. The deadline is still before Q4 close, so let's weigh risk against completeness."
+        },
+        {
+          "at": "2026-10-12T09:17:00-07:00",
+          "from": "lisa",
+          "text": "The usage mapping needs a separate pass. We would have to split the platform fee from metered charges, and the source export doesn't include a reliable per-event cutoff for two of the accounts."
+        },
+        {
+          "at": "2026-10-12T09:26:00-07:00",
+          "from": "marcus",
+          "text": "The runner can migrate the records, but it can't make the source usage totals trustworthy. A successful load would hide the fact that our comparison is using different windows."
+        },
+        {
+          "at": "2026-10-12T09:38:00-07:00",
+          "from": "me",
+          "text": "I'm in favor of deferring those three. The proration fix is now matching standard plans; adding an uncertain usage cutoff would make the cutover harder to verify, not safer."
+        },
+        {
+          "at": "2026-10-12T09:51:00-07:00",
+          "from": "priya",
+          "text": "Finance agrees. They would rather keep those subscriptions on Zuora through Q4 than sign off on a guessed usage total. We can reconcile them separately before Q1 migration."
+        },
+        {
+          "at": "2026-10-12T10:07:00-07:00",
+          "from": "ben",
+          "text": "Decision: defer usage-based plans to Q1. This cutover covers the 483 standard active subscriptions; we'll document the three exceptions and leave their billing in Zuora for now."
+        },
+        {
+          "at": "2026-10-12T10:24:00-07:00",
+          "from": "hannah",
+          "text": "I'll update QA scope to 483 accounts and add a check that the three excluded subscriptions remain untouched. That boundary needs to be explicit in the cutover checklist."
+        },
+        {
+          "at": "2026-10-12T11:02:00-07:00",
+          "from": "lisa",
+          "text": "I'll tag the three usage accounts in the mapping file as deferred, with the reason and owner. No ambiguous blank rows in the final import."
+        },
+        {
+          "at": "2026-10-12T13:35:00-07:00",
+          "from": "marcus",
+          "text": "Updated the runner to accept the agreed exclusion list. The report now shows 483 included and 3 deferred, with separate totals for each group."
+        },
+        {
+          "at": "2026-10-12T15:08:00-07:00",
+          "from": "me",
+          "text": "I added a regression fixture for multiple prorated lines that land on fractional cents. It compares the rounded line items, not just the final invoice total."
+        },
+        {
+          "at": "2026-10-13T09:16:00-07:00",
+          "from": "priya",
+          "text": "I reviewed the standard-plan reconciliation sample. Discount and tax ordering matches, and the totals agree after line-level proration rounding."
+        },
+        {
+          "at": "2026-10-13T09:42:00-07:00",
+          "from": "hannah",
+          "text": "The deferred-account check passes in QA. The runner reports 483 migrated, 3 skipped, and no writes to the skipped subscription records."
+        },
+        {
+          "at": "2026-10-13T10:13:00-07:00",
+          "from": "marcus",
+          "text": "I fixed a report label that called the deferred accounts 'failed.' They're intentional exclusions now, so the summary distinguishes skipped by scope from actual errors."
+        },
+        {
+          "at": "2026-10-13T11:29:00-07:00",
+          "from": "me",
+          "text": "The rounding branch is merged. I also checked annual plans with a coupon and a mid-cycle change; both line amounts match the source invoice to the cent."
+        },
+        {
+          "at": "2026-10-13T14:03:00-07:00",
+          "from": "ben",
+          "text": "Let's schedule the second dry run for Thursday with the frozen export and merged code. If it passes, we can start locking down a cutover date."
+        },
+        {
+          "at": "2026-10-14T09:08:00-07:00",
+          "from": "lisa",
+          "text": "Final mapping file is ready for review. It includes the stored renewal prices, grandfathered coupon amounts, and the three usage-based accounts marked as deferred."
+        },
+        {
+          "at": "2026-10-14T09:47:00-07:00",
+          "from": "priya",
+          "text": "I checked the mapping against the Finance sample again. No active tax-inclusive accounts turned up, and the historical invoices remain outside the subscription import."
+        },
+        {
+          "at": "2026-10-14T10:26:00-07:00",
+          "from": "hannah",
+          "text": "QA checklist now has 31 cases: standard billing intervals, coupon combinations, mid-cycle changes, rounding boundaries, and the deferred-account boundary."
+        },
+        {
+          "at": "2026-10-14T13:14:00-07:00",
+          "from": "marcus",
+          "text": "The second-run snapshot is frozen. It has the same 483 included subscriptions as Monday, so any delta should be from the code or configuration rather than input drift."
+        },
+        {
+          "at": "2026-10-15T09:00:00-07:00",
+          "from": "marcus",
+          "text": "Second dry run started. Import completed in 10 minutes; I'm running the invoice comparison and checking the deferred-account list now."
+        },
+        {
+          "at": "2026-10-15T09:11:00-07:00",
+          "from": "me",
+          "text": "The comparison shows zero pre-tax deltas across the 483 included subscriptions. I'm checking the per-line rounding output against the dry-run fixtures before calling it."
+        },
+        {
+          "at": "2026-10-15T09:19:00-07:00",
+          "from": "marcus",
+          "text": "Confirmed: zero nonzero invoice deltas in the report. All 483 are included, and the three deferred records are listed separately with no migration writes."
+        },
+        {
+          "at": "2026-10-15T09:27:00-07:00",
+          "from": "hannah",
+          "text": "QA passed all 31 cases against this run. I checked the rounding boundary fixtures and the excluded-account behavior in the actual runner output."
+        },
+        {
+          "at": "2026-10-15T09:46:00-07:00",
+          "from": "priya",
+          "text": "Finance sample review is clean too. I compared 25 accounts across monthly and annual plans, and the invoice totals agree with the source."
+        },
+        {
+          "at": "2026-10-15T10:13:00-07:00",
+          "from": "me",
+          "text": "I spot-checked the highest-volume account and one annual renewal with a fixed coupon. Both have matching line totals and invoice totals; no remaining rounding differences."
+        },
+        {
+          "at": "2026-10-15T11:02:00-07:00",
+          "from": "ben",
+          "text": "Great result. Let's propose the evening of October 22 for cutover, subject to Finance sign-off and a final export check. That gives us a week to prepare the rollback and comms."
+        },
+        {
+          "at": "2026-10-15T13:18:00-07:00",
+          "from": "lisa",
+          "text": "I can freeze the plan and coupon mappings by Tuesday. If any subscription changes after the snapshot, we'll need to include them in the final delta pass rather than silently updating the file."
+        },
+        {
+          "at": "2026-10-15T15:41:00-07:00",
+          "from": "marcus",
+          "text": "I'll add a final delta export step to the runbook. It will compare source updates since the frozen snapshot and make the operator review any changed subscription."
+        },
+        {
+          "at": "2026-10-16T09:24:00-07:00",
+          "from": "priya",
+          "text": "Finance has the reconciliation packet and is reviewing the full account totals. Their sign-off is still pending; they asked for the final cutover date and rollback window in the packet."
+        },
+        {
+          "at": "2026-10-16T10:06:00-07:00",
+          "from": "ben",
+          "text": "Proposed cutover window is Thursday, October 22, 6:00–8:00 PM Pacific. We'll keep Zuora available for rollback until we verify the first invoices in the new service."
+        },
+        {
+          "at": "2026-10-16T11:31:00-07:00",
+          "from": "hannah",
+          "text": "I'll cover the first-invoice checks during the window. We should include one monthly account with a coupon and one annual account in the verification set."
+        },
+        {
+          "at": "2026-10-16T14:02:00-07:00",
+          "from": "me",
+          "text": "I'll be on point for the billing totals and proration checks. The dry-run report is clean, but I'll rerun the reconciliation against the final delta export before we switch anything."
+        },
+        {
+          "at": "2026-10-19T09:10:00-07:00",
+          "from": "lisa",
+          "text": "Mappings are frozen. I found two subscription updates since Thursday's snapshot; both are plan renewals, and I've recorded the new stored prices for the delta pass."
+        },
+        {
+          "at": "2026-10-19T09:38:00-07:00",
+          "from": "marcus",
+          "text": "The delta export picked up those two renewals and no other account changes. I'll include them in the final dry run so the comparison uses the latest source state."
+        },
+        {
+          "at": "2026-10-19T10:22:00-07:00",
+          "from": "priya",
+          "text": "Finance asked whether the three deferred usage accounts will appear in the cutover reconciliation. They should be listed as exclusions with their current Zuora status, not omitted."
+        },
+        {
+          "at": "2026-10-19T11:06:00-07:00",
+          "from": "ben",
+          "text": "Agreed. The reconciliation should account for all 486 active subscriptions: 483 migrating and 3 remaining on Zuora. That makes the scope boundary auditable."
+        },
+        {
+          "at": "2026-10-19T13:49:00-07:00",
+          "from": "hannah",
+          "text": "I added a checklist item to verify all 486 accounts are accounted for across the migration and deferred lists. The count must reconcile before we start cutover."
+        },
+        {
+          "at": "2026-10-20T09:04:00-07:00",
+          "from": "marcus",
+          "text": "Final dry-run report is ready. The two renewal updates are included, all 483 migrated totals match, and the three deferred accounts are accounted for separately."
+        },
+        {
+          "at": "2026-10-20T09:32:00-07:00",
+          "from": "me",
+          "text": "I checked the two renewal deltas and their prorated lines. They match the stored prices and round to the same cents as the source invoices."
+        },
+        {
+          "at": "2026-10-20T10:17:00-07:00",
+          "from": "priya",
+          "text": "Finance reviewed the revised packet and is still pending final approval. They said the account counts and exclusions look right; they're waiting on one internal reviewer for the total sign-off."
+        },
+        {
+          "at": "2026-10-20T11:03:00-07:00",
+          "from": "ben",
+          "text": "We'll keep October 22 as the planned cutover, but we won't start without Finance approval. If it doesn't arrive in time, we'll move the window rather than treat silence as sign-off."
+        },
+        {
+          "at": "2026-10-20T13:27:00-07:00",
+          "from": "hannah",
+          "text": "The rollback checklist is ready. It keeps Zuora billing active until the new service's first invoice checks pass, and the operator can stop before sending invoices."
+        },
+        {
+          "at": "2026-10-21T09:13:00-07:00",
+          "from": "lisa",
+          "text": "I ran one last comparison of the mapping file against the source snapshot. All 483 included subscriptions have a plan and renewal price; the three exclusions have named owners."
+        },
+        {
+          "at": "2026-10-21T09:47:00-07:00",
+          "from": "marcus",
+          "text": "Cutover script is staged but not armed. The operator will need the final delta report and Finance approval before the migration command is enabled."
+        },
+        {
+          "at": "2026-10-21T10:26:00-07:00",
+          "from": "priya",
+          "text": "No sign-off yet. Finance has the same totals we reviewed yesterday, and I nudged the reviewer this morning. I'll post here as soon as they confirm."
+        },
+        {
+          "at": "2026-10-21T11:14:00-07:00",
+          "from": "me",
+          "text": "I ran the reconciliation from the final snapshot again: 483 included accounts, zero invoice-total deltas, and 3 deferred usage accounts. The proration fixtures still match line by line."
+        },
+        {
+          "at": "2026-10-21T14:32:00-07:00",
+          "from": "ben",
+          "text": "Everything technical is ready. We'll hold the October 22 window provisionally and make the go/no-go call after Finance responds tomorrow."
+        },
+        {
+          "at": "2026-10-22T01:35:00-07:00",
+          "from": "priya",
+          "text": "Finance sign-off is still pending this morning. The reviewer asked for a short confirmation that the three usage-based subscriptions remain on Zuora, which is already in the packet."
+        },
+        {
+          "at": "2026-10-22T01:48:00-07:00",
+          "from": "ben",
+          "text": "Thanks. Let's keep the window on hold until we have the written approval. No production changes based on a verbal update."
+        },
+        {
+          "at": "2026-10-22T02:03:00-07:00",
+          "from": "me",
+          "text": "I confirmed the deferred accounts are excluded from the migration input and the command still requires the approval gate. If Finance signs off today, I'll rerun the totals before the window."
+        },
+        {
+          "at": "2026-10-22T03:12:00-07:00",
+          "from": "hannah",
+          "text": "The runbook is ready, including the stop point before invoice sending. QA coverage is complete; I can join the window once we get a go decision."
+        },
+        {
+          "at": "2026-10-22T04:26:00-07:00",
+          "from": "marcus",
+          "text": "The final source delta has one updated billing contact and no plan or price changes. I'll regenerate the reconciliation packet with that contact change noted."
+        },
+        {
+          "at": "2026-10-22T05:17:00-07:00",
+          "from": "priya",
+          "text": "Finance approved the reconciliation totals and the Q1 deferral in writing. They want the updated billing contact reflected, but confirmed it doesn't change any invoice amount."
+        },
+        {
+          "at": "2026-10-22T05:29:00-07:00",
+          "from": "ben",
+          "text": "We have Finance sign-off. Cutover is confirmed for 6:00 PM Pacific today; please use the regenerated packet and follow the runbook gates."
+        },
+        {
+          "at": "2026-10-22T05:46:00-07:00",
+          "from": "marcus",
+          "text": "Updated packet is ready. It accounts for 486 subscriptions total: 483 migrating, 3 deferred, zero invoice-total deltas, and the billing contact change."
+        },
+        {
+          "at": "2026-10-22T06:02:00-07:00",
+          "from": "me",
+          "text": "I checked the regenerated totals and the contact-only delta. Amounts are unchanged, and the proration rounding comparison still matches the source to the cent."
+        },
+        {
+          "at": "2026-10-22T07:15:00-07:00",
+          "from": "hannah",
+          "text": "I verified the operator checklist against the updated packet. The Finance approval is attached, and the stop-before-send step is clear."
+        },
+        {
+          "at": "2026-10-22T08:42:00-07:00",
+          "from": "ben",
+          "text": "Reminder for the 6 PM window: keep Zuora active until the new service's invoice checks pass. If any total differs, stop and use the rollback path."
+        },
+        {
+          "at": "2026-10-22T09:31:00-07:00",
+          "from": "marcus",
+          "text": "Pre-cutover checks are green. The source export is frozen, the 483-record import is staged, and the three deferred accounts are still untouched."
+        },
+        {
+          "at": "2026-10-22T10:18:00-07:00",
+          "from": "me",
+          "text": "I'm available for the cutover and will compare the first invoices against the approved totals. I'll specifically watch the prorated lines and the two renewal-price cases."
+        },
+        {
+          "at": "2026-10-22T17:56:00-07:00",
+          "from": "marcus",
+          "text": "Cutover started at 6 PM. Import completed for 483 subscriptions; the three usage accounts were skipped as expected. We're holding before invoice sending for verification."
+        },
+        {
+          "at": "2026-10-22T18:09:00-07:00",
+          "from": "me",
+          "text": "I compared the first 12 generated invoices with the approved report. All totals match, including the two proration cases; no rounding differences so far."
+        },
+        {
+          "at": "2026-10-22T18:21:00-07:00",
+          "from": "hannah",
+          "text": "I checked the monthly coupon account and annual renewal account. Both match the expected line items and totals, and the deferred records remain on Zuora."
+        },
+        {
+          "at": "2026-10-22T18:37:00-07:00",
+          "from": "priya",
+          "text": "Finance reviewed the sample invoices and confirmed the amounts match the signed reconciliation. They're okay for us to proceed with the remaining invoice checks."
+        },
+        {
+          "at": "2026-10-22T19:04:00-07:00",
+          "from": "marcus",
+          "text": "All 483 migrated subscriptions are active in the new service, and the first invoice checks are clean. We have not seen any failed imports or unexpected updates."
+        },
+        {
+          "at": "2026-10-22T19:22:00-07:00",
+          "from": "me",
+          "text": "I checked the complete generated invoice summary against the dry run: zero total deltas across the 483 accounts. The line-level proration output also matches the source behavior."
+        },
+        {
+          "at": "2026-10-22T19:41:00-07:00",
+          "from": "ben",
+          "text": "Proceeding to send invoices. Keep the rollback option available until we confirm the delivery and payment schedules are populated."
+        },
+        {
+          "at": "2026-10-22T20:06:00-07:00",
+          "from": "hannah",
+          "text": "Invoice generation and delivery checks passed. I verified the schedule on the sample accounts and saw no duplicate sends."
+        },
+        {
+          "at": "2026-10-22T20:24:00-07:00",
+          "from": "priya",
+          "text": "Finance has the final run report. I confirmed the three deferred subscriptions are listed separately and remain billed through Zuora."
+        },
+        {
+          "at": "2026-10-22T21:02:00-07:00",
+          "from": "ben",
+          "text": "Cutover complete. The 483 standard subscriptions are on the in-house billing service, the 3 usage plans remain on Zuora for Q1, and Finance signed off on the reconciliation."
+        },
+        {
+          "at": "2026-10-23T09:12:00-07:00",
+          "from": "marcus",
+          "text": "Morning checks are clean: invoice schedules are present, no duplicate generation showed up overnight, and the migration report still reconciles all 486 accounts."
+        },
+        {
+          "at": "2026-10-23T09:46:00-07:00",
+          "from": "me",
+          "text": "I spot-checked overnight invoice totals and the proration lines again. Everything matches the approved figures; the rounding fix is behaving as expected in production."
+        },
+        {
+          "at": "2026-10-23T10:27:00-07:00",
+          "from": "priya",
+          "text": "Finance completed their post-cutover review and confirmed the migrated invoice totals. They have the deferred usage accounts on a separate Q1 follow-up list."
+        },
+        {
+          "at": "2026-10-23T11:18:00-07:00",
+          "from": "lisa",
+          "text": "I archived the final mapping and exclusion list with the run report. The three deferred accounts have an owner and a clear reason recorded for each."
+        },
+        {
+          "at": "2026-10-23T13:05:00-07:00",
+          "from": "hannah",
+          "text": "Post-cutover QA is complete. All sampled invoices match, schedules are populated, and I didn't find any unexpected writes to the deferred subscriptions."
+        },
+        {
+          "at": "2026-10-23T14:22:00-07:00",
+          "from": "ben",
+          "text": "Thanks, everyone. Migration is complete for the agreed scope, with usage-based plans explicitly deferred to Q1 and Finance's reconciliation signed off."
+        },
+        {
+          "at": "2026-10-23T16:00:00-07:00",
+          "from": "me",
+          "text": "Closing out my proration work: the line-level half-up rounding matches Zuora on the dry-run fixtures and the production checks. No outstanding billing-total differences from the cutover."
+        }
+      ]
+    },
+    {
+      "id": "dm-hannah",
+      "kind": "dm",
+      "title": "Hannah Kim",
+      "members": ["me", "hannah"],
+      "messages": [
+        {
+          "at": "2026-10-19T10:00:00-07:00",
+          "from": "hannah",
+          "text": "Hey Robin, do you have a bit of time today to pair on the flaky invoice-sync integration test? It failed twice overnight, but I can't get it to reproduce locally."
+        },
+        {
+          "at": "2026-10-19T10:04:00-07:00",
+          "from": "me",
+          "text": "Yeah, I can take a look after standup. Is it still the one that times out waiting for the webhook?"
+        },
+        {
+          "at": "2026-10-19T10:07:00-07:00",
+          "from": "hannah",
+          "text": "That's the one. The worker seems to pick up the event, then the assertion runs before the status update lands."
+        },
+        {
+          "at": "2026-10-19T10:12:00-07:00",
+          "from": "me",
+          "text": "Got it. I'll pull the latest and check whether the test is relying on a fixed sleep anywhere."
+        },
+        {
+          "at": "2026-10-19T10:18:00-07:00",
+          "from": "hannah",
+          "text": "I saw a 500ms sleep in the helper yesterday, but it predates the recent changes. Probably worth replacing with a proper poll."
+        },
+        {
+          "at": "2026-10-19T10:24:00-07:00",
+          "from": "me",
+          "text": "Agreed. I'll set up a short pairing block for 2:00 and we can trace it through the worker logs."
+        },
+        {
+          "at": "2026-10-19T10:26:00-07:00",
+          "from": "hannah",
+          "text": "Perfect, thanks. I'll bring the CI run links."
+        },
+        {
+          "at": "2026-10-19T14:03:00-07:00",
+          "from": "me",
+          "text": "I think I found the race: the test waits for the webhook receipt, but not for the invoice row to leave pending."
+        },
+        {
+          "at": "2026-10-19T14:08:00-07:00",
+          "from": "hannah",
+          "text": "That would explain the timing. Want to poll for the persisted status and keep the timeout at 10 seconds?"
+        },
+        {
+          "at": "2026-10-19T14:11:00-07:00",
+          "from": "me",
+          "text": "Yep. I'll make the helper check the actual row and include the last status in the timeout error."
+        },
+        {
+          "at": "2026-10-19T14:17:00-07:00",
+          "from": "hannah",
+          "text": "Nice. That should make failures a lot less mysterious too."
+        },
+        {
+          "at": "2026-10-20T09:32:00-07:00",
+          "from": "me",
+          "text": "The updated test passed locally a dozen times. I pushed it with the helper change."
+        },
+        {
+          "at": "2026-10-21T10:05:00-07:00",
+          "from": "hannah",
+          "text": "The CI run is green. Also, I put my notes on the Postgres 16 upgrade plan here: https://docs.ledgerline.example/platform/postgres-16-upgrade"
+        },
+        {
+          "at": "2026-10-21T10:12:00-07:00",
+          "from": "me",
+          "text": "Thanks, reading through now. Are you thinking we upgrade staging first and leave a full week before production?"
+        },
+        {
+          "at": "2026-10-21T10:19:00-07:00",
+          "from": "hannah",
+          "text": "That's my preference. We can rehearse the rollback in staging, then watch query latency and connection pool behavior for a few days. Did you catch Priya's conference talk on incident reviews, by the way?"
+        },
+        {
+          "at": "2026-10-21T10:26:00-07:00",
+          "from": "me",
+          "text": "I did, the bit about writing timelines before assigning causes was useful. I'll add a staging rehearsal to my notes."
+        },
+        {
+          "at": "2026-10-22T01:36:00-07:00",
+          "from": "hannah",
+          "text": "Small update: infra confirmed the staging snapshot is ready, so we can use a production-sized copy for the rehearsal."
+        },
+        {
+          "at": "2026-10-22T09:14:00-07:00",
+          "from": "hannah",
+          "text": "The main thing I want to validate is whether the new planner changes any of our invoice aging queries."
+        },
+        {
+          "at": "2026-10-23T11:00:00-07:00",
+          "from": "hannah",
+          "text": "Can you take the Postgres upgrade rehearsal on Tuesday 10/28, or should I ask Marcus?"
+        }
+      ]
+    },
+    {
+      "id": "eng-announcements",
+      "kind": "channel",
+      "title": "Engineering / Announcements",
+      "members": ["me", "lisa", "priya", "hannah", "marcus", "dev", "nina", "jenna"],
+      "messages": [
+        {
+          "at": "2026-10-15T09:00:00-07:00",
+          "from": "lisa",
+          "text": "A quick readout on where we’re putting engineering focus for Q4, plus one org change that starts next week.\n\n**Priorities**\n\n- **Make invoice delivery boring.** We’ll focus on the reliability work behind email and PDF delivery: clearer failure states, safer retries, and better visibility when a customer’s mail provider bounces a message. The goal is fewer support escalations and less guesswork for customers, not a flashy rewrite.\n- **Improve the billing platform’s operational footing.** We have a few older services where deploys and ownership aren’t as clear as they should be. Teams will document the main failure modes, tighten alert routing, and make sure there’s a tested rollback path for the changes we ship.\n- **Keep the API predictable as usage grows.** We’ll prioritize the highest-impact pagination and rate-limit gaps, publish examples for common integration patterns, and give customers clearer notice when an endpoint’s behavior needs to change.\n- **Pay down targeted product friction.** We’ll reserve capacity for issues that repeatedly slow down onboarding and reconciliation. Please bring evidence from customer conversations or support tickets; we’re not starting a broad cleanup project without a concrete problem to solve.\n\nWe’ll track these in the existing team plans. This isn’t a promise that every item lands by year end; it is a way to make tradeoffs visible when urgent work comes in. Each team should call out dependencies early, especially anything that needs coordination with Product or Support.\n\n**Org change**\n\nStarting Monday, the Invoice Experience and Delivery teams will report through one group, led by Priya. The teams keep their current areas and day-to-day working relationships; the change is intended to make decisions across invoice creation, rendering, and delivery easier to coordinate. We’ll review ownership and on-call boundaries together next week rather than changing them by surprise.\n\nPlease keep raising risks in your team channels and bring cross-team questions here. I’ll share a short progress update at the end of each month so we can adjust based on what we learn.",
+          "post": "p1"
+        },
+        {
+          "at": "2026-10-15T09:14:00-07:00",
+          "from": "marcus",
+          "text": "Thanks Lisa! The focus on delivery failures makes sense. We’ve got a few recurring cases from Support we can use to prioritize.",
+          "post": "p1"
+        },
+        {
+          "at": "2026-10-15T09:19:00-07:00",
+          "from": "hannah",
+          "text": "For the API work, are we still planning to publish the rate-limit guidance before we change any customer-facing limits?",
+          "post": "p1"
+        },
+        {
+          "at": "2026-10-15T09:24:00-07:00",
+          "from": "lisa",
+          "text": "Yes. Guidance and a clear notice come first; we’re not changing limits as part of this announcement. Please flag any endpoint-specific concerns as the plan takes shape.",
+          "post": "p1"
+        },
+        {
+          "at": "2026-10-15T10:02:00-07:00",
+          "from": "priya",
+          "text": "I’ll set up time next week to walk through the reporting change and make sure the team plans reflect the same priorities. Existing project owners stay in place for now.",
+          "post": "p1"
+        },
+        {
+          "at": "2026-10-17T09:00:00-07:00",
+          "from": "priya",
+          "text": "We’re changing the release train from weekly to biweekly starting in November. The first release on the new cadence is planned for the week of November 9; I’ll confirm the exact cut-off and ship dates once we’ve checked them against the support calendar.\n\nThe extra time between trains should give teams a more reliable window for validation and release notes. It doesn’t mean every change has to wait for the next train: urgent fixes will still use the existing expedited process, with the usual review and coordination.\n\nFor now, keep using the current weekly schedule through the end of October. We’ll share the updated calendar, cut-off guidance, and ownership for release checks before the first biweekly cycle. If you have a dependency that makes the new timing difficult, reply here or bring it to your team lead this week.",
+          "post": "p2"
+        },
+        {
+          "at": "2026-10-17T09:11:00-07:00",
+          "from": "dev",
+          "text": "Will the release notes deadline move with the cut-off, or should we keep the current deadline until the calendar is posted?",
+          "post": "p2"
+        },
+        {
+          "at": "2026-10-17T09:16:00-07:00",
+          "from": "priya",
+          "text": "Keep the current process through October. I’ll include the notes deadline in the new calendar so we’re not relying on assumptions.",
+          "post": "p2"
+        },
+        {
+          "at": "2026-10-17T09:29:00-07:00",
+          "from": "jenna",
+          "text": "Got it. Biweekly should make it easier to coordinate the docs review too.",
+          "post": "p2"
+        },
+        {
+          "at": "2026-10-21T09:00:00-07:00",
+          "from": "nina",
+          "text": "Starting November 15, hardware security keys will be required for production access. This applies to engineers and on-call responders who use the production access flow; it does not change local development or staging access.\n\n**What to do**\n- Enroll a company-approved hardware key in your account security settings by November 15. If you already have an enrolled key, check that it’s still available and works before your next on-call shift.\n- Keep a second enrolled key as a backup where possible. Store it securely; don’t leave it attached to a shared workstation.\n- Test the sign-in flow using the setup guide in the security handbook. If you’re currently on call, do this before your next scheduled handoff rather than waiting until the deadline.\n\nIf you don’t have a key, request one through the IT equipment form. IT will share pickup and shipping details; please allow time for delivery. If enrollment fails, or you have an accessibility or travel constraint, open a ticket with Security and include the error you’re seeing. Don’t share recovery codes or key details in this channel.\n\nWe’ll remove the current production access exception on November 15. Please don’t wait until that day to discover you can’t sign in. I’ll post the setup guide and the request link in the security handbook today; reply here if anything in the steps is unclear.",
+          "post": "p3"
+        },
+        {
+          "at": "2026-10-21T09:12:00-07:00",
+          "from": "marcus",
+          "text": "Where do we pick up the keys? Is there an office desk we should go to, or do we submit the equipment form first?",
+          "post": "p3"
+        },
+        {
+          "at": "2026-10-21T09:18:00-07:00",
+          "from": "nina",
+          "text": "Submit the IT equipment form first. IT will confirm pickup versus shipping based on your location and send the instructions directly.",
+          "post": "p3"
+        },
+        {
+          "at": "2026-10-21T09:31:00-07:00",
+          "from": "lisa",
+          "text": "Please make sure your on-call backup has enrolled too. We don’t want this to become a handoff-day surprise.",
+          "post": "p3"
+        },
+        {
+          "at": "2026-10-23T09:00:00-07:00",
+          "from": "lisa",
+          "text": "Our engineering all-hands is Thursday, October 30. We’ll use the hour to review the Q4 priorities, share the release-train plan, and hear a couple of short team updates.\n\n**Draft agenda**\n- Q4 priorities and progress\n- Release cadence and operational readiness\n- Team updates and open discussion\n\nPlease reply with questions or topics you’d like us to cover. If there’s a specific decision you need the group to make, include a sentence of context so we can leave time for it. I’ll share the final agenda and meeting details early next week.",
+          "post": "p4"
+        },
+        {
+          "at": "2026-10-23T09:08:00-07:00",
+          "from": "hannah",
+          "text": "Could we leave a few minutes for questions about the new release cut-off once the calendar is out?",
+          "post": "p4"
+        },
+        {
+          "at": "2026-10-23T09:13:00-07:00",
+          "from": "lisa",
+          "text": "Absolutely. I’ll add that to the agenda, and Priya can walk through the calendar if it’s ready by then.",
+          "post": "p4"
+        },
+        {
+          "at": "2026-10-23T09:27:00-07:00",
+          "from": "dev",
+          "text": "Thanks Lisa, I’ll send over a question about the API rollout beforehand so it can go in the discussion list.",
+          "post": "p4"
+        }
+      ]
+    },
+    {
+      "id": "release-war-room",
+      "kind": "chat",
+      "title": "release-war-room",
+      "members": ["me", "priya", "marcus", "tomas", "hannah", "jenna", "dev"],
+      "messages": [
+        {
+          "at": "2026-10-20T09:02:00-07:00",
+          "from": "priya",
+          "text": "Morning all. Quick heads-up: 4.12 is still scheduled for Thursday 10/23. Please post blockers here instead of in DMs so we have one place to look."
+        },
+        {
+          "at": "2026-10-20T09:05:00-07:00",
+          "from": "marcus",
+          "text": "Morning. One potential blocker: the invoice_line_items migration timed out on staging-eu last night. It ran 38 minutes before the lock timeout killed it."
+        },
+        {
+          "at": "2026-10-20T09:07:00-07:00",
+          "from": "tomas",
+          "text": "Confirmed, I saw the same on staging-us around 2am. Small tenants were fine, it's the ones with more than 2M rows."
+        },
+        {
+          "at": "2026-10-20T09:11:00-07:00",
+          "from": "priya",
+          "text": "How many prod tenants are over 2M rows?"
+        },
+        {
+          "at": "2026-10-20T09:18:00-07:00",
+          "from": "marcus",
+          "text": "14 in prod. Acme Freight is the biggest at roughly 11M."
+        },
+        {
+          "at": "2026-10-20T09:20:00-07:00",
+          "from": "hannah",
+          "text": "If that runs in prod with the same lock it blocks invoice writes for those tenants for the whole run. That's a no-go for a daytime deploy."
+        },
+        {
+          "at": "2026-10-20T09:24:00-07:00",
+          "from": "marcus",
+          "text": "I can rewrite it as a batched backfill (50k rows per batch) behind a feature flag. About a day of work."
+        },
+        {
+          "at": "2026-10-20T09:26:00-07:00",
+          "from": "priya",
+          "text": "Do it. Marcus owns the migration rewrite, target is a PR up by Tuesday noon."
+        },
+        {
+          "at": "2026-10-20T10:41:00-07:00",
+          "from": "jenna",
+          "text": "Switching topics, sorry. Acme Freight just opened a P1: their AP team sees duplicate invoices for October, 37 so far. Their controller has cc'd their VP of Finance."
+        },
+        {
+          "at": "2026-10-20T10:44:00-07:00",
+          "from": "dev",
+          "text": "Is that related to the webhook retry change that shipped in 4.11.2?"
+        },
+        {
+          "at": "2026-10-20T10:52:00-07:00",
+          "from": "marcus",
+          "text": "Possibly. 4.11.2 changed the retry backoff for invoice.created webhooks. If their endpoint returned a 500 after accepting the payload, we'd resend and they'd create a second invoice on their side."
+        },
+        {
+          "at": "2026-10-20T10:55:00-07:00",
+          "from": "jenna",
+          "text": "They're saying the duplicates show up in OUR UI, not in their ERP. Screenshot from their controller attached."
+        },
+        {
+          "at": "2026-10-20T11:30:00-07:00",
+          "from": "tomas",
+          "text": "Found it. The duplicates all share the same idempotency key but have different created_at values about 2s apart. Looks like the retry worker doesn't check the key while the first write is still in flight."
+        },
+        {
+          "at": "2026-10-20T11:34:00-07:00",
+          "from": "priya",
+          "text": "@Robin Ellis you wrote the idempotency middleware originally. Can you review Tomás's findings and the fix PR once it's up? Ideally by end of day tomorrow."
+        },
+        {
+          "at": "2026-10-20T11:52:00-07:00",
+          "from": "me",
+          "text": "Yes, I'll take it. The key check happens after the insert commits, so two in-flight requests can both pass it. We need a unique constraint on (tenant_id, idempotency_key). Tomás, add me as reviewer on the PR."
+        },
+        {
+          "at": "2026-10-20T11:55:00-07:00",
+          "from": "tomas",
+          "text": "👍 will do"
+        },
+        {
+          "at": "2026-10-20T12:10:00-07:00",
+          "from": "hannah",
+          "text": "Unrelated: team lunch Thursday after the release? I'm thinking ramen at Kokoro."
+        },
+        {
+          "at": "2026-10-20T12:12:00-07:00",
+          "from": "dev",
+          "text": "In. But only if the release is actually done by then 😅"
+        },
+        {
+          "at": "2026-10-20T12:15:00-07:00",
+          "from": "jenna",
+          "text": "In, unless I'm on calls with Acme all day."
+        },
+        {
+          "at": "2026-10-20T15:47:00-07:00",
+          "from": "jenna",
+          "text": "Acme update: I told their controller we've found the cause and will share a fix ETA tomorrow. They want the 37 duplicates voided on our side. Can someone confirm that voiding doesn't send a credit note email to their customers?"
+        },
+        {
+          "at": "2026-10-20T16:02:00-07:00",
+          "from": "dev",
+          "text": "Voiding sends a credit note email by default. The admin script has a suppress_notifications flag. I'll void them tonight with that flag on."
+        },
+        {
+          "at": "2026-10-21T09:15:00-07:00",
+          "from": "dev",
+          "text": "Voided all 37 Acme duplicates with notifications suppressed. Sent Jenna the list of invoice numbers."
+        },
+        {
+          "at": "2026-10-21T09:20:00-07:00",
+          "from": "jenna",
+          "text": "Thank you! Forwarding to Acme now."
+        },
+        {
+          "at": "2026-10-21T10:05:00-07:00",
+          "from": "tomas",
+          "text": "Fix PR is up: #4821 \"Enforce unique (tenant_id, idempotency_key) on invoices\". Added Robin as reviewer."
+        },
+        {
+          "at": "2026-10-21T11:40:00-07:00",
+          "from": "marcus",
+          "text": "Backfill PR #4818 is up. Ran it on staging-eu: the Acme-sized tenant finished in 41 min, no lock waits above 200ms."
+        },
+        {
+          "at": "2026-10-21T11:48:00-07:00",
+          "from": "hannah",
+          "text": "Nice. Does it resume if the pod restarts halfway through?"
+        },
+        {
+          "at": "2026-10-21T11:55:00-07:00",
+          "from": "marcus",
+          "text": "Yes, it checkpoints the last processed id after every batch."
+        },
+        {
+          "at": "2026-10-21T13:20:00-07:00",
+          "from": "me",
+          "text": "Reviewed #4821. The logic is right, but adding the unique index on invoices in prod will hit the same lock problem as Marcus's migration. It needs CREATE INDEX CONCURRENTLY, and we have to dedupe existing rows first or the index build fails."
+        },
+        {
+          "at": "2026-10-21T13:26:00-07:00",
+          "from": "tomas",
+          "text": "Good catch. There are 212 existing duplicate pairs across all tenants. I'll add a dedupe step before the index."
+        },
+        {
+          "at": "2026-10-21T13:30:00-07:00",
+          "from": "priya",
+          "text": "So do both fixes ship in 4.12, or do we split them?"
+        },
+        {
+          "at": "2026-10-21T13:41:00-07:00",
+          "from": "hannah",
+          "text": "My vote: ship the index fix as a hotfix ASAP since Acme is still getting duplicates, and keep the backfill for the Thursday release."
+        },
+        {
+          "at": "2026-10-21T13:44:00-07:00",
+          "from": "priya",
+          "text": "Agreed. Decision: #4821 goes out as hotfix 4.11.3 once Robin approves; #4818 stays in 4.12 on Thursday."
+        },
+        {
+          "at": "2026-10-21T16:30:00-07:00",
+          "from": "tomas",
+          "text": "Updated #4821 with the dedupe step and a concurrent index build. Re-requested review."
+        },
+        {
+          "at": "2026-10-21T17:05:00-07:00",
+          "from": "hannah",
+          "text": "Reminder: I'm on call from tonight through Friday. For anything after 6pm, page me, don't DM."
+        },
+        {
+          "at": "2026-10-21T18:20:00-07:00",
+          "from": "me",
+          "text": "Approved #4821. Hannah, it's yours for the hotfix deploy whenever you're ready."
+        },
+        {
+          "at": "2026-10-22T07:52:00-07:00",
+          "from": "hannah",
+          "text": "Hotfix 4.11.3 deployed to prod at 07:30. Dedupe removed 212 pairs, the index built in 9 min, no errors."
+        },
+        {
+          "at": "2026-10-22T08:10:00-07:00",
+          "from": "jenna",
+          "text": "Acme confirms no new duplicates since 07:30 🎉 Their controller is asking for a written incident summary by Friday."
+        },
+        {
+          "at": "2026-10-22T08:14:00-07:00",
+          "from": "priya",
+          "text": "@Robin Ellis can you write the incident summary for Acme? You know the root cause best. Please get a draft to me by Thursday EOD so I can review it before it goes out Friday."
+        },
+        {
+          "at": "2026-10-22T08:30:00-07:00",
+          "from": "marcus",
+          "text": "Bad news on the release side: the #4818 backfill failed on staging-us overnight. One tenant has invoice rows with NULL tenant_id from a 2021 legacy import, the batch query skipped them and the verification step failed."
+        },
+        {
+          "at": "2026-10-22T08:36:00-07:00",
+          "from": "tomas",
+          "text": "How many rows?"
+        },
+        {
+          "at": "2026-10-22T08:41:00-07:00",
+          "from": "marcus",
+          "text": "3,412 rows, all from one tenant (Brightline)."
+        },
+        {
+          "at": "2026-10-22T09:02:00-07:00",
+          "from": "priya",
+          "text": "Can we fix the data in time, or does this push 4.12?"
+        },
+        {
+          "at": "2026-10-22T09:15:00-07:00",
+          "from": "marcus",
+          "text": "I can backfill tenant_id from the parent account, but I want Hannah to review the SQL before we touch prod. Realistically that's a day."
+        },
+        {
+          "at": "2026-10-22T09:20:00-07:00",
+          "from": "priya",
+          "text": "Ok. Decision: 4.12 moves from Thursday 10/23 to Monday 10/27. I'll tell support and update the release calendar."
+        },
+        {
+          "at": "2026-10-22T09:22:00-07:00",
+          "from": "dev",
+          "text": "Makes sense. I'll update the date on the customer-facing changelog."
+        },
+        {
+          "at": "2026-10-22T09:40:00-07:00",
+          "from": "hannah",
+          "text": "So Thursday lunch is back on since we're not releasing 😄 Kokoro at 12:15, I booked a table for 6."
+        },
+        {
+          "at": "2026-10-22T09:43:00-07:00",
+          "from": "jenna",
+          "text": "Perfect, I'll be there."
+        },
+        {
+          "at": "2026-10-22T10:05:00-07:00",
+          "from": "hannah",
+          "text": "Anyone else coming? I need a final headcount by tonight."
+        }
+      ]
+    }
+  ],
+  "threads": [
+    {
+      "id": "northwind-cutover",
+      "subject": "Northwind migration: cutover plan and UAT sign-off",
+      "labels": ["INBOX", "IMPORTANT", "CATEGORY_PERSONAL"],
+      "messages": [
+        {
+          "at": "2026-10-14T10:12:00-07:00",
+          "from": "rachel",
+          "to": ["me"],
+          "cc": ["lisa", "omar"],
+          "text": "Hi Robin,\n\nFollowing up on last week's kickoff, here is the proposed cutover plan for moving Ledgerline's billing data to Northwind:\n\n1. Write freeze on the old system: Friday Oct 31, 18:00 PT\n2. Migration runs over the weekend (Nov 1-2)\n3. Go-live: Monday Nov 3, 08:00 PT\n\nWhat we need from you:\n- Confirm the freeze window works for your team\n- List of integrations that need to be repointed to Northwind\n- UAT sign-off by Friday Oct 24, so we have a week of buffer\n\nHappy to walk through it on a call if that's easier.\n\nBest,\nRachel"
+        },
+        {
+          "at": "2026-10-14T15:40:00-07:00",
+          "from": "me",
+          "to": ["rachel"],
+          "cc": ["lisa", "omar"],
+          "text": "Hi Rachel,\n\nThanks, this is clear. The freeze window works for engineering in principle.\n\nIntegrations to repoint: Stripe webhooks, the NetSuite sync, and Okta SCIM provisioning.\n\nOne concern: our month-end close runs Oct 31 to Nov 2, which overlaps the freeze. Finance will need at least read access during that window. I'll loop in Ben from finance to confirm exactly what they need."
+        },
+        {
+          "at": "2026-10-15T09:05:00-07:00",
+          "from": "lisa",
+          "to": ["me", "rachel"],
+          "cc": ["omar", "ben"],
+          "text": "+1 to Robin. Adding Ben. Ben, can you confirm what finance needs from the old system during close?"
+        },
+        {
+          "at": "2026-10-15T11:30:00-07:00",
+          "from": "ben",
+          "to": ["lisa", "me", "rachel"],
+          "cc": ["omar"],
+          "text": "Hi all,\n\nDuring close we need read-only access to AR aging and invoice exports until Nov 3 at noon. The write freeze itself is fine for us. If we lose read access over that weekend, close slips by two business days.\n\nThanks,\nBen"
+        },
+        {
+          "at": "2026-10-15T16:22:00-07:00",
+          "from": "rachel",
+          "to": ["ben", "me", "lisa"],
+          "cc": ["omar"],
+          "text": "Thanks Ben, that's doable. We'll keep the old instance running in read-only mode until Nov 4, so AR aging and exports stay available through close. One caveat: exports from the old instance won't include anything entered in Northwind after go-live."
+        },
+        {
+          "at": "2026-10-16T10:48:00-07:00",
+          "from": "omar",
+          "to": ["me", "rachel"],
+          "cc": ["lisa", "ben"],
+          "text": "Hi Robin,\n\nI ran the test migration on your Oct 10 snapshot. 1.92M records migrated, 2,406 failed validation. Almost all failures are the custom field \"PO Reference\": your values go up to 140 characters and our field is capped at 64.\n\nOptions:\n(a) truncate to 64 characters during migration\n(b) we extend the field to 255 characters, which is a $1,800 one-time change fee\n(c) your team cleans the data before cutover\n\nLet us know which way you want to go. Full failure report attached.\n\nOmar"
+        },
+        {
+          "at": "2026-10-16T14:15:00-07:00",
+          "from": "me",
+          "to": ["omar", "rachel"],
+          "cc": ["lisa", "ben"],
+          "text": "Thanks Omar. Truncation is not acceptable, our customers' AP systems match payments on the full PO reference. Cleaning 2,400 records by hand isn't realistic before Oct 31 either.\n\nI'm leaning towards (b). Ben, is $1,800 OK to come out of the migration budget?"
+        },
+        {
+          "at": "2026-10-17T09:30:00-07:00",
+          "from": "ben",
+          "to": ["me", "omar", "rachel"],
+          "cc": ["lisa"],
+          "text": "Approved, $1,800 from the migration budget line. Rachel, please send a change order so I can raise the PO."
+        },
+        {
+          "at": "2026-10-17T13:02:00-07:00",
+          "from": "rachel",
+          "to": ["ben", "me"],
+          "cc": ["lisa", "omar"],
+          "text": "Change order CO-0147 attached: field extension for PO Reference, $1,800. It needs a signature from someone with signing authority on your side. Lisa, is that you?\n\nThe UAT environment with the extended field will be ready Monday Oct 20."
+        },
+        {
+          "at": "2026-10-20T11:05:00-07:00",
+          "from": "me",
+          "to": ["rachel", "omar"],
+          "cc": ["lisa", "ben"],
+          "text": "UAT access works, thanks. Two of our engineers and Ben's team are testing this week. We'll send findings as we go and aim to sign off by the 24th."
+        },
+        {
+          "at": "2026-10-22T09:14:00-07:00",
+          "from": "omar",
+          "to": ["me", "rachel"],
+          "cc": ["lisa", "ben"],
+          "text": "Hi Robin,\n\nRe-ran the migration on the Oct 20 snapshot with the extended field in UAT: 1.94M records migrated, 0 PO Reference failures.\n\n37 customer records now fail on duplicate email addresses (same email, different customer IDs). List attached. We need a decision from your side for each: merge them into one customer, or keep them separate and we relax the uniqueness rule for your tenant.\n\nOmar"
+        },
+        {
+          "at": "2026-10-22T16:40:00-07:00",
+          "from": "rachel",
+          "to": ["me", "lisa"],
+          "cc": ["omar", "ben"],
+          "text": "Hi Robin, Lisa,\n\nFriendly reminder that UAT sign-off is due this Friday, Oct 24. We still don't have CO-0147 signed, and without it Omar can't apply the field change to production.\n\nRobin, can you confirm who is signing, and give us your call on the 37 duplicate customers by Thursday Oct 23? Otherwise the Oct 31 freeze date is at risk.\n\nThanks,\nRachel"
+        },
+        {
+          "at": "2026-10-23T08:05:00-07:00",
+          "from": "lisa",
+          "to": ["rachel", "me"],
+          "cc": ["omar", "ben"],
+          "text": "Signed CO-0147 this morning, attached.\n\nRobin, please make the call on the 37 duplicates together with Ben. Finance cares about which customer record keeps the AR history, so check with him before you reply to Omar."
+        }
+      ]
+    },
+    {
+      "id": "gh-billing-4821",
+      "subject": "[ledgerline/billing-api] Enforce unique (tenant_id, idempotency_key) on invoices (PR #4821)",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-ID": "ledgerline/billing-api <billing-api.ledgerline.github.example>",
+        "List-Unsubscribe": "<mailto:unsub+robin-ellis@reply.github.example>, <https://github.example/notifications/unsubscribe/robin-ellis>",
+        "List-Archive": "https://github.example/ledgerline/billing-api",
+        "X-GitHub-Reason": "review_requested",
+        "X-GitHub-Recipient": "robin-ellis"
+      },
+      "messages": [
+        {
+          "at": "2026-10-21T10:04:00-07:00",
+          "from": "gh-tomas",
+          "to": ["repo-billing"],
+          "cc": ["me", "gh-review"],
+          "text": "@tomas-silva requested your review on: ledgerline/billing-api#4821 Enforce unique (tenant_id, idempotency_key) on invoices.\n\nThe retry worker could insert a second invoice while the first write with the same idempotency key was still in flight. This adds a unique constraint on `(tenant_id, idempotency_key)` and maps the constraint violation to the existing 409 response.\n\n**Changes**\n\n- migration `0193_invoice_idempotency_unique`\n- `InvoiceWriter.create` catches `unique_violation` and returns the stored invoice\n- regression test with two concurrent retries\n\nFixes #4817.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/pull/4821), or unsubscribe.\nYou are receiving this because your review was requested."
+        },
+        {
+          "at": "2026-10-21T16:31:00-07:00",
+          "from": "gh-tomas",
+          "to": ["repo-billing"],
+          "cc": ["me", "gh-comment"],
+          "text": "@tomas-silva pushed 2 commits.\n\n- `e41c9b2` Dedupe existing invoice pairs before building the index\n- `07ad3f5` Build the unique index CONCURRENTLY\n\nThe dedupe step keeps the oldest row of each pair and moves line items over; it found 212 pairs on the prod snapshot.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/pull/4821/files/07ad3f5), or unsubscribe.\nYou are receiving this because your review was requested."
+        },
+        {
+          "at": "2026-10-22T07:31:00-07:00",
+          "from": "gh-hannah",
+          "to": ["repo-billing"],
+          "cc": ["me", "gh-comment"],
+          "text": "Merged #4821 into release/4.11.3.\n\nDeployed as hotfix 4.11.3 at 07:30 PT.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/pull/4821), or unsubscribe.\nYou are receiving this because your review was requested."
+        }
+      ]
+    },
+    {
+      "id": "gh-billing-4818",
+      "subject": "[ledgerline/billing-api] Batched backfill for invoice_line_items (PR #4818)",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-ID": "ledgerline/billing-api <billing-api.ledgerline.github.example>",
+        "List-Unsubscribe": "<mailto:unsub+robin-ellis@reply.github.example>, <https://github.example/notifications/unsubscribe/robin-ellis>",
+        "List-Archive": "https://github.example/ledgerline/billing-api",
+        "X-GitHub-Reason": "subscribed",
+        "X-GitHub-Recipient": "robin-ellis"
+      },
+      "messages": [
+        {
+          "at": "2026-10-21T11:38:00-07:00",
+          "from": "gh-marcus",
+          "to": ["repo-billing"],
+          "cc": ["gh-comment"],
+          "text": "@marcus-lee opened ledgerline/billing-api#4818 Batched backfill for invoice_line_items.\n\nReplaces the single-statement migration that hit the lock timeout on staging-eu. The backfill runs behind the `invoice_line_items_backfill` flag in batches of 50k rows and checkpoints the last processed id after every batch, so a pod restart resumes where it stopped.\n\nStaging-eu: the largest tenant finished in 41 min, no lock waits above 200 ms.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/pull/4818), or unsubscribe.\nYou are receiving this because you are subscribed to this thread."
+        },
+        {
+          "at": "2026-10-22T08:29:00-07:00",
+          "from": "gh-actions",
+          "to": ["repo-billing"],
+          "cc": ["gh-ci"],
+          "text": "**backfill-verify** failed on staging-us for #4818.\n\n```\nverify: 3412 rows in invoice_line_items have tenant_id IS NULL\nverify: expected 0, aborting\n```\n\nRun 8812 · 14m 02s\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/actions/runs/8812), or unsubscribe.\nYou are receiving this because you are subscribed to this thread."
+        },
+        {
+          "at": "2026-10-22T16:12:00-07:00",
+          "from": "gh-hannah",
+          "to": ["repo-billing"],
+          "cc": ["gh-comment"],
+          "text": "The tenant_id repair looks right to me: it only touches the 3,412 Brightline rows and takes the id from the parent account. Please run it in a transaction with a row-count check before commit, then rerun backfill-verify on staging-us.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/pull/4818#issuecomment-2210457), or unsubscribe.\nYou are receiving this because you are subscribed to this thread."
+        }
+      ]
+    },
+    {
+      "id": "gh-ci-main",
+      "subject": "[ledgerline/billing-api] Run failed: CI - main (a3f9c21)",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-ID": "ledgerline/billing-api <billing-api.ledgerline.github.example>",
+        "List-Unsubscribe": "<mailto:unsub+robin-ellis@reply.github.example>, <https://github.example/notifications/unsubscribe/robin-ellis>",
+        "List-Archive": "https://github.example/ledgerline/billing-api",
+        "X-GitHub-Reason": "ci_activity",
+        "X-GitHub-Recipient": "robin-ellis"
+      },
+      "messages": [
+        {
+          "at": "2026-10-23T13:47:00-07:00",
+          "from": "gh-actions",
+          "to": ["repo-billing"],
+          "cc": ["gh-ci"],
+          "text": "**CI** failed on `main` at a3f9c21 (Merge pull request #4830 from ledgerline/fx-rounding).\n\n- lint: passed\n- unit: passed\n- integration: **failed** (`invoice-sync webhook receipt persists status` timed out after 30s)\n\nYou are the author of the last commit touching `test/helpers/webhook.ts`.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/billing-api/actions/runs/8851), or unsubscribe.\nYou are receiving this because you authored the commit."
+        }
+      ]
+    },
+    {
+      "id": "gh-web-1312",
+      "subject": "[ledgerline/ledger-web] Payout dashboard shows duplicate rows after a retry (Issue #1312)",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-ID": "ledgerline/ledger-web <ledger-web.ledgerline.github.example>",
+        "List-Unsubscribe": "<mailto:unsub+robin-ellis@reply.github.example>, <https://github.example/notifications/unsubscribe/robin-ellis>",
+        "List-Archive": "https://github.example/ledgerline/ledger-web",
+        "X-GitHub-Reason": "mention",
+        "X-GitHub-Recipient": "robin-ellis"
+      },
+      "messages": [
+        {
+          "at": "2026-10-22T10:20:00-07:00",
+          "from": "gh-nina",
+          "to": ["repo-web"],
+          "cc": ["me", "gh-mention"],
+          "text": "During last night's acquirer incident the payouts dashboard listed some payouts twice. The API returns each payout once; the duplicates appear only after the client retries `GET /payouts` while the first request is still pending.\n\n@robin-ellis you added the retry wrapper in `usePayouts`. Could the second response be appended instead of replacing the first?\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/ledger-web/issues/1312), or unsubscribe.\nYou are receiving this because you were mentioned."
+        },
+        {
+          "at": "2026-10-23T09:05:00-07:00",
+          "from": "gh-marcus",
+          "to": ["repo-web"],
+          "cc": ["me", "gh-comment"],
+          "text": "Reproduced with network throttling: two responses land and both get pushed into the list. Keying the rows by payout id would hide it, but the real fix is to drop the stale response. Labelled `bug`, `payments`.\n\n—\nReply to this email directly, [view it on GitHub](https://github.example/ledgerline/ledger-web/issues/1312#issuecomment-1998), or unsubscribe.\nYou are receiving this because you were mentioned."
+        }
+      ]
+    },
+    {
+      "id": "promo-ridgeway",
+      "subject": "Robin, your weekend list: 30% off trail packs ends Sunday",
+      "labels": ["CATEGORY_PROMOTIONS"],
+      "headers": {
+        "List-Unsubscribe": "<https://ridgeway.example/u/7f2c91>, <mailto:unsubscribe@ridgeway.example>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "Precedence": "bulk"
+      },
+      "messages": [
+        {
+          "at": "2026-10-23T07:15:00-07:00",
+          "from": "ridgeway",
+          "to": ["me"],
+          "text": "# 30% off trail packs, this weekend only\n\nHi Robin, the packs you looked at last month are on sale until Sunday at midnight.\n\n- **Talus 28** daypack, was $149, now $104\n- **Ridgeline 45** overnight pack, was $229, now $160\n- Free rain cover with any pack over $100\n\nUse code **TRAIL30** at checkout. Members get free returns for 60 days.\n\n[Shop the sale](https://ridgeway.example/sale/packs)\n\nRidgeway Outfitters · 220 Alder St, Portland, OR · [Unsubscribe](https://ridgeway.example/u/7f2c91)"
+        }
+      ]
+    },
+    {
+      "id": "promo-saltmarsh",
+      "subject": "Last call: 2 nights for the price of 1 in Lisbon",
+      "labels": ["CATEGORY_PROMOTIONS"],
+      "headers": {
+        "List-Unsubscribe": "<https://saltmarsh.example/unsubscribe?u=4410>",
+        "Precedence": "bulk"
+      },
+      "messages": [
+        {
+          "at": "2026-10-21T18:02:00-07:00",
+          "from": "saltmarsh",
+          "to": ["me"],
+          "text": "## Lisbon, two nights for one\n\nBook by Friday for stays between Nov 10 and Dec 15. Boutique hotels in Alfama and Chiado from $118 a night, breakfast included.\n\nFlights from SFO from $612 round trip with our partner airlines.\n\n[See the hotels](https://saltmarsh.example/lisbon)\n\nYou are receiving this because you booked with Saltmarsh Travel in 2025. [Unsubscribe](https://saltmarsh.example/unsubscribe?u=4410)"
+        }
+      ]
+    },
+    {
+      "id": "promo-kokoro",
+      "subject": "Robin, your table is waiting",
+      "labels": ["INBOX", "CATEGORY_PERSONAL"],
+      "messages": [
+        {
+          "at": "2026-10-24T11:30:00-07:00",
+          "from": "kokoro",
+          "to": ["me"],
+          "text": "Hi Robin,\n\nThanks for joining us last Thursday with your team of six! As a Kokoro Rewards member you now have **150 points**, enough for a free side of gyoza on your next visit.\n\nThis week only: our winter tonkotsu is back, and members who book a table for 4 or more before Nov 2 get a 15% discount on the whole bill.\n\n[Book a table](https://kokoro-ramen.example/book)\n\nSee you soon,\nThe Kokoro team"
+        }
+      ]
+    },
+    {
+      "id": "bank-1",
+      "subject": "Card purchase: $42.18 at KOKORO RAMEN",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "messages": [
+        {
+          "at": "2026-10-23T13:41:00-07:00",
+          "from": "bank",
+          "to": ["me"],
+          "text": "A purchase of **$42.18** was made with your Northbank Visa ending in 4417 at KOKORO RAMEN on Oct 23 at 1:40 PM.\n\nAvailable credit: $8,214.55\n\nNot you? Call the number on the back of your card."
+        }
+      ]
+    },
+    {
+      "id": "bank-2",
+      "subject": "Direct deposit received: $4,862.30",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "messages": [
+        {
+          "at": "2026-10-22T05:02:00-07:00",
+          "from": "bank",
+          "to": ["me"],
+          "text": "A direct deposit of **$4,862.30** from LEDGERLINE INC PAYROLL posted to your checking account ending in 0921 on Oct 22.\n\nCurrent balance: $11,409.87"
+        }
+      ]
+    },
+    {
+      "id": "bank-3",
+      "subject": "Card purchase: $1,284.00 at SALTMARSH TRAVEL",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "messages": [
+        {
+          "at": "2026-10-24T19:55:00-07:00",
+          "from": "bank",
+          "to": ["me"],
+          "text": "A purchase of **$1,284.00** was made with your Northbank Visa ending in 4417 at SALTMARSH TRAVEL on Oct 24 at 7:54 PM.\n\nThis is larger than your usual purchases. If you made it, no action is needed.\n\nAvailable credit: $6,930.55"
+        }
+      ]
+    },
+    {
+      "id": "newsletter-ledger",
+      "subject": "The Pragmatic Ledger #212: idempotency keys are not enough",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-Unsubscribe": "<https://pragmaticledger.example/unsubscribe/robin>",
+        "List-ID": "The Pragmatic Ledger <weekly.pragmaticledger.example>",
+        "Precedence": "list"
+      },
+      "messages": [
+        {
+          "at": "2026-10-23T06:00:00-07:00",
+          "from": "ledgerletter",
+          "to": ["me"],
+          "text": "# Idempotency keys are not enough\n\nThis week three readers sent in the same bug: a payment API that accepts an idempotency key, checks it, and still creates two records. In every case the check ran before the insert and nothing in the database enforced it, so two requests in flight both passed.\n\nThe fix is boring and reliable: a unique constraint on the key, scoped to the tenant, and code that treats the violation as \"already done\" and returns the first result. If you add the constraint to a large table, build the index concurrently and dedupe existing rows first, or the build fails halfway.\n\n## Also this week\n\n- **Rounding in currency conversion.** Why banker's rounding on the line and on the total gives different invoices, and how to pick one.\n- **Backfills that resume.** Checkpoint the last processed id after every batch, not every N minutes.\n- **Reader question:** should retries share the original request's timeout? Usually no, give each attempt its own deadline and cap the total.\n\nThanks for reading. Reply to this email with your own war stories; we read every one.\n\n[Unsubscribe](https://pragmaticledger.example/unsubscribe/robin)"
+        }
+      ]
+    },
+    {
+      "id": "dan-birthday",
+      "subject": "Mom's 60th: plan, dates and money",
+      "labels": ["INBOX", "IMPORTANT", "CATEGORY_PERSONAL"],
+      "messages": [
+        {
+          "at": "2026-10-23T20:15:00-07:00",
+          "from": "dan",
+          "to": ["me"],
+          "text": "Hey Robin,\n\nOkay, I finally sat down and worked out Mom's 60th so we can stop doing this in fragments over text. Here is where I've landed, tell me what you'd change.\n\n**Date.** Her birthday is Saturday Dec 6. Aunt June is away until the 4th and Grandpa can't do evenings, so I think a lunch on **Sunday Dec 7** works best. I checked with June and she is in.\n\n**Place.** I called three places. The Larkspur room at Fennel & Rye holds 24, has its own entrance for the wheelchair, and wants a $500 deposit by **Nov 7** to hold the date. The other two were either booked or too loud. I'd like to put the deposit down this weekend unless you object.\n\n**Guests.** I count 19 so far: us two plus partners, June and her kids, Grandpa, the Hendersons, Mom's book club (six of them) and Carol from her old school. Can you check whether your partner's parents want to come? Mom would love that, but it pushes us to 21.\n\n**Money.** Lunch is about $65 a head, so roughly $1,400 for 21 plus the cake. I suggest we split it 50/50 and I'll cover the deposit now; you can send me your half whenever.\n\n**Surprise or not.** I think we tell her it's a family lunch and keep the book club as the surprise. A full surprise at 60 feels risky with her blood pressure.\n\n**Your jobs, if you're up for it:** the photo slideshow (you have the old albums from the move), and a short toast. I'll do invitations, cake and seating.\n\nCan you let me know by **next Friday** about the guest list and whether 50/50 works? Then I'll book.\n\nTalk soon,"
+        }
+      ]
+    },
+    {
+      "id": "note-to-self",
+      "subject": "Acme incident summary: outline",
+      "labels": ["INBOX", "CATEGORY_PERSONAL"],
+      "messages": [
+        {
+          "at": "2026-10-22T21:40:00-07:00",
+          "from": "me",
+          "to": ["me"],
+          "text": "Outline for the Acme summary (draft to Priya by Thu EOD):\n\n1. What happened: 37 duplicate invoices for October, Oct 14 to Oct 22\n2. Root cause: idempotency check ran after the insert committed, retries in 4.11.2 made the race likely\n3. Fix: unique (tenant_id, idempotency_key), dedupe of 212 pairs, hotfix 4.11.3 on Oct 22 07:30\n4. Customer impact: duplicates voided Oct 21 with notifications suppressed\n5. What we changed so it doesn't recur\n\nAsk Jenna whether Acme wants the invoice numbers in the doc."
+        }
+      ]
+    }
+  ]
+}
