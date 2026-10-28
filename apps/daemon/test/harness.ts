@@ -1,4 +1,5 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RawItem, Source, SourcePlugin, StreamDescriptor } from "@weir/contract/Source";
@@ -31,6 +32,32 @@ export const makeHome = (configBody: string) => {
 export const apiClient = (port: number) =>
   HttpApiClient.make(Api, { baseUrl: `http://127.0.0.1:${port}` }).pipe(
     Effect.provide(FetchHttpClient.layer),
+  );
+
+export const rawRequest = (
+  port: number,
+  request: { method: string; path: string; headers: Record<string, string> },
+) =>
+  Effect.promise(
+    () =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const socket = connect(port, "127.0.0.1").setEncoding("utf8");
+        let text = "";
+        socket.on("data", (chunk: string) => {
+          text += chunk;
+        });
+        socket.on("error", reject);
+        socket.on("end", () => {
+          const [head = "", body = ""] = text.split("\r\n\r\n");
+          resolve({ status: Number(head.split(" ")[1]), body });
+        });
+        const headers = Object.entries({
+          ...request.headers,
+          "Content-Length": "0",
+          Connection: "close",
+        }).map(([name, value]) => `${name}: ${value}\r\n`);
+        socket.write(`${request.method} ${request.path} HTTP/1.1\r\n${headers.join("")}\r\n`);
+      }),
   );
 
 export const adjustableClock = (iso: string) =>

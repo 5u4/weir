@@ -11,6 +11,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServer from "effect/http/HttpServer";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -263,13 +265,35 @@ const advertise = (home: WeirHome) =>
     }),
   );
 
+const loopbackOnly = HttpRouter.middleware(
+  Effect.gen(function* () {
+    const { port } = yield* Daemon;
+    const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+    const origins = hosts.map((host) => `http://${host}`);
+    return (httpEffect) =>
+      Effect.flatMap(HttpServerRequest.HttpServerRequest, ({ headers }) => {
+        const host = headers.host;
+        const origin = headers.origin;
+        return host !== undefined &&
+          hosts.includes(host) &&
+          (origin === undefined || origins.includes(origin))
+          ? httpEffect
+          : Effect.succeed(HttpServerResponse.empty({ status: 403 }));
+      });
+  }),
+  { global: true },
+);
+
 export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
   advertise(home).pipe(
     Layer.provide(
-      HttpRouter.serve(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), {
-        disableLogger: true,
-        disableListenLog: true,
-      }),
+      HttpRouter.serve(
+        Layer.mergeAll(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), loopbackOnly),
+        {
+          disableLogger: true,
+          disableListenLog: true,
+        },
+      ),
     ),
     Layer.provide(
       Layer.unwrap(

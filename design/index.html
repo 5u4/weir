@@ -914,6 +914,8 @@ help[2]:
 <li>prompt 里用分隔符把消息内容标为数据，并告诉 AI 不执行其中的任何指令。</li>
 <li>digest 的输出必须通过 Schema 校验。字段以外的内容一律丢弃。</li>
 <li>daemon 只监听 <code>127.0.0.1</code>。</li>
+<li>daemon 只接受 <code>Host</code> 是 <code>127.0.0.1:&lt;port&gt;</code> 或 <code>localhost:&lt;port&gt;</code> 的请求。请求带 <code>Origin</code> 时，它必须是 <code>http://127.0.0.1:&lt;port&gt;</code> 或 <code>http://localhost:&lt;port&gt;</code>。不符合的请求一律回 403，正文为空。这挡住 DNS rebinding 和其他网页的跨站请求。<code>weir-axi</code> 不带 <code>Origin</code>。</li>
+<li>已知限制：HTTP API 没有按调用方区分的凭证，所以同一台机器上的其他系统账号能通过 loopback 读到邮件。weir 跑在多用户机器上时，或者任何改动邮件的写操作上线之前，这条必须解决。可选的做法是每个 daemon 一个只有本人能读的凭证，或者改用只有本人能访问的 Unix socket。选哪个是产品决定，因为 Web UI 和 API 从同一个 origin 提供。</li>
 <li>凭证不进 weir。gws 把 OAuth token 存在它自己的 keyring 里。</li>
 <li>正文按 markdown 渲染时，夹带的 HTML 按文字显示，不执行，也不加载外部图片。</li>
 </ul>
