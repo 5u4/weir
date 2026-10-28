@@ -17,9 +17,13 @@ import {
   UtcIso,
 } from "./Rows.ts";
 
+export type TagFilter =
+  | { readonly _tag: "Named"; readonly name: string }
+  | { readonly _tag: "Untagged" };
+
 export interface SearchQuery {
   readonly query: string;
-  readonly tag?: string;
+  readonly tag?: TagFilter;
   readonly source?: string;
   readonly from?: string;
   readonly since?: DateTime.Utc;
@@ -63,7 +67,9 @@ export const search = Effect.fnUntraced(function* ({
   ];
   if (tag !== undefined) {
     conditions.push(
-      sql`EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id AND conversation_tag.tag = ${tag})`,
+      tag._tag === "Named"
+        ? sql`EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id AND conversation_tag.tag = ${tag.name})`
+        : sql`NOT EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id)`,
     );
   }
   if (source !== undefined) conditions.push(sql`c.source_id = ${source}`);

@@ -288,4 +288,20 @@ describe("reads", () => {
       }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
     }),
   );
+
+  it.live("search --tag Untagged finds only conversations without a tag", () =>
+    Effect.gen(function* () {
+      const { home, port } = makeHome(sourceConfig("1h") + tag("Promo", promoLabel));
+      yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource(mailbox)) }));
+      const client = yield* apiClient(port);
+      yield* eventually(client.status(), synced);
+      for (const [tag, expected] of [
+        ["Untagged", ["Quarterly invoice review"]],
+        ["Promo", ["Weekend sale"]],
+      ] as const) {
+        const { conversations } = yield* client.search({ query: { q: "", tag } });
+        expect(conversations.map(({ title }) => title)).toEqual(expected);
+      }
+    }).pipe(Effect.scoped),
+  );
 });

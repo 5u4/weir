@@ -151,11 +151,19 @@ const handlers = HttpApiBuilder.group(
           withSql,
           Effect.orDie,
         ),
-      search: ({ query: { q, since, ...filters } }) =>
+      search: ({ query: { q, tag, since, ...filters } }) =>
         Effect.gen(function* () {
           const rows = yield* Read.search({
             query: q,
             ...filters,
+            ...(tag === undefined
+              ? {}
+              : {
+                  tag:
+                    tag === "Untagged"
+                      ? { _tag: "Untagged" as const }
+                      : { _tag: "Named" as const, name: tag },
+                }),
             ...(since === undefined
               ? {}
               : { since: DateTime.subtractDuration(yield* DateTime.now, since) }),
