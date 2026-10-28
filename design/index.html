@@ -294,7 +294,7 @@ flowchart TD
 
 <p>几条约定：</p>
 <ul>
-<li><code>configSchema</code> 用 Standard Schema。plugin 作者可以用 zod、valibot 或 Effect Schema 写。Effect Schema 能否直接导出 Standard Schema，这一点还没核实，搭骨架时第一件事就是确认。</li>
+<li><code>configSchema</code> 用 Standard Schema。plugin 作者可以用 zod、valibot 或 Effect Schema 写。Effect Schema 用 <code>Schema.toStandardSchemaV1</code> 导出 Standard Schema（effect 4.0.6）。</li>
 <li>daemon 启动和 reload 时，用 <code>configSchema</code> 校验 <code>[source.config]</code>。校验失败的报错里带上出错的 config 路径。</li>
 <li><code>cursor</code> 的内容由 plugin 决定，比如 Gmail 的 historyId，或者 Graph 的 delta token。core 只负责保存，不解析。</li>
 <li><code>more = true</code> 表示还有下一页，core 立刻用新 cursor 再调一次。这样冷启动拉一万封邮件时，每一页都单独落盘，中途崩溃也能从上一页接着来。</li>
@@ -362,8 +362,8 @@ erDiagram
 <div class="tw"><table>
 <thead><tr><th>表</th><th>列</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td><code>stream</code></td><td><code>id, source_id, kind, name, open_label, me, cursor, backfilled_at, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。<code>backfilled_at</code> 在冷启动的最后一页（<code>more = false</code>）提交时写入，之前是空的。</td></tr>
-<tr><td><code>item</code></td><td><code>seq, id, stream_id, external_id, kind, conversation_id, thread_id, container_id, container_name, occurred_at, synced_at, title, from_name, from_address, from_me, body, body_new, link, raw, deleted_at</code></td><td><code>seq</code> 是自增主键。<code>(stream_id, external_id)</code> 唯一。发件人直接存成列，不另建表。<code>body</code> 和 <code>body_new</code> 是 markdown。<code>raw</code> 是 plugin 交出的 JSON。删除用软删除。</td></tr>
+<tr><td><code>stream</code></td><td><code>id, source_id, external_id, kind, name, open_label, me, cursor, backfilled_at, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。<code>external_id</code> 是 plugin 给的 stream descriptor 的 <code>id</code>，<code>(source_id, external_id)</code> 唯一。<code>backfilled_at</code> 在冷启动的最后一页（<code>more = false</code>）提交时写入，之前是空的。</td></tr>
+<tr><td><code>item</code></td><td><code>seq, stream_id, external_id, kind, conversation_id, thread_id, container_id, container_name, occurred_at, synced_at, title, from_name, from_address, from_me, body, body_new, link, raw, deleted_at</code></td><td><code>seq</code> 是自增主键，也是 item 唯一的 id。<code>(stream_id, external_id)</code> 唯一。发件人直接存成列，不另建表。<code>body</code> 和 <code>body_new</code> 是 markdown。<code>raw</code> 是 plugin 交出的 JSON。删除用软删除。</td></tr>
 <tr><td><code>conversation</code></td><td><code>id, source_id, key, title, first_at, last_at, last_seq</code></td><td><code>(source_id, key)</code> 唯一，<code>key</code> 是 <code>thread_id ?? container_id</code>。</td></tr>
 <tr><td><code>conversation_tag</code></td><td><code>conversation_id, tag</code></td><td>tag 的缓存，给列表查询和计数用。sync 写新 item 时追加。已有 item 再次 upsert 时，重算这个 conversation 的行。启动和 reload 时按当前 config 整表重算。</td></tr>
 <tr><td><code>digest</code></td><td><code>id, conversation_id, from_seq, to_seq, headline, topics, trigger, ai_profile, created_at</code></td><td><code>topics</code> 存 JSON，每项是 <code>{ title, state, body, seqs }</code>，<code>state</code> 取 <code>open</code>、<code>resolved</code>、<code>fyi</code>。<code>trigger</code> 取 <code>auto</code>、<code>manual</code>。同一 conversation 的范围互不重叠。行写好就不改，Redo 时整行替换。</td></tr>
@@ -374,6 +374,7 @@ erDiagram
 <tr><td><code>digest_run</code></td><td><code>id, conversation_id, from_seq, to_seq, trigger, ai, ms, ok, error, log_path</code></td><td>AI 的原始输出写到 <code>~/.weir/logs/digest/</code>，表里只存路径。</td></tr>
 </tbody></table></div>
 </details>
+<p><strong>数据库松，Schema 严。</strong>SQL 列不带 CHECK、枚举或外键约束。校验只在 store 的边界做：写入前用 Effect Schema encode，读出后用 Effect Schema decode。app 用到的字段（标题、正文等）仍然各占一列，见上表。</p>
 
 <h3 id="where">daemon 或 agent 需要知道的放 SQLite，其他放 localStorage</h3>
 <p>判断标准只有一个：daemon 或 agent 需不需要知道这件事。</p>
@@ -876,7 +877,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <tr><td><code>weir-axi</code></td><td>各 tag 和 Untagged 的未读数和待完成数，各 source 的 sync 状态，config 错误</td></tr>
 <tr><td><code>weir-axi search &lt;query&gt;</code></td><td>和 UI 的搜索用同一套匹配。两者查同一张 <code>search_fts</code>，原文只搜 <code>body_new</code>，所有词都在同一个 conversation 里出现才算命中，见<a href="#fts">第 05 节</a>。可以用 <code>--tag</code>、<code>--source</code>、<code>--from</code>、<code>--since</code> 过滤</td></tr>
 <tr><td><code>weir-axi conv &lt;id&gt;</code></td><td>一个 conversation 的 tag、各份 digest，以及没被 digest 覆盖的原文</td></tr>
-<tr><td><code>weir-axi item &lt;id&gt; [--full] [--raw]</code></td><td>一条 item 的原文。<code>--raw</code> 打印存下来的 <code>raw</code> 对象，写 rule 时用它找 JSON Pointer</td></tr>
+<tr><td><code>weir-axi item &lt;seq&gt; [--full] [--raw]</code></td><td>一条 item 的原文。<code>--raw</code> 打印存下来的 <code>raw</code> 对象，写 rule 时用它找 JSON Pointer</td></tr>
 <tr><td><code>weir-axi tag test &lt;name&gt;</code></td><td>按当前 config 跑一个 tag 的 rule，输出命中的 conversation 数和几个样例。AI 帮你写 tag 时靠它验证</td></tr>
 <tr><td><code>weir-axi digest &lt;conversation&gt; [--from &lt;seq&gt; | --up-to &lt;seq&gt;]</code></td><td>手动 digest。都不带等于 Digest now。<code>--from</code> 等于从那条开始的 Digest from here。<code>--up-to</code> 等于在那条结束的 Digest earlier</td></tr>
 <tr><td><code>weir-axi reload</code></td><td>重新读取并校验 config，失败时输出错误位置</td></tr>
@@ -962,9 +963,7 @@ help[2]:
 </tbody></table></div>
 
 <h2 id="open"><span class="n">15</span>还没定的问题</h2>
-<ol>
-<li>Effect Schema 能不能直接作为 Standard Schema 给 plugin 用，搭骨架时确认。</li>
-</ol>
+<p>目前没有。原来的一条是「Effect Schema 能不能直接作为 Standard Schema 给 plugin 用」，已经确认可以，用 <code>Schema.toStandardSchemaV1</code>，见<a href="#source">第 04 节</a>。</p>
 
 <h2 id="repo"><span class="n">附录</span>仓库是 Bun monorepo，工具链已经就位</h2>
 <p>仓库根目录已经有这些：</p>
@@ -974,13 +973,14 @@ help[2]:
 <li><code>bun run vendor:effect</code> 把 Effect 的源码拉到 <code>repos/effect</code>，只当参考读，代码不从那里 import。Effect 本身是 npm 依赖。</li>
 <li>migration 用 <code>effect/sql/Migrator</code>。</li>
 </ul>
-<p>三个 workspace 目录还没建。按下面的结构建，<code>plugins/</code> 下的包只依赖 <code>packages/contract</code>：</p>
+<p>workspace 按下面的结构建。<code>plugins/</code> 下的包在运行时只依赖 workspace 里的 <code>packages/contract</code>，开发和测试依赖可以用其他 workspace 包：</p>
 <pre><code>weir/
   packages/
     contract/     <span class="c">Schema：item、conversation、digest、Rule、plugin 接口、AI 输出格式</span>
     store/        <span class="c">SQLite、FTS5、migration</span>
     sync/         <span class="c">scheduler、plugin 加载、upsert、conversation key、tag 匹配</span>
     digest/       <span class="c">自动链条、上下文、切块、CLI 调用、输出校验</span>
+    fixtures/     <span class="c">合成测试数据、fake-gws、隐私测试，见<a href="#test-data">附录</a></span>
   plugins/
     gws/          <span class="c">Gmail 拉取、正文转 markdown、裁剪 raw</span>
   apps/
@@ -996,6 +996,44 @@ help[2]:
 <li>Web UI。</li>
 </ol>
 <p>做完第 3 步，agent 就已经能搜你的邮件、按 tag 筛了，那时还没有任何 AI 调用。</p>
+
+<h2 id="test-data"><span class="n">附录</span>测试数据全部是合成的，只用保留域名</h2>
+<p>测试和 demo 不碰真实邮箱，也不碰 <code>~/.weir</code>。数据都在 <code>packages/fixtures</code>（包名 <code>@weir/fixtures</code>）里。</p>
+<ul>
+<li><code>scenarios.json</code> 从原型的 <code>design/prototype/data/scenarios.json</code> 复制而来，Teams 部分也在。复制时把所有 <code>github.com</code> 改写成 <code>github.example</code>，包括发件地址、<code>List-*</code> 头和正文里的链接。原型本身不变。<code>packages/</code>、<code>plugins/</code>、<code>apps/</code> 下的代码都不从 <code>design/</code> import。</li>
+<li>邮箱的主人是 Robin Ellis，地址 <code>robin.ellis@example.com</code>。</li>
+<li>所有邮件地址和主机名都在保留域名下：<code>example.com</code>、<code>example.net</code>、<code>example.org</code> 及其子域，或者顶级域 <code>.example</code>、<code>.test</code>、<code>.invalid</code>、<code>.localhost</code>。IP 只用文档网段 <code>192.0.2.0/24</code>、<code>198.51.100.0/24</code>、<code>203.0.113.0/24</code>。</li>
+<li>隐私测试 <code>packages/fixtures/test/privacy.test.ts</code> 检查 <code>scenarios.json</code>、<code>config.toml</code>，以及 fake-gws 每个命令的完整输出，正文先做 base64url 解码再查。失败时逐条列出违规的值和位置，比如 <code>someone@gmail.com @ scenarios.json threads[3].messages[0].text</code>。同一个文件里还有一个固定的测试，往 scenarios 的副本里注入 <code>someone@gmail.com</code>，断言检查器报出的正是这一条。</li>
+</ul>
+
+<h3 id="fake-gws">fake-gws 按 gws 0.22.5 的样子回答 Gmail 请求</h3>
+<p><code>fake-gws</code> 是 <code>@weir/fixtures</code> 的 bin，<code>bun install</code> 之后在 <code>node_modules/.bin/fake-gws</code>。它不叫 <code>gws</code>，不会挡住真的 gws。调用方式和 gws 相同：<code>fake-gws [--mailbox &lt;dir&gt;] gmail users &lt;resource...&gt; &lt;method&gt; --params '&lt;json&gt;'</code>。gws plugin 的 <code>command</code> 指向它，plugin、sync、store、daemon 和 axi 就都跑真代码。它只暴露 14 个 Gmail thread 里的 31 封邮件，Teams 不暴露。</p>
+<div class="tw"><table>
+<thead><tr><th>命令</th><th>params</th><th>返回</th></tr></thead>
+<tbody>
+<tr><td><code>messages list</code></td><td><code>userId</code>、<code>q</code>、<code>maxResults</code>、<code>pageToken</code>、<code>includeSpamTrash</code></td><td><code>messages[{id, threadId}]</code> 从新到旧，<code>nextPageToken</code>，<code>resultSizeEstimate</code>。<code>q</code> 只能为空或者是 <code>newer_than:N[dmy]</code>，相对邮箱的 <code>now</code> 计算。默认跳过带 SPAM 或 TRASH 的邮件。</td></tr>
+<tr><td><code>messages get</code></td><td><code>userId</code>、<code>id</code>、<code>format</code>（只支持 <code>full</code>）</td><td>完整的 Gmail Message。正文是 <code>multipart/alternative</code>，含 <code>text/plain</code> 和 <code>text/html</code> 两个 part；note-to-self 那封只有 <code>text/plain</code>。正文开头是 scenario 的 <code>text</code>。发件人有签名时后面跟签名，回复后面再跟上一封的引用，GitHub 通知不带引用。邮件头带上 <code>Received</code>、<code>ARC-*</code>、<code>DKIM-Signature</code> 这类传输头，供 plugin 裁剪。</td></tr>
+<tr><td><code>history list</code></td><td><code>userId</code>、<code>startHistoryId</code>、<code>historyTypes</code>、<code>maxResults</code>、<code>pageToken</code></td><td><code>startHistoryId</code> 之后的 <code>history[]</code>、当前 <code>historyId</code>、<code>nextPageToken</code>。<code>historyTypes</code> 取 <code>messageAdded</code>、<code>messageDeleted</code>、<code>labelAdded</code>、<code>labelRemoved</code>。</td></tr>
+<tr><td><code>getProfile</code></td><td><code>userId</code></td><td><code>emailAddress</code>、<code>messagesTotal</code>、<code>threadsTotal</code>、<code>historyId</code></td></tr>
+<tr><td><code>settings sendAs list</code></td><td><code>userId</code></td><td>只有一个 <code>robin.ellis@example.com</code>，主地址兼默认地址</td></tr>
+</tbody></table></div>
+<ul>
+<li>成功时 stdout 输出 JSON，退出码 0。API 错误和 gws 一样：stdout 是 <code>{"error":{"code","message","reason"}}</code>，stderr 是 <code>error[api]: &lt;message&gt;</code>，退出码 1。不存在的 message id 和过期的 <code>startHistoryId</code> 都返回 404，<code>reason</code> 是 <code>notFound</code>。</li>
+<li>不支持的输入一律报错，不静默忽略：<code>--page-all</code>、<code>--dry-run</code> 这类 flag，<code>labelIds</code> 这类 param，<code>full</code> 以外的 <code>format</code>，<code>q</code> 里别的搜索词，以及没实现的命令。这些都按 gws 的校验错误处理，stderr 是 <code>error[validation]: ...</code>，退出码 3。</li>
+<li>不带 <code>--mailbox</code> 时，fake-gws 在内存里生成一个只读邮箱：31 封全部送达，<code>now</code> 是 <code>FIXTURE_NOW</code>。每页最多 10 条，比 <code>maxResults</code> 小时以它为准，所以默认参数下也会分页。</li>
+<li>带 <code>--mailbox &lt;dir&gt;</code> 时，状态存在 <code>&lt;dir&gt;/mailbox.json</code>，fake-gws 只读不写。改状态用 <code>@weir/fixtures</code> 导出的函数：<code>seedMailbox(dir, { until? })</code> 送达时间不晚于 <code>until</code> 的邮件，其余排队，<code>now</code> 取 <code>until</code>，没给时取 <code>FIXTURE_NOW</code>；<code>deliver(dir, n?)</code> 按时间送达下一封或下 n 封；<code>remove(dir, id)</code> 删除；<code>relabel(dir, id, { add, remove })</code> 改 label；<code>expireHistory(dir)</code> 让之前的 historyId 全部过期；<code>setNow(dir, iso)</code> 改 <code>now</code>。命令行的 <code>fake-gws-seed &lt;dir&gt; [--until &lt;iso&gt;]</code> 等于 <code>seedMailbox</code>。</li>
+<li><code>deliver</code>、<code>remove</code>、<code>relabel</code> 每次让 <code>historyId</code> 加 1，追加一条 history 记录。<code>deliver</code> 和 <code>relabel</code> 还把那封邮件的 <code>historyId</code> 设成新值，<code>remove</code> 直接删掉那封邮件。<code>relabel</code> 没有改变任何 label 时什么都不记。<code>expireHistory</code> 让 <code>historyId</code> 加 1、清空 history，之后比当前 <code>historyId</code> 旧的 <code>startHistoryId</code> 都返回 404，当前的 <code>historyId</code> 仍然有效，plugin 重新列一遍之后就能接着增量同步。</li>
+<li>写 <code>mailbox.json</code> 时先写临时文件再 rename。</li>
+</ul>
+
+<h3 id="fixture-config">config.toml、FIXTURE_NOW 和预期的 tag 数</h3>
+<ul>
+<li><code>FIXTURE_NOW</code> 是 <code>2026-10-25T09:00:00-07:00</code>，从 <code>@weir/fixtures</code> 导出。fake-gws 的默认邮箱和 demo 的时钟都用它，fixtures 的代码里不读系统时间。</li>
+<li><code>packages/fixtures/config.toml</code> 是提交进仓库的 weir config：一个 <code>id = "gmail"</code>、<code>plugin = "gws"</code> 的 source，<code>command = ["fake-gws"]</code>，<code>backfill = "newer_than:30d"</code>，以及从原型 <code>tags.toml</code> 复制的四个 tag。GitHub 的 regex 改成 <code>@github\.example&gt;?$</code>，去掉了 <code>ai</code>，没有 <code>[digest]</code> 和 AI profile。<code>configToml(dir)</code> 生成同样的内容，<code>command</code> 换成 <code>["fake-gws", "--mailbox", dir]</code>。一个测试保证提交的文件和 <code>configToml()</code> 逐字节相同。</li>
+<li><code>packages/fixtures/expected-tags.json</code> 以 <code>expectedTags</code> 导出，记录每个 tag 命中的 conversation 数和 item 数，以及 Untagged 的 conversation 数和其中的 item 数。conversation 按 <code>threadId</code> 分组，一个 conversation 里任意一条 item 命中就算这个 conversation 命中。当前的数是 Me 2/4、On-call 0/0、GitHub 4/9、Promos 2/2、Untagged 6/6（conversation/item）。</li>
+<li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。</li>
+</ul>
+<p>PR 里的界面截图和录屏只来自 <code>bun run demo</code> 的合成数据，不用真实邮箱。</p>
 </main>
 </div>
 
