@@ -14,6 +14,7 @@ import {
   mailStream,
   makeHome,
   rawItem,
+  rawRequest,
   sourceConfig,
 } from "./harness.ts";
 
@@ -69,6 +70,8 @@ describe("startup", () => {
           '["tag"][0]["match"]',
         ],
         [sourceConfig().replace('plugin = "fake"', 'plugin = "nope"'), '["source"][0]["plugin"]'],
+        [sourceConfig() + tag("Untagged", invoiceTitle), '["tag"][0]["name"]'],
+        [sourceConfig() + tag("untagged", invoiceTitle), '["tag"][0]["name"]'],
         ["[[source]\n", "invalid TOML"],
       ] as const;
       for (const [body, expected] of cases) {
@@ -92,6 +95,37 @@ describe("startup", () => {
       }).pipe(Effect.scoped);
       expect(existsSync(home.daemon)).toBe(false);
     }),
+  );
+});
+
+describe("access", () => {
+  it.live("only loopback Host and same-origin Origin headers reach the API", () =>
+    Effect.gen(function* () {
+      const { home, port } = makeHome(sourceConfig("1h"));
+      yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource([])) }));
+      const cases = [
+        ["GET", "/status", { Host: `127.0.0.1:${port}` }, 200],
+        ["GET", "/status", { Host: `localhost:${port}` }, 200],
+        ["GET", "/status", { Host: `evil.example:${port}` }, 403],
+        ["GET", "/status", { Host: "127.0.0.1" }, 403],
+        ["GET", "/nope", { Host: `evil.example:${port}` }, 403],
+        ["POST", "/reload", { Host: `127.0.0.1:${port}`, Origin: "http://evil.example" }, 403],
+        ["POST", "/reload", { Host: `127.0.0.1:${port}`, Origin: "null" }, 403],
+        [
+          "POST",
+          "/reload",
+          { Host: `127.0.0.1:${port}`, Origin: `https://127.0.0.1:${port}` },
+          403,
+        ],
+        ["POST", "/reload", { Host: `127.0.0.1:${port}`, Origin: `http://127.0.0.1:${port}` }, 200],
+        ["POST", "/reload", { Host: `localhost:${port}`, Origin: `http://localhost:${port}` }, 200],
+      ] as const;
+      for (const [method, path, headers, expected] of cases) {
+        const response = yield* rawRequest(port, { method, path, headers });
+        expect([method, path, headers, response.status]).toEqual([method, path, headers, expected]);
+        if (expected === 403) expect(response.body).toBe("");
+      }
+    }).pipe(Effect.scoped),
   );
 });
 

@@ -685,7 +685,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <ul>
 <li><code>[digest] language</code> 决定 digest 用什么语言写，默认 <code>zh-CN</code>。</li>
 <li><code>guide</code> 是对所有 digest 生效的额外指令，比如「人名保留英文」。原型里 gpt-6-luna 有 8 个标题写成了繁体，这类问题靠 <code>language</code> 和 <code>guide</code> 约束。</li>
-<li>tag 的 <code>name</code> 原样显示在 UI 里，也是它的 id，写什么语言都可以。</li>
+<li>tag 的 <code>name</code> 原样显示在 UI 里，也是它的 id，写什么语言都可以。<code>Untagged</code> 是保留名，不分大小写，因为 <code>in:</code> chip 用它表示没有 tag 的 conversation。写了这个名字，校验会报错并给出 config 路径。</li>
 <li>tag 的数量没有上限。tag 多了，灵动岛那句话会折行，药丸里的 tag 区可以横向滚动。</li>
 <li><code>ai</code> 默认是 false。只要 conversation 带着一个 <code>ai = true</code> 的 tag，它就自动 digest。</li>
 <li>每个 source 一个 <code>[[source]]</code>。plugin 自己的配置放在 <code>[source.config]</code> 里，core 不解析，原样交给 plugin 校验。</li>
@@ -914,6 +914,8 @@ help[2]:
 <li>prompt 里用分隔符把消息内容标为数据，并告诉 AI 不执行其中的任何指令。</li>
 <li>digest 的输出必须通过 Schema 校验。字段以外的内容一律丢弃。</li>
 <li>daemon 只监听 <code>127.0.0.1</code>。</li>
+<li>daemon 把 <code>Host</code> 拆成主机名和端口再比较。主机名必须是 <code>127.0.0.1</code> 或 <code>localhost</code>，不分大小写。端口必须等于 daemon 监听的端口，省略时按 80 算，所以监听 80 时 <code>127.0.0.1</code> 和 <code>127.0.0.1:80</code> 都合格。请求带 <code>Origin</code> 时，它必须是 <code>http://</code> 加上一个按同样规则合格的主机部分。带用户名、路径或前导零端口的值不合格，<code>Origin: null</code> 也不合格。不符合的请求一律回 403，正文为空。这挡住 DNS rebinding 和其他网页的跨站请求。<code>weir-axi</code> 不带 <code>Origin</code>。</li>
+<li>已知限制：HTTP API 没有按调用方区分的凭证，所以同一台机器上的其他系统账号能通过 loopback 读到邮件。weir 跑在多用户机器上时，或者任何改动邮件的写操作上线之前，这条必须解决。可选的做法是每个 daemon 一个只有本人能读的凭证，或者改用只有本人能访问的 Unix socket。选哪个是产品决定，因为 Web UI 和 API 从同一个 origin 提供。</li>
 <li>凭证不进 weir。gws 把 OAuth token 存在它自己的 keyring 里。</li>
 <li>正文按 markdown 渲染时，夹带的 HTML 按文字显示，不执行，也不加载外部图片。</li>
 </ul>

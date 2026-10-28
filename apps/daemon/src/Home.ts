@@ -20,5 +20,8 @@ export const fromEnv = Config.NonEmptyString("WEIR_HOME").pipe(
   Config.map(make),
 );
 
-export const DaemonFile = Schema.Struct({ port: Schema.Int, pid: Schema.Int });
+export const DaemonFile = Schema.Struct({
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
+  pid: Schema.Int,
+});
 export type DaemonFile = typeof DaemonFile.Type;

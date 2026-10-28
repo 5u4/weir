@@ -1,5 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
+import { untagged } from "@weir/contract/Config";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import { ConversationId, type ConversationRow, Seq } from "@weir/store/Rows";
@@ -10,6 +11,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServer from "effect/http/HttpServer";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,6 +22,7 @@ import { Api, type ConversationSummary, NotFound, type Status, type TagTest } fr
 import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
+import { isLoopbackRequest } from "./Loopback.ts";
 
 const tagTestBatch = 200;
 const tagTestSamples = 3;
@@ -163,7 +167,7 @@ const handlers = HttpApiBuilder.group(
               ? {}
               : {
                   tag:
-                    tag === "Untagged"
+                    tag === untagged
                       ? { _tag: "Untagged" as const }
                       : { _tag: "Named" as const, name: tag },
                 }),
@@ -262,13 +266,29 @@ const advertise = (home: WeirHome) =>
     }),
   );
 
+const loopbackOnly = HttpRouter.middleware(
+  Effect.gen(function* () {
+    const { port } = yield* Daemon;
+    return (httpEffect) =>
+      Effect.flatMap(HttpServerRequest.HttpServerRequest, ({ headers }) =>
+        isLoopbackRequest(headers.host, headers.origin, port)
+          ? httpEffect
+          : Effect.succeed(HttpServerResponse.empty({ status: 403 })),
+      );
+  }),
+  { global: true },
+);
+
 export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
   advertise(home).pipe(
     Layer.provide(
-      HttpRouter.serve(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), {
-        disableLogger: true,
-        disableListenLog: true,
-      }),
+      HttpRouter.serve(
+        Layer.mergeAll(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), loopbackOnly),
+        {
+          disableLogger: true,
+          disableListenLog: true,
+        },
+      ),
     ),
     Layer.provide(
       Layer.unwrap(

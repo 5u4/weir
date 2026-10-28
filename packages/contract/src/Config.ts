@@ -50,8 +50,14 @@ export const SourceConfig = Schema.Struct({
 });
 export type SourceConfig = typeof SourceConfig.Type;
 
+export const untagged = "Untagged";
+
 export const TagConfig = Schema.Struct({
-  name: NonEmptyString,
+  name: NonEmptyString.check(
+    Schema.makeFilter(
+      (name) => name.toLowerCase() !== untagged.toLowerCase() || `tag name "${name}" is reserved`,
+    ),
+  ),
   ai: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   match: Rule,
 });
