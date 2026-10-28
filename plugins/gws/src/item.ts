@@ -1,3 +1,4 @@
+import { TextDecoder } from "node:util";
 import type { RawItem } from "@weir/contract/Source";
 import type { Message, MessagePart } from "./gws.ts";
 import { htmlBody, htmlBodyNew, plainBody, plainNew } from "./markdown.ts";
@@ -16,9 +17,27 @@ const trimPart = (part: MessagePart): MessagePart => {
   };
 };
 
+const headerOf = (part: MessagePart, name: string) =>
+  part.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? null;
+
+const CHARSET = /;\s*charset\s*=\s*"?([^";\s]+)/i;
+
+const decode = (part: MessagePart, data: string) => {
+  const bytes = Buffer.from(data, "base64url");
+  const charset = CHARSET.exec(headerOf(part, "content-type") ?? "")?.[1] ?? "utf-8";
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    return new TextDecoder().decode(bytes);
+  }
+};
+
 const textOf = (part: MessagePart, mimeType: string): string | null => {
-  if (part.mimeType === mimeType && part.body?.data !== undefined && !part.filename) {
-    return Buffer.from(part.body.data, "base64url").toString("utf8");
+  if (part.filename || /^\s*attachment\b/i.test(headerOf(part, "content-disposition") ?? "")) {
+    return null;
+  }
+  if (part.mimeType === mimeType && part.body?.data !== undefined) {
+    return decode(part, part.body.data);
   }
   for (const child of part.parts ?? []) {
     const text = textOf(child, mimeType);
@@ -27,13 +46,19 @@ const textOf = (part: MessagePart, mimeType: string): string | null => {
   return null;
 };
 
-const FROM = /^\s*(?:"?([^"<]*?)"?\s*)?<([^<>]+)>\s*$/;
+const ANGLE_ADDR = /<([^<>]*)>\s*$/;
+const QUOTED_STRING = /"((?:[^"\\]|\\.)*)"/g;
+
+const mailbox = (header: string) => {
+  const angle = ANGLE_ADDR.exec(header);
+  const display = angle ? header.slice(0, angle.index) : "";
+  return {
+    name: display.replace(QUOTED_STRING, (_, text: string) => text.replace(/\\(.)/g, "$1")).trim(),
+    address: (angle?.[1] ?? header).trim().toLowerCase(),
+  };
+};
 
 export const toRawItem = (message: Message, emailAddress: string): RawItem => {
-  const header = (name: string) =>
-    message.payload.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? null;
-  const from = header("from") ?? "";
-  const parsed = FROM.exec(from);
   const html = textOf(message.payload, "text/html");
   const plain = textOf(message.payload, "text/plain") ?? "";
   return {
@@ -42,11 +67,8 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     containerId: emailAddress,
     containerName: "Gmail",
     occurredAt: new Date(Number(message.internalDate)).toISOString(),
-    title: header("subject"),
-    from: {
-      name: parsed?.[1] ?? "",
-      address: (parsed?.[2] ?? from).trim().toLowerCase(),
-    },
+    title: headerOf(message.payload, "subject"),
+    from: mailbox(headerOf(message.payload, "from") ?? ""),
     body: html === null ? plainBody(plain) : htmlBody.turndown(html).trim(),
     bodyNew: html === null ? plainNew(plain) : htmlBodyNew.turndown(html).trim(),
     link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,

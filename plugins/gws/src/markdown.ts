@@ -16,7 +16,10 @@ const turndown = (dropQuoted: boolean) => {
     replacement: (content) => content,
   });
   if (dropQuoted) {
-    service.remove((node) => QUOTED.some((name) => node.classList?.contains(name) ?? false));
+    service.addRule("quoted", {
+      filter: (node) => QUOTED.some((name) => node.classList?.contains(name) ?? false),
+      replacement: () => "",
+    });
   }
   return service;
 };

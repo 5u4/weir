@@ -48,4 +48,12 @@ describe("html", () => {
     expect(body).toContain("Robin");
     expect(body).toContain("> old");
   });
+
+  it("drops a standalone quote blockquote and signature paragraph from bodyNew", () => {
+    expect(
+      htmlBodyNew.turndown(
+        '<p>Ship it.</p><p class="gmail_signature">Robin</p><blockquote class="gmail_quote">old</blockquote>',
+      ),
+    ).toBe("Ship it.");
+  });
 });
