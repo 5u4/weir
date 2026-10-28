@@ -12,6 +12,8 @@ import {
   type Seq,
   SourcedItemRow,
   StreamId,
+  StreamRow,
+  TagStateRow,
   UtcIso,
 } from "./Rows.ts";
 
@@ -155,4 +157,47 @@ export const streamId = Effect.fnUntraced(function* (sourceId: string, externalI
       yield* sql`SELECT id FROM stream WHERE source_id = ${sourceId} AND external_id = ${externalId}`,
     ),
   ).pipe(Option.map(({ id }) => id));
+});
+
+const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamRow));
+
+export const streams = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeStreams(yield* sql`SELECT * FROM stream ORDER BY source_id, id`);
+});
+
+const decodeTagStates = Schema.decodeUnknownEffect(Schema.Array(TagStateRow));
+
+export const tagStates = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeTagStates(yield* sql`SELECT * FROM tag_state ORDER BY name`);
+});
+
+export const TagCount = Schema.Struct({
+  tag: Schema.NullOr(Schema.String),
+  conversations: Schema.Int,
+  unread: Schema.Int,
+  open: Schema.Int,
+});
+export type TagCount = typeof TagCount.Type;
+
+const decodeTagCounts = Schema.decodeUnknownEffect(Schema.Array(TagCount));
+
+export const tagCounts = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeTagCounts(
+    yield* sql`WITH live AS (
+        SELECT c.id,
+          coalesce(s.muted, 0) = 0 AND c.last_seq > coalesce(s.cleared_seq, 0) AS open,
+          coalesce(s.muted, 0) = 0 AND c.last_seq > coalesce(s.cleared_seq, 0)
+            AND c.last_seq > coalesce(s.seen_seq, 0) AS unread
+        FROM conversation c LEFT JOIN conversation_state s ON s.conversation_id = c.id
+        WHERE EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
+      )
+      SELECT conversation_tag.tag, count(*) AS conversations,
+        sum(live.unread) AS unread, sum(live.open) AS open
+      FROM live LEFT JOIN conversation_tag ON conversation_tag.conversation_id = live.id
+      GROUP BY conversation_tag.tag
+      ORDER BY conversation_tag.tag`,
+  );
 });
