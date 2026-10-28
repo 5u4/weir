@@ -27,4 +27,15 @@ describe("stripQuoted", () => {
   it("keeps a sentence that merely starts with On", () => {
     expect(stripQuoted("On Monday we deploy.\nThanks")).toBe("On Monday we deploy.\nThanks");
   });
+
+  it("drops the signature from the -- delimiter line onward", () => {
+    expect(stripQuoted("Ship it.\n\n-- \nAda Lovelace\nStaff Engineer")).toBe("Ship it.");
+    expect(stripQuoted("Ship it.\r\n--\r\nAda")).toBe("Ship it.");
+  });
+
+  it("keeps double dashes inside a line", () => {
+    expect(stripQuoted("Run it with --force -- then tell me.")).toBe(
+      "Run it with --force -- then tell me.",
+    );
+  });
 });

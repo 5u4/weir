@@ -1,11 +1,12 @@
 export const stripQuoted = (body: string): string => {
   const lines = body.split(/\r?\n/);
-  const attribution = lines.findIndex(
+  const end = lines.findIndex(
     (line, index) =>
-      /^\s*On\s/.test(line) &&
-      [line, lines[index + 1] ?? ""].some((candidate) => /\bwrote:\s*$/.test(candidate)),
+      /^--\s?$/.test(line) ||
+      (/^\s*On\s/.test(line) &&
+        [line, lines[index + 1] ?? ""].some((candidate) => /\bwrote:\s*$/.test(candidate))),
   );
-  return (attribution === -1 ? lines : lines.slice(0, attribution))
+  return (end === -1 ? lines : lines.slice(0, end))
     .filter((line) => !/^\s*>/.test(line))
     .join("\n")
     .trim();

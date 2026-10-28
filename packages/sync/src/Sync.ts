@@ -35,6 +35,9 @@ const callSource = <A>(sourceId: string, call: () => Promise<A>) =>
       }),
   });
 
+const errorMessage = (failure: unknown) =>
+  failure instanceof Error ? failure.message : String(failure);
+
 const writePage = Effect.fnUntraced(function* (
   stream: StreamRow,
   page: SyncPage,
@@ -99,19 +102,14 @@ export const syncStream = Effect.fnUntraced(function* (
     Effect.onExit((exit) =>
       Effect.gen(function* () {
         const finishedAt = yield* Clock.currentTimeMillis;
-        const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : null;
+        const error = Exit.isFailure(exit) ? errorMessage(Cause.squash(exit.cause)) : null;
         yield* sql.withTransaction(
           Write.recordSyncRun({
             streamId: stream.id,
             startedAt,
             ms: finishedAt - DateTime.toEpochMillis(startedAt),
             ...counts,
-            error:
-              failure === null
-                ? null
-                : failure instanceof Error
-                  ? failure.message
-                  : String(failure),
+            error,
           }),
         );
       }),
@@ -124,8 +122,24 @@ export const syncSource = Effect.fnUntraced(function* (
   source: Source,
   tags: Tags,
 ) {
+  const sql = yield* SqlClient.SqlClient;
+  const startedAt = yield* DateTime.now;
   const descriptors = yield* callSource(sourceId, () => source.streams()).pipe(
     Effect.flatMap(decodeStreams),
+    Effect.tapError((failure) =>
+      Effect.gen(function* () {
+        const finishedAt = yield* Clock.currentTimeMillis;
+        yield* sql.withTransaction(
+          Write.recordSourceFailure(sourceId, {
+            startedAt,
+            ms: finishedAt - DateTime.toEpochMillis(startedAt),
+            upserts: 0,
+            deletions: 0,
+            error: errorMessage(failure),
+          }),
+        );
+      }),
+    ),
   );
   yield* Effect.forEach(
     descriptors,

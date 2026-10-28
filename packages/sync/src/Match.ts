@@ -31,9 +31,11 @@ const resolve = (root: unknown, pointer: string): unknown => {
   let current = root;
   for (const token of pointer.slice(1).split("/")) {
     const key = JsonPointer.unescapeToken(token);
-    if (current === null || typeof current !== "object" || !Object.hasOwn(current, key)) {
-      return undefined;
-    }
+    if (current === null || typeof current !== "object") return undefined;
+    const present = Array.isArray(current)
+      ? /^(0|[1-9]\d*)$/.test(key) && Number(key) < current.length
+      : Object.hasOwn(current, key);
+    if (!present) return undefined;
     current = Reflect.get(current, key);
   }
   return current;

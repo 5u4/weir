@@ -10,7 +10,7 @@ import {
   ConversationTagRow,
   ItemInsert,
   Seq,
-  type StreamId,
+  StreamId,
   StreamInsert,
   StreamRow,
   SyncRunInsert,
@@ -25,6 +25,7 @@ export interface WrittenItem {
   readonly previousConversationId: ConversationId | null;
 }
 
+const decodeStreamIds = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: StreamId })));
 const decodeStream = Schema.decodeUnknownEffect(Schema.Tuple([StreamRow]));
 const decodeConversationId = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ id: ConversationId })]),
@@ -299,4 +300,17 @@ export const recordSyncRun = Effect.fnUntraced(function* (run: SyncRunInsert) {
   yield* sql`INSERT INTO sync_run ${sql.insert(row)}`;
   yield* sql`UPDATE stream SET last_sync_at = ${row.startedAt}, last_error = ${row.error}
     WHERE id = ${row.streamId}`;
+});
+
+export const recordSourceFailure = Effect.fnUntraced(function* (
+  sourceId: string,
+  run: Omit<SyncRunInsert, "streamId">,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const streams = yield* decodeStreamIds(
+    yield* sql`SELECT id FROM stream WHERE source_id = ${sourceId} ORDER BY id`,
+  );
+  yield* Effect.forEach(streams, ({ id }) => recordSyncRun({ ...run, streamId: id }), {
+    discard: true,
+  });
 });

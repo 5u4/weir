@@ -1,11 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { Rule } from "@weir/contract/Rule";
+import type { Source } from "@weir/contract/Source";
 import { search } from "@weir/store/Read";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
-import { syncStream } from "../src/Sync.ts";
+import { syncSource, syncStream } from "../src/Sync.ts";
 import { recomputeAllTags, type Tags } from "../src/Tags.ts";
 import { mailStream, page, rawItem, type Step, scriptedSource, storeLayer } from "./fixtures.ts";
 
@@ -364,6 +365,84 @@ describe("syncStream bodyNew", () => {
       ]);
       expect(yield* search({ query: "zanzibar" })).toEqual([]);
       expect(yield* search({ query: "ship it" })).toHaveLength(1);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+});
+
+describe("syncSource failures", () => {
+  const failingStreams = (failure: () => Promise<unknown>): Source => ({
+    streams: failure as Source["streams"],
+    sync: async () => page({ cursor: "c1" }),
+  });
+
+  it.effect("records a failed run on each known stream when streams() throws", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:30:00Z")));
+      yield* syncSource(
+        "mail",
+        scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
+        tags,
+      );
+
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:35:00Z")));
+      const error = yield* Effect.flip(
+        syncSource(
+          "mail",
+          failingStreams(() => Promise.reject(new Error("token revoked"))),
+          tags,
+        ),
+      );
+      expect(error.message).toContain("token revoked");
+      expect((yield* syncRuns).slice(1)).toEqual([
+        {
+          startedAt: "2026-10-28T09:35:00.000Z",
+          ms: 0,
+          upserts: 0,
+          deletions: 0,
+          error: "token revoked",
+        },
+      ]);
+      expect(yield* streamState).toMatchObject({
+        lastSyncAt: "2026-10-28T09:35:00.000Z",
+        lastError: "token revoked",
+      });
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("records descriptors in the wrong shape as a failed run", () =>
+    Effect.gen(function* () {
+      yield* syncSource(
+        "mail",
+        scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
+        tags,
+      );
+      yield* Effect.flip(
+        syncSource(
+          "mail",
+          failingStreams(async () => [{ ...mailStream, extra: true }]),
+          tags,
+        ),
+      );
+      expect((yield* streamState)?.lastError).toContain("extra");
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("leaves other sources' streams alone", () =>
+    Effect.gen(function* () {
+      yield* syncSource(
+        "other",
+        scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
+        tags,
+      );
+      yield* Effect.flip(
+        syncSource(
+          "mail",
+          failingStreams(() => Promise.reject(new Error("down"))),
+          tags,
+        ),
+      );
+      expect(yield* syncRuns).toHaveLength(1);
+      expect((yield* streamState)?.lastError).toBeNull();
     }).pipe(Effect.provide(storeLayer())),
   );
 });

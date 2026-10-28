@@ -46,6 +46,20 @@ describe("match pointers", () => {
   it("rejects a pointer with a dangling escape at decode time", () => {
     expect(() => decodeRule({ type: "exists", target: "/raw/a~2" })).toThrow();
   });
+
+  it.each(["/raw/labelIds/length", "/raw/labelIds/01", "/raw/labelIds/-", "/raw/labelIds/2"])(
+    "does not resolve the non-index array token %s",
+    (target) => {
+      expect(matches({ type: "exists", target })).toBe(false);
+      expect(matches({ type: "eq", target, is: 2 })).toBe(false);
+    },
+  );
+
+  it("resolves an object key named length", () => {
+    expect(matches({ type: "eq", target: "/raw/length", is: 3 }, { raw: { length: 3 } })).toBe(
+      true,
+    );
+  });
 });
 
 describe("match on a missing path", () => {
