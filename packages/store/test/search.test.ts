@@ -94,6 +94,22 @@ describe("search", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("renaming a stream reindexes its live items under the new name", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      const [live] = yield* writeItems(stream, [
+        rawItem("live", { threadId: "live", bodyNew: "status report" }),
+        rawItem("gone", { threadId: "gone", bodyNew: "status report" }),
+      ]);
+      yield* softDeleteItems(stream.id, ["gone"]);
+
+      yield* upsertStream("mail", { ...mailStream, name: "Personal inbox" });
+      expect(yield* matches({ query: "Personal" })).toEqual(new Set([live?.conversationId]));
+      expect(yield* matches({ query: "Work" })).toEqual(new Set());
+      expect(yield* matches({ query: "status" })).toEqual(new Set([live?.conversationId]));
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("tag, source, from and since each narrow the results", () =>
     Effect.gen(function* () {
       const work = yield* upsertStream("work", mailStream);

@@ -6,8 +6,17 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import * as Database from "../src/Database.ts";
 import { getConversation, getItem, search } from "../src/Read.ts";
-import { upsertStream, writeItems } from "../src/Write.ts";
+import { softDeleteItems, upsertStream, writeItems } from "../src/Write.ts";
 import { mailStream, rawItem, storeLayer, tempDbFile } from "./fixtures.ts";
+
+const snapshot = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* Effect.all([
+    sql`SELECT * FROM item ORDER BY seq`,
+    sql`SELECT * FROM conversation ORDER BY id`,
+    sql`SELECT rowid, * FROM search_fts ORDER BY rowid`,
+  ]);
+});
 
 describe("store items", () => {
   it.effect("rerunning migrations on an existing file applies nothing and keeps data", () =>
@@ -164,6 +173,39 @@ describe("store items", () => {
       expect(Option.map(movedTo, ({ conversation }) => conversation.title)).toEqual(
         Option.some("Team chat"),
       );
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a batch that fails partway leaves items, conversations and search untouched", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      yield* writeItems(stream, [rawItem("a", { threadId: "t1", bodyNew: "kept" })]);
+      const before = yield* snapshot;
+
+      const error = yield* Effect.flip(
+        writeItems(stream, [
+          rawItem("a", { threadId: "t2", bodyNew: "moved" }),
+          rawItem("b", { bodyNew: "new" }),
+          rawItem("c", { raw: { id: 1n } }),
+        ]),
+      );
+      expect(error._tag).toBe("SchemaError");
+      expect(yield* snapshot).toEqual(before);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a soft delete that fails after marking items rolls the marks back", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      yield* writeItems(stream, [rawItem("m1")]);
+      const sql = yield* SqlClient.SqlClient;
+      const items = sql`SELECT * FROM item`;
+      const before = yield* items;
+
+      yield* sql`DROP TABLE search_fts`;
+      const error = yield* Effect.flip(softDeleteItems(stream.id, ["m1"]));
+      expect(error._tag).toBe("SqlError");
+      expect(yield* items).toEqual(before);
     }).pipe(Effect.provide(storeLayer())),
   );
 });
