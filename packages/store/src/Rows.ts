@@ -64,6 +64,9 @@ export const ItemInsert = Schema.Struct(itemFields);
 export const ItemRow = Schema.Struct({ seq: Seq, ...itemFields });
 export type ItemRow = typeof ItemRow.Type;
 
+export const SourcedItemRow = Schema.Struct({ ...ItemRow.fields, sourceId: Schema.String });
+export type SourcedItemRow = typeof SourcedItemRow.Type;
+
 export const ConversationRow = Schema.Struct({
   id: ConversationId,
   sourceId: Schema.String,
@@ -95,15 +98,19 @@ export const TagStateRow = Schema.Struct({
 });
 export type TagStateRow = typeof TagStateRow.Type;
 
-export const SyncRunRow = Schema.Struct({
-  id: Schema.Int,
+const syncRunFields = {
   streamId: StreamId,
   startedAt: UtcIso,
   ms: Schema.Int,
   upserts: Schema.Int,
   deletions: Schema.Int,
   error: Schema.NullOr(Schema.String),
-});
+};
+
+export const SyncRunInsert = Schema.Struct(syncRunFields);
+export type SyncRunInsert = typeof SyncRunInsert.Type;
+
+export const SyncRunRow = Schema.Struct({ id: Schema.Int, ...syncRunFields });
 export type SyncRunRow = typeof SyncRunRow.Type;
 
 export const Topic = Schema.Struct({

@@ -5,11 +5,12 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
-  type ConversationId,
+  ConversationId,
   ConversationRow,
   ConversationTagRow,
   ItemRow,
   type Seq,
+  SourcedItemRow,
   UtcIso,
 } from "./Rows.ts";
 
@@ -113,4 +114,33 @@ export const getConversation = Effect.fnUntraced(function* (id: ConversationId) 
 export const getItem = Effect.fnUntraced(function* (seq: Seq) {
   const sql = yield* SqlClient.SqlClient;
   return Arr.head(yield* decodeItems(yield* sql`SELECT * FROM item WHERE seq = ${seq}`));
+});
+
+const decodeSourcedItems = Schema.decodeUnknownEffect(Schema.Array(SourcedItemRow));
+const decodeConversationIds = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ id: ConversationId })),
+);
+
+export type LiveItemsQuery =
+  | { readonly conversationIds: ReadonlyArray<ConversationId> }
+  | { readonly seqs: ReadonlyArray<Seq> };
+
+export const liveItems = Effect.fnUntraced(function* (query: LiveItemsQuery) {
+  const sql = yield* SqlClient.SqlClient;
+  const selected =
+    "seqs" in query
+      ? sql.in("item.seq", query.seqs)
+      : sql.in("item.conversation_id", query.conversationIds);
+  return yield* decodeSourcedItems(
+    yield* sql`SELECT item.*, conversation.source_id FROM item
+      JOIN conversation ON conversation.id = item.conversation_id
+      WHERE item.deleted_at IS NULL AND ${selected}
+      ORDER BY item.conversation_id, item.seq`,
+  );
+});
+
+export const conversationIds = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* decodeConversationIds(yield* sql`SELECT id FROM conversation ORDER BY id`);
+  return rows.map(({ id }) => id);
 });

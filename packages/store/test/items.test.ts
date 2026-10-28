@@ -43,8 +43,8 @@ describe("store items", () => {
       const [second] = yield* writeItems(stream, [rawItem("m1", { body: "final" })]);
       if (first === undefined || second === undefined) return expect.unreachable();
 
-      expect(first.inserted).toBe(true);
-      expect(second).toEqual({ ...first, inserted: false });
+      expect(first.previousConversationId).toBeNull();
+      expect(second).toEqual({ ...first, previousConversationId: first.conversationId });
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{ seq: number; body: string }>`SELECT seq, body FROM item`;
       expect(rows).toEqual([{ seq: first.seq, body: "final" }]);
@@ -219,6 +219,10 @@ describe("store items", () => {
         ),
       );
       expect(keys).toEqual([Option.some("t2"), Option.some("t3")]);
+      expect(written.map(({ previousConversationId }) => previousConversationId)).toEqual([
+        null,
+        null,
+      ]);
       const sql = yield* SqlClient.SqlClient;
       expect(yield* sql`SELECT external_id, body_new FROM item ORDER BY seq`).toEqual([
         { externalId: "x", bodyNew: "second" },
@@ -238,6 +242,7 @@ describe("store items", () => {
       const [after] = yield* writeItems(stream, [rawItem("x", { threadId: "t2" })]);
       if (before === undefined || after === undefined) return expect.unreachable();
 
+      expect(after.previousConversationId).toBe(before.conversationId);
       expect(yield* getConversation(before.conversationId)).toEqual(Option.none());
       expect(
         Option.map(yield* getConversation(after.conversationId), ({ items }) =>

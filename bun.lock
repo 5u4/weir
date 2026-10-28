@@ -42,6 +42,18 @@
         "@effect/vitest": "catalog:",
       },
     },
+    "packages/sync": {
+      "name": "@weir/sync",
+      "version": "0.1.0",
+      "dependencies": {
+        "@weir/contract": "workspace:*",
+        "@weir/store": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@effect/vitest": "catalog:",
+      },
+    },
     "plugins/gws": {
       "name": "@weir/plugin-gws",
       "version": "0.1.0",
@@ -204,6 +216,8 @@
     "@weir/plugin-gws": ["@weir/plugin-gws@workspace:plugins/gws"],
 
     "@weir/store": ["@weir/store@workspace:packages/store"],
+
+    "@weir/sync": ["@weir/sync@workspace:packages/sync"],
 
     "assertion-error": ["assertion-error@2.0.1", "", {}, "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA=="],
 
