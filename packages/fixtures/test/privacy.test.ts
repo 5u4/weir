@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import scenarios from "../scenarios.json" with { type: "json" };
 import { gmail, listAllIds } from "./fake-gws.ts";
@@ -31,6 +33,10 @@ describe("privacy", () => {
   it("keeps every address, host and IP in the fixtures and fake-gws output reserved", () => {
     const report = [
       ...privacyReport("scenarios.json", scenarios),
+      ...privacyReport(
+        "config.toml",
+        Bun.TOML.parse(readFileSync(join(import.meta.dirname, "../config.toml"), "utf8")),
+      ),
       ...fakeGwsOutputs().flatMap(([source, output]) => privacyReport(source, output)),
     ];
     expect(report.join("\n")).toBe("");
