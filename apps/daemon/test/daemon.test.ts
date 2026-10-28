@@ -69,6 +69,8 @@ describe("startup", () => {
           '["tag"][0]["match"]',
         ],
         [sourceConfig().replace('plugin = "fake"', 'plugin = "nope"'), '["source"][0]["plugin"]'],
+        [sourceConfig() + tag("Untagged", invoiceTitle), '["tag"][0]["name"]'],
+        [sourceConfig() + tag("untagged", invoiceTitle), '["tag"][0]["name"]'],
         ["[[source]\n", "invalid TOML"],
       ] as const;
       for (const [body, expected] of cases) {

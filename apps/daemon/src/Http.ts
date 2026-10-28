@@ -1,5 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
+import { untagged } from "@weir/contract/Config";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import { ConversationId, type ConversationRow, Seq } from "@weir/store/Rows";
@@ -163,7 +164,7 @@ const handlers = HttpApiBuilder.group(
               ? {}
               : {
                   tag:
-                    tag === "Untagged"
+                    tag === untagged
                       ? { _tag: "Untagged" as const }
                       : { _tag: "Named" as const, name: tag },
                 }),

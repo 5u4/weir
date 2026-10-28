@@ -2,7 +2,7 @@
 import * as BunRuntime from "@effect/platform-bun/BunRuntime";
 import * as BunServices from "@effect/platform-bun/BunServices";
 import { encode } from "@toon-format/toon";
-import { DurationShorthand } from "@weir/contract/Config";
+import { DurationShorthand, untagged } from "@weir/contract/Config";
 import { Api } from "@weir/daemon/Api";
 import * as Home from "@weir/daemon/Home";
 import * as Console from "effect/Console";
@@ -70,7 +70,7 @@ const home = Command.make("weir-axi", {}, () =>
           unread,
           open,
         })),
-        { name: "Untagged", ai: false, ...status.untagged },
+        { name: untagged, ai: false, ...status.untagged },
       ],
       sources: status.sources.flatMap(
         ({ id, listing, error, streams }): Array<SourceRow> =>
