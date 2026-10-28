@@ -42,13 +42,18 @@ describe("privacy", () => {
     expect(report.join("\n")).toBe("");
   });
 
-  it("names a real address injected into the scenarios", () => {
+  it.each([
+    ["someone@gmail.com", "Forwarding to someone@gmail.com for a second look."],
+    ["bit.ly", "Notes are at bit.ly/review-notes before the 10:30:00 sync."],
+    ["github.blog", "Writeup is on github.blog; staging stays on 2001:db8::1."],
+    ["2001:4860:4860::8888", "Connect to 2001:4860:4860::8888 at 09:00."],
+  ])("names %s injected into the scenarios", (offender, line) => {
     const copy = structuredClone(scenarios);
     const message = copy.threads[3]?.messages[0];
     if (!message) throw new Error("scenarios lost threads[3].messages[0]");
-    message.text += "\nForwarding to someone@gmail.com for a second look.";
+    message.text += `\n${line}`;
     expect(privacyReport("scenarios.json", copy)).toEqual([
-      "someone@gmail.com @ scenarios.json threads[3].messages[0].text",
+      `${offender} @ scenarios.json threads[3].messages[0].text`,
     ]);
   });
 });

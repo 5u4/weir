@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -28,6 +28,8 @@ const tempMailbox = () => {
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+const snapshot = (dir: string) =>
+  readdirSync(dir).map((file) => [file, readFileSync(join(dir, file), "utf8")]);
 
 type Part = { mimeType: string; body: { data?: string }; parts?: Part[] };
 const plainBody = (payload: Part): string => {
@@ -134,6 +136,20 @@ describe("fake-gws --mailbox", () => {
     expect(expected).toBeLessThan(31);
     expect(listAllIds("newer_than:30d", dir).messages).toHaveLength(expected);
     expect(listAllIds("", dir).messages).toHaveLength(31);
+  });
+
+  it("rejects impossible clocks before writing the mailbox", () => {
+    for (const impossible of ["2026-13-25T09:00:00-07:00", "2026-02-29T09:00:00-07:00"]) {
+      const fresh = tempMailbox();
+      expect(() => seedMailbox(fresh, { until: impossible })).toThrow(impossible);
+      expect(snapshot(fresh)).toEqual([]);
+
+      const seeded = tempMailbox();
+      seedMailbox(seeded);
+      const before = snapshot(seeded);
+      expect(() => setNow(seeded, impossible)).toThrow(impossible);
+      expect(snapshot(seeded)).toEqual(before);
+    }
   });
 
   it("records deliveries, deletions and label changes as history", () => {

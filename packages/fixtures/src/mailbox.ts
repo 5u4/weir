@@ -46,8 +46,19 @@ export type Mailbox = {
 
 const INITIAL_HISTORY_ID = 100_000;
 const PAGE_SIZE = 10;
-export const ISO_WITH_OFFSET =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z|([+-])(\d{2}):(\d{2}))$/;
+const CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|([+-])(\d{2}):(\d{2}))$/;
+
+export const parseClock = (iso: string) => {
+  const m = CLOCK.exec(iso);
+  const epochMs = Date.parse(iso);
+  const invalid = new Error(`not a real YYYY-MM-DDTHH:MM:SS with an offset: ${iso}`);
+  if (!m || Number.isNaN(epochMs)) throw invalid;
+  const offsetMinutes =
+    m[1] === "Z" ? 0 : (m[2] === "-" ? -1 : 1) * (Number(m[3]) * 60 + Number(m[4]));
+  const local = new Date(epochMs + offsetMinutes * 60_000);
+  if (local.toISOString().slice(0, 19) !== iso.slice(0, 19)) throw invalid;
+  return { epochMs, local, offsetMinutes };
+};
 
 const generated: ReadonlyMap<string, GeneratedMessage> = new Map(
   gmailMessages(scenarios)
@@ -76,8 +87,7 @@ const deliverOne = (mailbox: Mailbox, id: string) => {
 };
 
 export const seed = (now: string): Mailbox => {
-  if (!ISO_WITH_OFFSET.test(now)) throw new Error(`not YYYY-MM-DDTHH:MM:SS with an offset: ${now}`);
-  const cutoff = Date.parse(now);
+  const cutoff = parseClock(now).epochMs;
   const me = scenarios.people[scenarios.me];
   if (!me) throw new Error(`scenarios.me names unknown person ${scenarios.me}`);
   const mailbox: Mailbox = {

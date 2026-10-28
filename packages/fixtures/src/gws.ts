@@ -3,8 +3,8 @@ import {
   HISTORY_FIELDS,
   type History,
   type HistoryType,
-  ISO_WITH_OFFSET,
   type Mailbox,
+  parseClock,
 } from "./mailbox.ts";
 
 export type GwsResult = { stdout: string; stderr: string; exitCode: number };
@@ -70,20 +70,15 @@ const newerThanCutoff = (mailbox: Mailbox, q: unknown): number => {
   const m = /^newer_than:(\d+)([dmy])$/.exec(trimmed);
   if (!m) throw validation(`fake-gws supports only an empty q or newer_than:N[dmy], got "${q}"`);
   const n = Number(m[1]);
-  const now = ISO_WITH_OFFSET.exec(mailbox.now);
-  if (!now)
-    throw new Error(`mailbox now is not YYYY-MM-DDTHH:MM:SS with an offset: ${mailbox.now}`);
-  const [year, month, day, hour, minute, second] = now.slice(1, 7).map(Number);
-  const offsetMinutes =
-    now[7] === "Z" ? 0 : (now[8] === "-" ? -1 : 1) * (Number(now[9]) * 60 + Number(now[10]));
+  const { local, offsetMinutes } = parseClock(mailbox.now);
   return (
     Date.UTC(
-      (year ?? 0) - (m[2] === "y" ? n : 0),
-      (month ?? 0) - 1 - (m[2] === "m" ? n : 0),
-      (day ?? 0) - (m[2] === "d" ? n : 0),
-      hour,
-      minute,
-      second,
+      local.getUTCFullYear() - (m[2] === "y" ? n : 0),
+      local.getUTCMonth() - (m[2] === "m" ? n : 0),
+      local.getUTCDate() - (m[2] === "d" ? n : 0),
+      local.getUTCHours(),
+      local.getUTCMinutes(),
+      local.getUTCSeconds(),
     ) -
     offsetMinutes * 60_000
   );

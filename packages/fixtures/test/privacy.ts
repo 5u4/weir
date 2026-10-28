@@ -1,31 +1,26 @@
+import { isIPv6 } from "node:net";
+
 const RESERVED_DOMAINS = ["example.com", "example.net", "example.org"];
 const RESERVED_TLDS = ["example", "test", "invalid", "localhost"];
 const DOCUMENTATION_NETS = ["192.0.2.", "198.51.100.", "203.0.113."];
-const PROSE_TLDS = new Set(
-  "com net org edu gov mil int io co ai app dev me info biz us uk ca de fr jp cn au in nl ru br es it ch se no eu xyz tech cloud".split(
-    " ",
-  ),
-);
+const CODE_IDENTIFIERS = ["invoice.created", "InvoiceWriter.create", "webhook.ts"];
 const AUTH_RESULT_PROPERTY = /^(header|smtp|policy)\.[a-z]+$/i;
 
 const EMAIL = /[\w.+-]+@((?:[a-z0-9-]+\.)+[a-z0-9-]+)/gi;
 const URL = /\b[a-z][a-z0-9+.-]*:\/\/([^/\s:?#<>()"'\]]+)[^\s<>()"']*/gi;
+const IPV6_CANDIDATE = /(?<![\w:])[0-9a-f]*(?::[0-9a-f]*){2,}(?![\w:])/gi;
 const IPV4 = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])/g;
-const HOSTNAME =
-  /(?<![\w.@-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9](?![\w-])/gi;
-
-const tldOf = (host: string) => host.slice(host.lastIndexOf(".") + 1).toLowerCase();
+const HOSTNAME = /(?<![\w.@-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?![\w-])/gi;
 
 const reservedHost = (host: string) => {
   const h = host.toLowerCase().replace(/\.$/, "");
   return (
-    RESERVED_DOMAINS.some((d) => h === d || h.endsWith(`.${d}`)) || RESERVED_TLDS.includes(tldOf(h))
+    RESERVED_DOMAINS.some((d) => h === d || h.endsWith(`.${d}`)) ||
+    RESERVED_TLDS.includes(h.slice(h.lastIndexOf(".") + 1))
   );
 };
 
-export type Field = "structured" | "prose";
-
-export const offendingValues = (text: string, field: Field): string[] => {
+export const offendingValues = (text: string): string[] => {
   const found: string[] = [];
   const rest = text
     .replace(EMAIL, (address, domain: string) => {
@@ -36,18 +31,26 @@ export const offendingValues = (text: string, field: Field): string[] => {
       if (!reservedHost(host)) found.push(url);
       return " ";
     })
+    .replace(IPV6_CANDIDATE, (candidate) => {
+      if (!isIPv6(candidate)) return candidate;
+      const [first = "", second = ""] = candidate.split(":");
+      if (Number.parseInt(first, 16) !== 0x2001 || Number.parseInt(second, 16) !== 0xdb8) {
+        found.push(candidate);
+      }
+      return " ";
+    })
     .replace(IPV4, (ip) => {
       if (!DOCUMENTATION_NETS.some((net) => ip.startsWith(net))) found.push(ip);
       return " ";
     });
   for (const host of rest.match(HOSTNAME) ?? []) {
-    if (field === "prose" && !PROSE_TLDS.has(tldOf(host))) continue;
-    if (!AUTH_RESULT_PROPERTY.test(host) && !reservedHost(host)) found.push(host);
+    if (CODE_IDENTIFIERS.includes(host) || AUTH_RESULT_PROPERTY.test(host) || reservedHost(host)) {
+      continue;
+    }
+    found.push(host);
   }
   return found;
 };
-
-const PROSE_KEYS = new Set(["text", "signature", "snippet", "data"]);
 
 export const privacyReport = (source: string, value: unknown): string[] => {
   const report: string[] = [];
@@ -55,8 +58,7 @@ export const privacyReport = (source: string, value: unknown): string[] => {
     if (typeof v === "string") {
       const decoded = key === "data" && parentKey === "body";
       const text = decoded ? Buffer.from(v, "base64url").toString("utf8") : v;
-      const field = PROSE_KEYS.has(key) ? "prose" : "structured";
-      for (const bad of offendingValues(text, field)) {
+      for (const bad of offendingValues(text)) {
         report.push(`${bad} @ ${source} ${path}${decoded ? " (decoded)" : ""}`);
       }
     } else if (Array.isArray(v)) {

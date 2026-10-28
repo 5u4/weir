@@ -2,7 +2,7 @@ import expected from "../expected-tags.json" with { type: "json" };
 import {
   deliverNext,
   expire,
-  ISO_WITH_OFFSET,
+  parseClock,
   readMailbox,
   relabelMessage,
   removeMessage,
@@ -117,7 +117,7 @@ export const expireHistory = (dir: string) => {
 };
 
 export const setNow = (dir: string, iso: string) => {
-  if (!ISO_WITH_OFFSET.test(iso)) throw new Error(`not YYYY-MM-DDTHH:MM:SS with an offset: ${iso}`);
+  parseClock(iso);
   const mailbox = readMailbox(dir);
   mailbox.now = iso;
   writeMailbox(dir, mailbox);
