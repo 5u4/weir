@@ -24,6 +24,30 @@ describe("stripQuoted", () => {
     ).toBe("Ship it.");
   });
 
+  const threeLineAttribution =
+    "On Tue, Oct 27, 2026 at 9:00 AM\nAda Lovelace\n<ada@example.com> wrote:";
+
+  it("recognises an attribution wrapped over three lines before quoted history", () => {
+    expect(stripQuoted(`Ship it.\n\n${threeLineAttribution}\n> plan\n>> older plan`)).toBe(
+      "Ship it.",
+    );
+  });
+
+  it("recognises an attribution wrapped over three lines before unquoted history", () => {
+    expect(stripQuoted(`Ship it.\n\n${threeLineAttribution}\nunquoted history`)).toBe("Ship it.");
+  });
+
+  it("keeps a paragraph that starts with On and never reaches wrote:", () => {
+    const body = "On Monday we shipped the fix.\nIt went fine.\nThanks";
+    expect(stripQuoted(body)).toBe(body);
+  });
+
+  it("does not treat a five-line block ending in wrote: as an attribution", () => {
+    const body =
+      "Ship it.\n\nOn Tue, Oct 27, 2026\nat 9:00 AM\nAda\nLovelace\n<ada@example.com> wrote:";
+    expect(stripQuoted(body)).toBe(body);
+  });
+
   it("keeps a sentence that merely starts with On", () => {
     expect(stripQuoted("On Monday we deploy.\nThanks")).toBe("On Monday we deploy.\nThanks");
   });
