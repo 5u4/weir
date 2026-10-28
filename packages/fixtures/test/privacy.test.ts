@@ -47,6 +47,7 @@ describe("privacy", () => {
     ["bit.ly", "Notes are at bit.ly/review-notes before the 10:30:00 sync."],
     ["github.blog", "Writeup is on github.blog; staging stays on 2001:db8::1."],
     ["2001:4860:4860::8888", "Connect to 2001:4860:4860::8888 at 09:00."],
+    ["smtp.com", "Notes are at smtp.com/review-notes before the sync."],
   ])("names %s injected into the scenarios", (offender, line) => {
     const copy = structuredClone(scenarios);
     const message = copy.threads[3]?.messages[0];
@@ -54,6 +55,18 @@ describe("privacy", () => {
     message.text += `\n${line}`;
     expect(privacyReport("scenarios.json", copy)).toEqual([
       `${offender} @ scenarios.json threads[3].messages[0].text`,
+    ]);
+  });
+
+  it("exempts authentication properties only at property positions of authentication headers", () => {
+    const headers = [
+      { name: "Authentication-Results", value: "mx.example; spf=pass smtp.mailfrom=a@example.com" },
+      { name: "Authentication-Results", value: "mx.example; spf=pass (relayed by smtp.com)" },
+      { name: "X-Note", value: "smtp.mailfrom=a@example.com" },
+    ];
+    expect(privacyReport("headers", headers)).toEqual([
+      "smtp.com @ headers [1].value",
+      "smtp.mailfrom @ headers [2].value",
     ]);
   });
 });
