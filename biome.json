@@ -8,7 +8,7 @@
   "files": {
     "includes": ["**", "!repos", "!**/dist", "!design"]
   },
-  "plugins": ["./lint/no-react-effect.grit"],
+  "plugins": ["./lint/no-react-effect.grit", "./lint/no-ambient-time.grit"],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
