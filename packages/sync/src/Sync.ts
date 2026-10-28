@@ -1,4 +1,5 @@
 import { type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
+import * as Read from "@weir/store/Read";
 import type { ConversationId, StreamRow } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import * as Cause from "effect/Cause";
@@ -6,6 +7,7 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { stripQuoted } from "./Body.ts";
@@ -35,7 +37,7 @@ const callSource = <A>(sourceId: string, call: () => Promise<A>) =>
       }),
   });
 
-const errorMessage = (failure: unknown) =>
+export const errorMessage = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
 
 const writePage = Effect.fnUntraced(function* (
@@ -78,18 +80,20 @@ export const syncStream = Effect.fnUntraced(function* (
 ) {
   const sql = yield* SqlClient.SqlClient;
   const startedAt = yield* DateTime.now;
-  const stream = yield* sql.withTransaction(
-    Effect.gen(function* () {
-      const { stream, fromMeChanged } = yield* Write.upsertStream(sourceId, descriptor);
-      yield* recomputeTags(tags, fromMeChanged);
-      return stream;
-    }),
-  );
+  let streamId = Option.getOrNull(yield* Read.streamId(sourceId, descriptor.id));
   let counts: SyncCounts = { upserts: 0, deletions: 0 };
-  let cursor = stream.cursor;
-  let backfilling = stream.backfilledAt === null;
-  let more = true;
   return yield* Effect.gen(function* () {
+    const stream = yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const { stream, fromMeChanged } = yield* Write.upsertStream(sourceId, descriptor);
+        yield* recomputeTags(tags, fromMeChanged);
+        return stream;
+      }),
+    );
+    streamId = stream.id;
+    let cursor = stream.cursor;
+    let backfilling = stream.backfilledAt === null;
+    let more = true;
     while (more) {
       const page = yield* callSource(sourceId, () => source.sync(descriptor.id, cursor)).pipe(
         Effect.flatMap(decodePage),
@@ -107,11 +111,12 @@ export const syncStream = Effect.fnUntraced(function* (
   }).pipe(
     Effect.onExit((exit) =>
       Effect.gen(function* () {
+        if (streamId === null) return;
         const finishedAt = yield* Clock.currentTimeMillis;
         const error = Exit.isFailure(exit) ? errorMessage(Cause.squash(exit.cause)) : null;
         yield* sql.withTransaction(
           Write.recordSyncRun({
-            streamId: stream.id,
+            streamId,
             startedAt,
             ms: finishedAt - DateTime.toEpochMillis(startedAt),
             ...counts,

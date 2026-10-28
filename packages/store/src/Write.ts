@@ -14,6 +14,7 @@ import {
   StreamInsert,
   StreamRow,
   SyncRunInsert,
+  TagStateRow,
   UtcIso,
 } from "./Rows.ts";
 
@@ -43,6 +44,7 @@ const decodeItemRefs = Schema.decodeUnknownEffect(
 );
 const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
 const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
+const encodeTagStates = Schema.encodeEffect(Schema.Array(TagStateRow));
 
 const ownAddresses = (stream: StreamRow) =>
   new Set(stream.me.map((address) => address.toLowerCase()));
@@ -320,4 +322,13 @@ export const recordSourceFailure = Effect.fnUntraced(function* (
   yield* Effect.forEach(streams, ({ id }) => recordSyncRun({ ...run, streamId: id }), {
     discard: true,
   });
+});
+
+export const reconcileTagState = Effect.fnUntraced(function* (aiTags: ReadonlyArray<string>) {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM tag_state WHERE NOT ${sql.in("name", aiTags)}`;
+  if (aiTags.length === 0) return;
+  const aiSince = yield* DateTime.now;
+  const rows = yield* encodeTagStates(aiTags.map((name) => ({ name, aiSince })));
+  yield* sql`INSERT INTO tag_state ${sql.insert(rows)} ON CONFLICT (name) DO NOTHING`;
 });

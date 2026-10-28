@@ -356,6 +356,37 @@ describe("syncStream sync_run", () => {
       expect((yield* streamState)?.cursor).toBeNull();
     }).pipe(Effect.provide(storeLayer())),
   );
+
+  it.effect("records a failed run when retagging after a change to me fails", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:30:00Z")));
+      const fromMeTags: Tags = [
+        { name: "sent", match: { type: "eq", target: "/fromMe", is: true } },
+      ];
+      const { source } = scriptedSource(
+        new Map([
+          [null, page({ cursor: "c1", upserts: [rawItem("a1", { threadId: "t1" })] })],
+          ["c1", page({ cursor: "c1" })],
+        ]),
+      );
+      yield* syncStream("mail", source, mailStream, fromMeTags);
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE item SET raw = 'not json'`;
+
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:35:00Z")));
+      const aliased = { ...mailStream, me: [...mailStream.me, "ada@example.com"] };
+      yield* Effect.flip(syncStream("mail", source, aliased, fromMeTags));
+
+      const runs = yield* syncRuns;
+      expect(runs).toHaveLength(2);
+      expect(runs[1]).toMatchObject({ startedAt: "2026-10-28T09:35:00.000Z", upserts: 0 });
+      expect(runs[1]?.error).toEqual(expect.any(String));
+      expect(yield* streamState).toMatchObject({
+        lastSyncAt: "2026-10-28T09:35:00.000Z",
+        lastError: runs[1]?.error,
+      });
+    }).pipe(Effect.provide(storeLayer())),
+  );
 });
 
 describe("syncStream bodyNew", () => {

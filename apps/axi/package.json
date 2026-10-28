@@ -1,0 +1,19 @@
+{
+  "name": "@weir/axi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "weir-axi": "./src/main.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@toon-format/toon": "catalog:",
+    "@weir/contract": "workspace:*",
+    "@weir/daemon": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:"
+  }
+}
