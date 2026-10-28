@@ -23,9 +23,8 @@
     const d = window.weirDev;
     const links = LINKS.map(([k, l]) => `<a href="/ui/${k}/" class="${k === here ? "on" : ""}">${l}</a>`).join("");
     const brk = (k, l) => `<button class="dev ${d.broken[k] ? "lit" : ""}" data-a="break" data-k="${k}" aria-pressed="${d.broken[k]}">${l}${d.broken[k] ? "：开" : "：关"}</button>`;
-    const sim = (k, l) => `<button class="dev ${d.sim[k] ? "lit" : ""}" data-a="sim-k" data-k="${k}" aria-pressed="${d.sim[k]}">${l}${d.sim[k] ? "：开" : "：关"}</button>`;
     const dev = d
-      ? `<span class="sep dev">|</span>${d.runs.length ? `<select class="dev" data-a="run" title="数据">${d.runs.map((r) => `<option value="${esc(r.slug)}" ${r.slug === d.run ? "selected" : ""}>${esc(r.label)}</option>`).join("")}</select>` : ""}<button class="dev" data-a="sim">模拟新消息</button><button class="dev" data-a="reset">重置状态</button>${brk("source", "break source")}${brk("config", "break config")}${sim("unsorted", "simulate unsorted")}${sim("many", "many buckets")}<span class="src dev">已加载：${esc(d.source)}</span>`
+      ? `<span class="sep dev">|</span><button class="dev" data-a="sim">模拟新消息</button><button class="dev" data-a="reset">重置状态</button>${brk("source", "break source")}${brk("config", "break config")}<button class="dev ${d.earlier === "run" ? "lit" : ""}" data-a="earlier" title="Digest earlier: one model call (step) or the whole gap (run)">earlier：${d.earlier}</button><span class="src dev">已加载：${esc(d.source)}</span>`
       : "";
     el.innerHTML = `${links}${dev}<button data-a="min" title="收起">${el.classList.contains("min") ? "›" : "‹"}</button>`;
   }
@@ -35,10 +34,9 @@
     if (a === "sim") window.weirDev?.simulate();
     else if (a === "reset") window.weirDev?.reset();
     else if (a === "break") window.weirDev?.toggleBreak(b.dataset.k);
-    else if (a === "sim-k") window.weirDev?.toggleSim(b.dataset.k);
+    else if (a === "earlier") window.weirDev?.toggleEarlier();
     else if (a === "min") el.classList.toggle("min"), draw();
   });
-  el.addEventListener("change", (e) => e.target.dataset.a === "run" && window.weirDev?.setRun(e.target.value));
   window.addEventListener("weirdev", draw);
   draw();
 })();

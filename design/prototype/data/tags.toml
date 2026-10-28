@@ -1,0 +1,58 @@
+# Example user config for the prototype. weir ships with zero tags; this is what one user might write.
+
+[digest]
+threshold = 1000
+max_input = 24000
+context = 6000
+
+# Me: what I wrote to others, Teams mentions of me, and Primary mail addressed to me alone from a person.
+# The kokoro-ramen.example line came later: its loyalty mail looks personal (Primary, To only me, no List-Unsubscribe).
+[[tag]]
+name = "Me"
+ai = true
+match = { type = "or", rules = [
+  { type = "and", rules = [
+    { type = "eq", target = "/fromMe", is = true },
+    { type = "or", rules = [
+      { type = "eq", target = "/source", is = "teams" },
+      { type = "some", target = "/raw/payload/headers", rule = { type = "and", rules = [
+        { type = "regex", target = "/name", regex = "^(to|cc)$", flags = "i" },
+        { type = "regex", target = "/value", regex = "(^|[\\s<,\"])(?!robin\\.ellis@example\\.com)[\\w.+-]+@", flags = "i" },
+      ] } },
+    ] },
+  ] },
+  { type = "some", target = "/raw/mentions", rule = { type = "eq", target = "/mentioned/user/id", is = "cd40ef40-540e-43c4-a09d-cc3aacb7cdc8" } },
+  { type = "and", rules = [
+    { type = "eq", target = "/source", is = "gmail" },
+    { type = "eq", target = "/fromMe", is = false },
+    { type = "some", target = "/raw/payload/headers", rule = { type = "and", rules = [
+      { type = "regex", target = "/name", regex = "^to$", flags = "i" },
+      { type = "regex", target = "/value", regex = "^[^,]*robin\\.ellis@example\\.com[^,]*$", flags = "i" },
+    ] } },
+    { type = "not", rule = { type = "some", target = "/raw/payload/headers", rule = { type = "regex", target = "/name", regex = "^(cc|list-unsubscribe)$", flags = "i" } } },
+    { type = "not", rule = { type = "regex", target = "/from/address", regex = "no-?reply|notifications?@|mailer-daemon", flags = "i" } },
+    { type = "not", rule = { type = "regex", target = "/from/address", regex = "@kokoro-ramen\\.example$", flags = "i" } },
+    { type = "some", target = "/raw/labelIds", rule = { type = "eq", target = "", is = "CATEGORY_PERSONAL" } },
+  ] },
+] }
+
+[[tag]]
+name = "On-call"
+ai = true
+match = { type = "regex", target = "/containerName", regex = "oncall|war-room" }
+
+[[tag]]
+name = "GitHub"
+match = { type = "some", target = "/raw/payload/headers", rule = { type = "and", rules = [
+  { type = "regex", target = "/name", regex = "^from$", flags = "i" },
+  { type = "regex", target = "/value", regex = "@github\\.com>?$", flags = "i" },
+] } }
+
+[[tag]]
+name = "Promos"
+match = { type = "some", target = "/raw/labelIds", rule = { type = "eq", target = "", is = "CATEGORY_PROMOTIONS" } }
+
+# Prototype only: stands in for the daemon's tag_state table (the moment each ai = true tag was first loaded).
+[tag_state]
+Me = "2026-10-20T00:00:00-07:00"
+On-call = "2026-10-20T00:00:00-07:00"

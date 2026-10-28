@@ -1,33 +1,31 @@
 const LS = "weir.proto.";
-const NONE = "__none";
 const CLEARED = "__cleared";
-const DEFAULT_RUN = "gpt-6-luna-r5";
+const UNTAGGED = "__untagged";
 const EASE = "cubic-bezier(0.2, 0, 0, 1)";
-// Spread order: neighbours in this list sit far apart on the hue wheel, so the first buckets read as distinct.
-const PALETTE = { red: 29, blue: 262, green: 158, purple: 305, amber: 75, cyan: 200, pink: 350, lime: 120, sky: 235, orange: 50, teal: 180, indigo: 280, yellow: 100, rose: 5 };
+const GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const PERSONAL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "qq.com", "163.com", "126.com", "icloud.com", "me.com", "yahoo.com"]);
-// Display names come from config in the real app; the run's data carries the ids.
-const BUCKET_NAMES = { action: "Action", fyi: "FYI", feed: "Reading", reading: "Reading", notify: "Alerts", alerts: "Alerts" };
-// Comes from config in the real app (`color` on a [[bucket]]), where an unknown name is a config error.
-const BUCKET_COLORS = { action: "red", fyi: "blue", feed: "green", reading: "green", notify: "purple", alerts: "purple" };
-const UNSORTED = "Unsorted";
+// Each user tag owns one hue in config order; Untagged stays neutral. style.css turns it into a tone.
+const HUES = [262, 200, 150, 75, 330, 20];
+const STATE_NAMES = { open: "Open", resolved: "Resolved", fyi: "FYI" };
 const broken = { source: false, config: false, ...JSON.parse(localStorage.getItem(LS + "dev.break") || "{}") };
-const sim = { unsorted: false, many: false, ...JSON.parse(localStorage.getItem(LS + "dev.sim") || "{}") };
-const EXTRA_BUCKETS = ["Travel", "Family", "Finance", "Shopping", "School", "Health", "Home", "Projects", "Events", "Receipts"];
+// Dev switcher: how far Digest earlier reaches back, one model call ("step") or the whole gap ("run").
+let earlierMode = localStorage.getItem(LS + "dev.earlier") === "run" ? "run" : "step";
 
-let data, source, storeKey, runs = [], runSlug = null, itemById, me, hues;
-// convId -> { seenAt, clearedAt, muted }
+let data, source, storeKey, itemById, me, views;
+// convId -> { seenSeq, clearedSeq, muted }
 let state = {};
 const ui = {
   tab: null,
   selected: null,
   // Per open conversation; onLeave resets them.
-  old: new Set(), // first item id of each expanded "N earlier" run
-  sumOpen: false,
-  fold: false, // context card folded into its one-line bar
-  jump: null, // item id to scroll to and flash after the next paint
-  snap: {}, // convId -> Set of item ids highlighted as new while the conversation is open
-  sims: 0,
+  shape: new Map(), // digest id -> "row" | "card", overriding read-as-row, unread-as-card
+  earlier: false, // the "N earlier digests" fold opened
+  unf: new Set(), // topics (digestId:index) unfolded into their originals
+  long: new Set(), // original bodies shown past their clamp
+  fold: false, // header folded into its one-line bar
+  jump: null, // seq to scroll to and flash after the next paint
+  snap: {}, // convId -> seenSeq when the conversation was opened
+  pending: {}, // convId -> the request ({ kind, ... }) plus { fromSeq, toSeq, n, error? } while its call runs or after it failed
   busy: false,
   flash: false,
   tabJump: false,
@@ -75,54 +73,22 @@ async function getJson(url) {
 }
 
 async function load() {
-  runs = (await getJson("/data/runs/index.json"))?.runs || [];
-  const pref = localStorage.getItem(LS + "run");
-  const run = runs.find((r) => r.slug === pref) || runs.find((r) => r.slug === DEFAULT_RUN) || runs.find((r) => r.slug === "gpt-6-luna-low") || runs[0];
-  const tries = [
-    ...(run ? [[`/data/runs/${run.slug}/data.json`, `run:${run.slug}`, `runs/${run.slug}`]] : []),
-    ["/data/data.json", "data.json", "data/data.json"],
-    ["/ux/fixture.json", "fixture", "fixture.json"],
-  ];
-  for (const [url, key, name] of tries) {
-    data = await getJson(url);
-    if (data) {
-      storeKey = key;
-      source = name;
-      runSlug = run && key === `run:${run.slug}` ? run.slug : null;
-      break;
-    }
-  }
+  data = await getJson("/data/out/data.json");
   if (!data) {
     document.body.textContent = "Could not load data.";
     return;
   }
-  for (const i of data.items) {
-    if (/（合成）$/.test(i.sourceLabel)) i.synthetic = true;
-    i.sourceLabel = i.sourceLabel.replace(/（合成）$/, "");
-  }
-  for (const b of data.buckets) Object.assign(b, { name: BUCKET_NAMES[b.id] || b.id, color: BUCKET_COLORS[b.id] });
-  if (sim.many) {
-    data.buckets.push(...EXTRA_BUCKETS.map((name) => ({ id: name.toLowerCase(), name })));
-    for (const c of data.conversations) c.bucket = data.buckets[hash(c.id) % data.buckets.length].id;
-  }
-  hues = bucketHues(data.buckets);
-  if (sim.unsorted) {
-    // Unread at the cutoff, so they reach the sentence; the first 4 are still being classified, the last 3 carry a bucket id the config no longer has.
-    const picks = data.conversations.filter((c) => Date.parse(c.lastAt) > Date.parse(data.seenCutoff)).sort((a, b) => (a.id < b.id ? -1 : 1)).slice(0, 7);
-    picks.forEach((c, i) => (i < 4 ? Object.assign(c, { bucket: null, pending: true }) : (c.bucket = "old-receipts")));
-  }
+  storeKey = "out";
+  source = "data/out";
   itemById = Object.fromEntries(data.items.map((i) => [i.id, i]));
-  me = new Set(data.me.map((a) => a.toLowerCase()));
+  for (const c of data.conversations) c.bySeq = new Map(itemsOf(c).map((i) => [i.seq, i]));
+  me = new Set(data.me.addrs.map((a) => a.toLowerCase()));
+  views = [...data.tags.map((t, k) => ({ id: t.name, name: t.name, hue: HUES[k % HUES.length] })), { id: UNTAGGED, name: "Untagged" }];
+  for (const c of data.conversations) c.views = c.tags.length ? c.tags : [UNTAGGED];
   state = JSON.parse(localStorage.getItem(LS + "state." + storeKey) || "{}");
   initStatus();
   window.weirDev = {
-    runs,
-    run: runSlug,
     source,
-    setRun(slug) {
-      localStorage.setItem(LS + "run", slug);
-      location.reload();
-    },
     simulate,
     reset,
     broken,
@@ -132,11 +98,14 @@ async function load() {
       window.dispatchEvent(new Event("weirdev"));
       render();
     },
-    sim,
-    toggleSim(k) {
-      sim[k] = !sim[k];
-      localStorage.setItem(LS + "dev.sim", JSON.stringify(sim));
-      location.reload();
+    get earlier() {
+      return earlierMode;
+    },
+    toggleEarlier() {
+      earlierMode = earlierMode === "step" ? "run" : "step";
+      localStorage.setItem(LS + "dev.earlier", earlierMode);
+      window.dispatchEvent(new Event("weirdev"));
+      render();
     },
   };
   window.dispatchEvent(new Event("weirdev"));
@@ -152,53 +121,61 @@ function setS(c, patch) {
 
 const conv = (id) => data.conversations.find((c) => c.id === id);
 const itemsOf = (c) => c.itemIds.map((id) => itemById[id]).filter(Boolean);
+const itemAt = (c, seq) => c.bySeq.get(seq);
 const lastItem = (c) => itemsOf(c).at(-1);
 const lastIso = (c) => lastItem(c)?.occurredAt || c.lastAt;
 const lastMs = (c) => Date.parse(lastIso(c));
-const seenMs = (c) => Date.parse(S(c).seenAt || data.seenCutoff);
-const isUnread = (c) => lastMs(c) > seenMs(c);
-const isCleared = (c) => !!S(c).clearedAt && lastMs(c) <= Date.parse(S(c).clearedAt);
+const lastSeq = (c) => lastItem(c)?.seq || 0;
+const seenSeq = (c) => S(c).seenSeq ?? c.seenSeq;
+const isUnread = (c) => lastSeq(c) > seenSeq(c);
+const isCleared = (c) => S(c).clearedSeq != null && lastSeq(c) <= S(c).clearedSeq;
 const isHidden = (c) => !!S(c).muted || isCleared(c);
 const isMe = (p) => me.has(p.addr.toLowerCase());
-const bucketName = (id) => data.buckets.find((b) => b.id === id)?.name || UNSORTED;
-const lede = (c) => (c.summary || "").split(/(?<=[。！？])|\n/)[0];
-// Each bucket owns one hue. The inline style carries only the hue; style.css turns it into a tone per surface and theme.
+const tagName = (id) => views.find((t) => t.id === id)?.name || id;
+const tagsOf = (c) => views.filter((t) => c.views.includes(t.id)).map((t) => t.id);
 const tint = (id) => {
-  const h = hues.get(id);
+  const h = views.find((t) => t.id === id)?.hue;
   return h == null ? "--bh:0;--bk:0" : `--bh:${h};--bk:1`;
 };
-/* Explicit colors claim their slots first. A bucket without one starts at a slot hashed from its id, so it keeps its
-   hue when buckets are added or reordered, and walks forward past taken slots so the first 14 never share a hue. */
-function bucketHues(buckets) {
-  const names = Object.keys(PALETTE);
-  const taken = new Set(buckets.map((b) => b.color).filter(Boolean));
-  const out = new Map();
-  for (const b of buckets) {
-    if (b.color) {
-      out.set(b.id, PALETTE[b.color]);
-      continue;
-    }
-    let h = 2166136261;
-    for (const byte of new TextEncoder().encode(b.id)) h = Math.imul(h ^ byte, 16777619);
-    const start = (h >>> 0) % names.length;
-    let i = start;
-    while (taken.has(names[i]) && (i = (i + 1) % names.length) !== start);
-    taken.add(names[i]);
-    out.set(b.id, PALETTE[names[i]]);
+// A conversation wears the hue of the tag you are looking at it through, or its first tag.
+const homeTag = (c) => (c.views.includes(ui.tab) ? ui.tab : tagsOf(c)[0]);
+const convTint = (c) => tint(homeTag(c));
+
+// Digests of a conversation never overlap, so every one of them is shown, in seq order.
+const shownDigests = (c) => data.digests.filter((d) => d.conversationId === c.id).sort((a, b) => a.fromSeq - b.fromSeq);
+const floorOf = (c) => Math.max(0, ...shownDigests(c).map((d) => d.toSeq));
+// What the next auto digest counts toward the threshold (contract §3): text from the first message after the last digest
+// that arrived on or after since. null when no tag of the conversation has AI on.
+function autoChars(c) {
+  if (!c.since) return null;
+  const start = itemsOf(c).find((i) => i.seq > floorOf(c) && Date.parse(i.occurredAt) >= Date.parse(c.since));
+  return start ? itemsOf(c).filter((i) => i.seq >= start.seq).reduce((n, i) => n + i.bodyNew.length, 0) : 0;
+}
+
+// The conversation as chapters (one per shown digest) and raw runs between or after them; the last raw run is the tail.
+function segments(c) {
+  const its = itemsOf(c);
+  const out = [];
+  let k = 0;
+  for (const d of shownDigests(c)) {
+    const gap = [];
+    while (k < its.length && its[k].seq < d.fromSeq) gap.push(its[k++]);
+    if (gap.length) out.push({ items: gap });
+    const ch = [];
+    while (k < its.length && its[k].seq <= d.toSeq) ch.push(its[k++]);
+    out.push({ d, items: ch });
   }
+  const tail = its.slice(k);
+  if (tail.length || ui.pending[c.id]?.kind === "now") out.push({ items: tail, tail: true });
   return out;
 }
 
 function sections() {
-  const out = data.buckets.map((b) => ({ id: b.id, name: b.name, convs: [] }));
-  const byId = Object.fromEntries(out.map((s) => [s.id, s]));
-  const none = { id: NONE, name: UNSORTED, convs: [] };
+  const out = views.map((t) => ({ id: t.id, name: t.name, convs: [] }));
   for (const c of data.conversations) {
     if (isHidden(c)) continue;
-    (byId[c.bucket] || none).convs.push(c);
+    for (const s of out) if (c.views.includes(s.id)) s.convs.push(c);
   }
-  // Unsorted leads: it is the one place config has not spoken for yet, so it asks to be looked at first.
-  if (none.convs.length) out.unshift(none);
   for (const s of out) {
     s.convs.sort((a, b) => lastMs(b) - lastMs(a));
     s.unread = s.convs.filter(isUnread).length;
@@ -211,15 +188,16 @@ const currentSection = (secs) => secs.find((s) => s.id === ui.tab) || secs.find(
 const currentList = () => (searching() ? shown().map((r) => r.c) : ui.tab === CLEARED ? clearedList() : currentSection(sections())?.convs || []);
 
 function onOpen(c) {
-  const seen = seenMs(c);
-  ui.snap[c.id] = new Set(itemsOf(c).filter((i) => Date.parse(i.occurredAt) > seen).map((i) => i.id));
-  if (isUnread(c)) setS(c, { seenAt: lastIso(c) });
+  ui.snap[c.id] = seenSeq(c);
+  if (isUnread(c)) setS(c, { seenSeq: lastSeq(c) });
 }
 
 function onLeave(id) {
   delete ui.snap[id];
-  ui.old.clear();
-  ui.sumOpen = false;
+  ui.shape.clear();
+  ui.unf.clear();
+  ui.earlier = false;
+  ui.long.clear();
   ui.fold = false;
 }
 
@@ -256,20 +234,26 @@ function ago(ms) {
   if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
   return `${Math.floor(d / 86400)}d ago`;
 }
-const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+const plural = (n, one, many = one + "s") => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
 const ME = "Me";
 const short = (p) => (isMe(p) ? ME : (p.name || p.addr.split("@")[0]).split(/\s+/)[0]);
 const whoList = (names, max) => (names.length > max ? `${names.slice(0, max).join(", ")} +${names.length - max}` : names.join(", "));
 const pad = (n) => String(n).padStart(2, "0");
 const srcApp = (i) => String(i.sourceLabel).split("·")[0].trim();
+const seqSpan = (a, b) => (a === b ? `#${a}` : `#${a}–#${b}`);
+function timeSpan(items) {
+  const a = items[0]?.occurredAt;
+  const b = items.at(-1)?.occurredAt;
+  if (!a) return "";
+  if (a === b) return abs(a);
+  return dayKey(a) === dayKey(b) ? `${day(a)} ${hm(a)}–${hm(b)}` : `${abs(a)} – ${abs(b)}`;
+}
 
+// One per distinct sender address.
 function participants(c) {
-  const names = [];
-  for (const i of itemsOf(c)) {
-    const n = short(i.from);
-    if (!names.includes(n)) names.push(n);
-  }
-  return names;
+  const by = new Map();
+  for (const i of itemsOf(c)) if (!by.has(i.from.addr.toLowerCase())) by.set(i.from.addr.toLowerCase(), short(i.from));
+  return [...by.values()];
 }
 
 function orgDomain(addr) {
@@ -338,18 +322,19 @@ function widgetHtml(s, v, active) {
   return `<button class="w w-${v} ${on ? "on" : ""} ${on && ui.flash ? "flash" : ""}" data-tab="${s.id}" style="${tint(s.id)}" aria-pressed="${on}" aria-label="${esc(label)}">${avs}${count}<span class="w-name">${esc(s.name)}</span></button>`;
 }
 
-const clearedWidget = (n, on) => `<button class="w w-cl ${on ? "on" : ""} ${on && ui.flash ? "flash" : ""}" data-tab="${CLEARED}" aria-pressed="${on}"><span class="w-u">Cleared</span> <span class="w-n">${n}</span></button>`;
+const plainWidget = (id, name, n, on) => `<button class="w w-cl ${on ? "on" : ""} ${on && ui.flash ? "flash" : ""}" data-tab="${id}" aria-pressed="${on}"><span class="w-u">${esc(name)}</span> <span class="w-n">${n}</span></button>`;
 
-function fullHtml(secs, active) {
-  const hot = secs.filter((s) => s.unread);
-  const quiet = secs.filter((s) => !s.unread && s.convs.length);
-  const empty = secs.filter((s) => !s.convs.length);
-  const cl = clearedList().length;
+// User tags with unread lead, then Untagged; Cleared closes the tail line and never counts as an update.
+function fullHtml(tags, active) {
+  const hot = tags.filter((s) => s.unread);
+  const quiet = tags.filter((s) => !s.unread && s.convs.length);
+  const empty = tags.filter((s) => !s.convs.length && s.id !== UNTAGGED);
   const main = hot.length ? enumerate(hot.map((s) => widgetHtml(s, "main", active)), "", glue(` ${verb(hot.length, "has", "have")} updates.`, "glue end")) : glue("All caught up.", "allclear");
   const tail = [];
   if (quiet.length) tail.push(`<span class="cl">${enumerate(quiet.map((s) => widgetHtml(s, "tail", active)), glue("Read but not done: ", "glue lead"), glue(".", "glue end"))}</span>`);
   if (empty.length) tail.push(`<span class="cl">${enumerate(empty.map((s) => widgetHtml(s, "empty", active)), "", glue(` ${verb(empty.length, "is", "are")} clear.`, "glue end"))}</span>`);
-  tail.push(`<span class="cl"><span class="grp">${clearedWidget(cl, active === CLEARED)}${glue(".", "glue end")}</span></span>`);
+  const ends = [plainWidget(CLEARED, "Cleared", clearedList().length, active === CLEARED)];
+  tail.push(`<span class="cl">${enumerate(ends, "", glue(".", "glue end"))}</span>`);
   return `<h1 class="s-main">${main}</h1>
     <p class="s-tail">${tail.join(" ")}</p><span class="cap-tools"><button class="q-go" data-q="open" aria-label="Search" title="Search (/)">${Q_ICON}</button>${statusBtn("st-go")}</span>`;
 }
@@ -363,16 +348,16 @@ function chipHtml(s, active) {
   return `<button class="cw cw-${kind} ${on ? "on" : ""} ${on && ui.flash ? "flash" : ""}" data-tab="${s.id}" style="${tint(s.id)}" aria-pressed="${on}" aria-label="${esc(label)}" title="${esc(label)}">${avs}${n}<span class="cw-name">${esc(s.name)}</span></button>`;
 }
 
-// Compact form keeps config order so a widget never changes place while counts move under it.
+// Compact form keeps tag order so a widget never changes place while counts move under it.
 function pillHtml(secs, active) {
   const on = active === CLEARED;
   const n = clearedList().length;
   const cl = `<button class="cw cw-cl ${on ? "on" : ""} ${on && ui.flash ? "flash" : ""}" data-tab="${CLEARED}" aria-pressed="${on}" title="Cleared conversations"><span class="cw-name">Cleared</span><span class="w-n">${n}</span></button>`;
-  const arrow = (d) => `<button class="cws-a ${d}" data-cws="${d}" tabindex="-1" aria-label="Scroll buckets ${d === "prev" ? "left" : "right"}">${CHEV(d)}</button>`;
+  const arrow = (d) => `<button class="cws-a ${d}" data-cws="${d}" tabindex="-1" aria-label="Scroll tags ${d === "prev" ? "left" : "right"}">${CHEV(d)}</button>`;
   return `<button class="cw cw-q" data-q="open" aria-label="Search" title="Search (/)">${Q_ICON}</button><span class="cap-div"></span><span class="cws-w"><span class="cws">${secs.map((s) => chipHtml(s, active)).join("")}</span>${arrow("prev")}${arrow("next")}</span><span class="cap-div"></span>${cl}${statusBtn("cw cw-st")}`;
 }
 
-// The notch's shape follows (reading, search): the sentence over the digest, a pill over a conversation. Searching,
+// The notch's shape follows (reading, search): the sentence over the empty reader, a pill over a conversation. Searching,
 // the sentence's subject becomes the query field and the pill carries the query and the stepper.
 const formOf = (reading) => (ui.search ? (reading ? "q-pill" : "q-full") : reading ? "pill" : "full");
 const isFull = (form) => form === "full" || form === "q-full";
@@ -415,8 +400,8 @@ function paintCap(secs, reading) {
   }
 }
 
-/* The pill's bucket strip scrolls on its own between the fixed search and status ends. Each paint rebuilds it, so it
-   keeps its offset; it centers the active chip only when what you are looking at moved (bucket, conversation, or the
+/* The pill's tag strip scrolls on its own between the fixed search and status ends. Each paint rebuilds it, so it
+   keeps its offset; it centers the active chip only when what you are looking at moved (tag, conversation, or the
    pill just appeared), never under a hand that is scrolling it. */
 let chipAt = null;
 const cwsRO = new ResizeObserver((es) => es.forEach((e) => fadeCws(e.target)));
@@ -441,12 +426,20 @@ function fadeCws(el) {
   el.classList.toggle("fr", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
 }
 
+// The row says where the conversation stands: the newest digest's headline when it reaches the last message, else the
+// last message itself.
+function preview(c) {
+  const last = lastItem(c);
+  const d = shownDigests(c).at(-1);
+  if (d && d.toSeq >= last.seq) return d.headline;
+  return `${short(last.from)}: ${plain(last.bodyNew).slice(0, 160) || "(no text)"}`;
+}
+
 function rowHtml(c) {
   const unread = isUnread(c);
   const its = itemsOf(c);
-  const fresh = unread ? its.filter((i) => Date.parse(i.occurredAt) > seenMs(c)).length : 0;
-  const tags = [...new Set(its.map(srcTag))];
-  const line = unread && c.update ? esc(c.update) : esc(lede(c));
+  const fresh = unread ? lastSeq(c) - seenSeq(c) : 0;
+  const apps = [...new Set(its.map(srcApp))];
   const inCleared = ui.tab === CLEARED;
   const who = participants(c);
   const whoTxt = whoList(who, 2);
@@ -454,11 +447,11 @@ function rowHtml(c) {
   const tail = inCleared
     ? `<span class="row-badge">${S(c).muted ? "Muted" : "Done"}</span><button class="row-act restore" data-act="restore">Restore</button>`
     : `<button class="row-act" data-act="done" title="Done. It leaves the list until something new arrives.">Done</button>`;
-  return `<article class="row ${unread ? "unread" : ""} ${ui.selected === c.id ? "sel" : ""}" data-k="r-${c.id}" data-conv="${c.id}" data-open tabindex="0" aria-current="${ui.selected === c.id}" style="${tint(c.bucket)}">
+  return `<article class="row ${unread ? "unread" : ""} ${ui.selected === c.id ? "sel" : ""}" data-k="r-${c.id}" data-conv="${c.id}" data-open tabindex="0" aria-current="${ui.selected === c.id}" style="${convTint(c)}">
     <span class="row-av">${avatarHtml(from)}</span>
     <span class="row-title" title="${esc(c.title)}">${esc(c.title)}</span>
-    <span class="row-line">${unread && c.update ? `<i class="row-new">New</i>` : ""}${line}</span>
-    <span class="row-meta">${c.pending && homeOf(c) === NONE ? `<span class="row-sort" title="Still being sorted into a bucket">Sorting</span>` : ""}<span class="row-who" title="${esc(who.join(", "))}">${esc(whoTxt)}</span><span class="row-n">${plural(its.length, "message")}${fresh ? `, ${fresh} new` : ""} · ${esc(tags.join(" · "))}</span></span>
+    <span class="row-line">${esc(preview(c))}</span>
+    <span class="row-meta"><span class="row-who" title="${esc(who.join(", "))}">${esc(whoTxt)}</span><span class="row-n">${plural(its.length, "message")}${fresh ? `, ${fresh} new` : ""} · ${esc(apps.join(" · "))}</span></span>
     <span class="row-time" title="${esc(abs(lastIso(c)))}">${relShort(lastIso(c))}</span>
     ${tail}
   </article>`;
@@ -473,12 +466,12 @@ function listHtml(secs) {
     return head + (cl.length ? `<div class="rows cleared">${cl.map(rowHtml).join("")}</div>` : `<div class="empty"><p class="empty-big">Nothing cleared yet.</p><p class="empty-sub">Done and muted conversations land here. Restore any of them at any time.</p></div>`);
   }
   const cur = currentSection(secs);
-  const head = `<div class="l-head" style="${tint(cur.id)}"><h2 class="l-name">${esc(cur.name)}</h2><span class="l-meta">${plural(cur.convs.length, "conversation")}${cur.unread ? ` · ${cur.unread} unread` : cur.convs.length ? " · all read" : ""}</span>${cur.convs.length ? `<button class="clearall" data-act="clearall" data-bucket="${cur.id}">Clear all</button>` : ""}</div>`;
+  const head = `<div class="l-head" style="${tint(cur.id)}"><h2 class="l-name">${esc(cur.name)}</h2><span class="l-meta">${plural(cur.convs.length, "conversation")}${cur.unread ? ` · ${cur.unread} unread` : cur.convs.length ? " · all read" : ""}</span>${cur.convs.length ? `<button class="clearall" data-act="clearall" data-tag="${cur.id}">Clear all</button>` : ""}</div>`;
   return head + (cur.convs.length ? `<div class="rows">${cur.convs.map(rowHtml).join("")}</div>` : `<div class="empty"><p class="empty-big">${esc(cur.name)} is clear.</p><p class="empty-sub">New messages bring a conversation back here as unread.</p></div>`);
 }
 
 // With nothing open the reader never repeats the list; it shows sync status instead.
-function digestHtml(secs) {
+function emptyReaderHtml(secs) {
   if (searching()) return searchCalmHtml();
   return esHtml(ui.tab === CLEARED ? null : currentSection(secs));
 }
@@ -492,23 +485,12 @@ function esHtml(cur) {
     const bad = failing(s);
     return line(`${bad ? "bad" : ""} ${stopped ? "held" : ""}`, esc(s.name), bad ? "Sync failed" : stopped ? "Stopped" : `Synced ${ago(s.syncedAt)}`, bad ? `<code class="es-err">${esc(s.error)}</code>` : "");
   });
-  rows.push(line(stopped ? "held" : "", "Enrichment", stopped ? "Stopped" : waiting ? `${plural(waiting, "conversation")} waiting` : "Caught up"));
-  const alert = stopped ? `<p class="es-alert">Sync and enrich stopped. The config did not load.</p>` : "";
+  rows.push(line(stopped ? "held" : "", "Digests", stopped ? "Stopped" : waiting ? `${plural(waiting, "conversation")} waiting` : "Caught up"));
+  const alert = stopped ? `<p class="es-alert">Sync and digests stopped. The config did not load.</p>` : "";
   const open = statusAlert() ? `<button class="es-open" data-st="open">Open Status</button>` : "";
   return `<div class="calm es ${statusAlert() ? "warn" : ""}" ${cur ? `style="${tint(cur.id)}"` : ""}>${alert}<ul class="es-rows" aria-label="Sync">${rows.join("")}</ul>${open}</div>`;
 }
 
-function relText(c) {
-  const its = itemsOf(c);
-  const out = [];
-  if (its.some((i) => i.to.some(isMe))) out.push("To you");
-  if (its.some((i) => i.cc.some(isMe))) out.push("Cc you");
-  if (its.some((i) => isMe(i.from))) out.push("You replied");
-  if (c.threadIds.length > 1) out.push(`Merged ${c.threadIds.length} threads`);
-  return out;
-}
-
-const KINDS = { ask: "Ask", decision: "Decided", date: "Date", info: "Info" };
 const dayKey = (iso) => new Date(iso).toDateString();
 const dayLabel = (iso) => {
   const n = daysAgo(iso);
@@ -588,102 +570,11 @@ const plain = (s) =>
     .replace(/[#>*_`|~]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-const firstSentence = (s) => {
-  const p = plain(s);
-  return p.match(/^.{8,}?[.!?。！？](?=\s|$)/)?.[0] || p || "(no text)";
-};
-// The tag names where a message was said. A mail thread is one place whatever folder each copy sits in, so mail tags
-// by app; a chat tags by channel.
-const srcTag = (i) => `${srcApp(i) === "Teams" ? i.sourceLabel : srcApp(i)}${i.synthetic ? " (synthetic)" : ""}`;
+const srcOf = (c) => srcApp(itemsOf(c)[0]);
 
 const TIME_GAP = 5 * 60 * 1000;
 
-/* The stream as flat rows: day breaks, the Last read divider, collapsed read runs, and runs of one sender.
-   A read run longer than 3 collapses except a tail kept as context for what follows: two messages for long runs, one
-   for short runs, since hiding two behind a row as tall as two bubbles saves nothing. */
-function streamRows(c) {
-  const its = itemsOf(c);
-  const fresh = ui.snap[c.id] || new Set();
-  const seq = [];
-  let run = [];
-  const flushRun = () => {
-    const keep = run.length > 5 ? 2 : 1;
-    if (run.length > 3 && !ui.old.has(run[0].i.id)) seq.push({ older: run.slice(0, -keep).map((e) => e.i) }, ...run.slice(-keep));
-    else seq.push(...run);
-    run = [];
-  };
-  its.forEach((i, j) => {
-    const e = { i, n: j + 1 };
-    if (fresh.has(i.id)) {
-      flushRun();
-      seq.push(e);
-    } else run.push(e);
-  });
-  flushRun();
-  const rows = [];
-  let prevDay = null;
-  let group = null;
-  let marked = false;
-  for (const e of seq) {
-    if (e.older) {
-      rows.push({ k: "older", items: e.older });
-      prevDay = dayKey(e.older.at(-1).occurredAt);
-      group = null;
-      continue;
-    }
-    const { i } = e;
-    if (dayKey(i.occurredAt) !== prevDay) {
-      rows.push({ k: "day", iso: i.occurredAt });
-      prevDay = dayKey(i.occurredAt);
-      group = null;
-    }
-    if (!marked && fresh.has(i.id)) {
-      marked = true;
-      rows.push({ k: "mark", first: i === its[0], n: fresh.size });
-      group = null;
-    }
-    const prev = group?.msgs.at(-1).i;
-    if (prev?.from.addr.toLowerCase() !== i.from.addr.toLowerCase() || Date.parse(i.occurredAt) - Date.parse(prev.occurredAt) >= TIME_GAP) {
-      group = { k: "group", from: i.from, me: isMe(i.from), at: i.occurredAt, msgs: [] };
-      rows.push(group);
-    }
-    group.msgs.push(e);
-  }
-  return rows;
-}
-
-function gistHtml(i, terms = []) {
-  return i.gist ? `<span class="gist">${hl(i.gist, terms)}</span>` : `<span class="gist fb">${hl(firstSentence(i.bodyNew), terms)}</span>`;
-}
-
-// Searching, a matching message is marked where it matched: terms in the gist, or a quiet tag naming the field.
-function bubbleHtml({ i }) {
-  const r = curResult();
-  const hit = r?.byItem.get(i.id);
-  const cur = hit && r.items[ui.search.at] === i.id;
-  const f = hit && !hit.some((x) => x.f === "gist") && ["body", "from", "source"].find((k) => hit.some((x) => x.f === k));
-  const tag = f ? `<span class="bh" title="Matched in ${FIELD[f]}">${FIELD[f]}</span>` : "";
-  return `<div class="bl"><div class="bb ${i.gist ? "" : "fbk"} ${hit ? "hit" : ""} ${cur ? "cur" : ""}" data-item="${i.id}">${gistHtml(i, r ? qTerms() : [])}</div>${tag}</div>`;
-}
-
 // In a group chat everyone shares one org favicon, so people who share a domain get their own monogram instead.
-function groupHtml(c, g, tag, shared) {
-  const name = g.me ? ME : g.from.name || g.from.addr;
-  return `<section class="sg ${g.me ? "me" : ""}">
-    ${g.me ? "" : `<span class="g-av">${avatarHtml(g.from, shared.has(orgDomain(g.from.addr)))}</span>`}
-    <div class="g-col"><div class="g-head"><b title="${esc(g.from.addr)}">${esc(name)}</b>${tag ? `<span class="g-src">${esc(tag)}</span>` : ""}<time datetime="${esc(g.at)}" title="${esc(abs(g.at))}">${hm(g.at)}</time></div>${g.msgs.map(bubbleHtml).join("")}</div>
-  </section>`;
-}
-
-function olderHtml(items) {
-  const who = [];
-  for (const i of items) if (!who.includes(short(i.from))) who.push(short(i.from));
-  const a = day(items[0].occurredAt);
-  const b = day(items.at(-1).occurredAt);
-  return `<button class="older" data-act="old" data-item="${items[0].id}"><span class="o-n">${items.length} earlier</span><span class="o-span">${a === b ? a : `${a} – ${b}`} · <span class="o-who">${esc(whoList(who, 3))}</span></span><span class="o-go">Show</span></button>`;
-}
-
-// Domains more than one sender of c writes from; in a group chat everyone shares one org favicon.
 function sharedDomains(c) {
   const addrs = new Map();
   for (const i of itemsOf(c)) addrs.set(i.from.addr.toLowerCase(), orgDomain(i.from.addr));
@@ -692,24 +583,197 @@ function sharedDomains(c) {
   return new Set([...per].filter(([, n]) => n > 1).map(([d]) => d));
 }
 
+/* The stream. Blocks that stand for messages carry data-seqs (the exact messages) and data-u (the kind of block): when a
+   digest lands, the tail's originals fold into the topics that cite them through that mapping. Blocks that move when
+   something above them opens carry data-k, so they slide instead of jump. */
+const seqAttr = (seqs, u) => `data-seqs="${seqs.join(" ")}" data-u="${u}"`;
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, k) => a + k);
+const stateMark = (s) => `<i class="tsm tsm-${s}">${STATE_NAMES[s] || s}</i>`;
+const tpKey = (d, ti) => `${d.id}:${ti}`;
+const CHEV_D = `<svg class="cv" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>`;
+const ARR_U = `<svg class="ar" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5v-9M4.5 7L8 3.5 11.5 7"/></svg>`;
+const ARR_D = `<svg class="ar" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M4.5 9L8 12.5 11.5 9"/></svg>`;
+
 function streamHtml(c) {
-  const shared = sharedDomains(c);
-  // A source tag only shows where it changes, so a one-channel chat says where it is once.
-  let prevTag = null;
-  return streamRows(c)
-    .map((r) => {
-      if (r.k === "day") return `<div class="day" role="separator"><span>${dayLabel(r.iso)}</span></div>`;
-      if (r.k === "mark") return `<div class="lr" role="separator"><span><b>${r.first ? "All new from here" : "Last read"}</b>${r.n} new</span></div>`;
-      if (r.k === "older") {
-        prevTag = null;
-        return olderHtml(r.items);
-      }
-      const tag = srcTag(r.msgs[0].i);
-      const show = tag !== prevTag;
-      prevTag = tag;
-      return groupHtml(c, r, show ? tag : "", shared);
-    })
-    .join("");
+  const r = curResult();
+  const seen = ui.snap[c.id] ?? seenSeq(c);
+  const cx = {
+    c,
+    seen,
+    n: lastSeq(c) - seen,
+    marked: false,
+    shared: sharedDomains(c),
+    terms: r ? qTerms() : [],
+    hits: r ? new Set(r.items.map((id) => itemById[id].seq)) : null,
+    cur: r && curHit() ? itemById[curHit()].seq : null,
+  };
+  const segs = segments(c);
+  const read = segs.filter((s) => s.d && s.d.toSeq <= seen);
+  // A digest open as a card, one that just landed included, stays out of the fold.
+  const fold = read.length > 4 && !ui.earlier ? read.slice(0, -4).filter((s) => ui.shape.get(s.d.id) !== "card") : [];
+  const out = [];
+  for (const s of segs) {
+    if (fold.includes(s)) {
+      if (s === fold[0]) out.push(earlierHtml(fold));
+      continue;
+    }
+    if (s.d) out.push((ui.shape.get(s.d.id) ?? (s.d.toSeq <= seen ? "row" : "card")) === "row" ? digestRowHtml(cx, s) : cardHtml(cx, s));
+    else if (s.tail) out.push(tailHtml(cx, s));
+    else out.push(rawRunHtml(cx, s.items, s.items.at(-1).seq) + upBarHtml(cx, s));
+  }
+  return out.join("");
+}
+
+/* The bottom edge of a gap, where scrolling up from newer content arrives: what is still undigested above, and Digest
+   earlier, the tail's Digest now mirrored. Its mark is the gap's first seq, which stays put while the gap shrinks from
+   the bottom, so the bar keeps its place through the landing. */
+function upBarHtml(cx, s) {
+  const c = cx.c;
+  const n = s.items.length;
+  const req = { kind: "earlier", upTo: s.items.at(-1).seq };
+  const [a, b] = reqRange(c, req);
+  const p = ui.pending[c.id];
+  const mine = p?.kind === "earlier" && p.upTo === req.upTo ? p : null;
+  const at = `data-mk="ge-${s.items[0].seq}" data-up="${req.upTo}"`;
+  if (mine?.error) return `<div class="tl-h ge err" ${at} role="alert"><span class="tl-k">Couldn't digest ${plural(mine.n, "message")}</span><span class="tl-e" title="${esc(mine.error)}">${esc(mine.error)}</span><button class="gp-go" data-act="dup" data-seq="${req.upTo}">Try again</button></div>`;
+  const k = b - a + 1;
+  return `<div class="tl-h ge" ${at}><span class="tl-k">Not digested</span><span class="tl-n">${plural(n, "message")} above</span><button class="gp-go ${mine ? "on" : ""}" data-act="dup" data-seq="${req.upTo}" data-pv="${a}-${b}" ${p && !p.error ? "disabled" : ""}>${ARR_U}${mine ? "Digesting…" : k < n ? `Digest ${k} earlier` : "Digest earlier"}</button></div>`;
+}
+
+// Last read sits before the first block that stands for a message newer than what was seen on opening.
+function lrHtml(cx, seqs) {
+  if (cx.marked || cx.n <= 0 || !seqs.length || Math.max(...seqs) <= cx.seen) return "";
+  cx.marked = true;
+  return `<div class="lr" role="separator" data-mk="lr" data-k="lr"><span><b>${cx.seen === 0 ? "All new from here" : "Last read"}</b>${cx.n} new</span></div>`;
+}
+
+const metaBits = (s) => [timeSpan(s.items), plural(s.items.length, "message")];
+
+function earlierHtml(segs) {
+  const a = segs[0].items[0]?.occurredAt;
+  const b = segs.at(-1).items.at(-1)?.occurredAt;
+  const span = a && b ? (day(a) === day(b) ? day(a) : `${day(a)} – ${day(b)}`) : "";
+  const n = segs.reduce((k, s) => k + s.items.length, 0);
+  return `<button class="older" data-act="earlier" data-k="older"><span class="o-n">${plural(segs.length, "earlier digest")}</span><span class="o-span">${span} · ${plural(n, "message")}</span><span class="o-go">Show</span></button>`;
+}
+
+// A digest as one quiet row (read ones by default, unread ones once collapsed); clicking it opens the full card in place.
+function digestRowHtml(cx, s) {
+  const d = s.d;
+  return `${lrHtml(cx, range(d.fromSeq, d.toSeq))}<button class="rr" data-act="rr" data-ch="${d.id}" data-k="d-${d.id}" data-mk="h-${d.id}" aria-expanded="false"><span class="rr-m">${metaBits(s).join(" · ")}${d.trigger === "manual" ? " · Manual" : ""}</span><span class="rr-t">${hl(d.headline, cx.terms)}</span></button>`;
+}
+
+function cardHtml(cx, s) {
+  const d = s.d;
+  const read = d.toSeq <= cx.seen;
+  const solo = d.topics.length === 1;
+  const pin = solo && ui.unf.has(tpKey(d, 0));
+  const meta = d.fromSeq === d.toSeq ? "" : `<p class="dc-m">${metaBits(s).map((b) => `<span>${b}</span>`).join("")}${d.trigger === "manual" ? `<span class="dc-man">Manual</span>` : ""}</p>`;
+  const x = `<button class="dc-x" data-act="rrx" data-ch="${d.id}">Collapse</button>`;
+  const p = ui.pending[cx.c.id];
+  const mine = p?.kind === "redo" && p.id === d.id;
+  const redo = `<button class="dc-redo" data-act="redo" data-ch="${d.id}" title="Digest this range again with the current prompt and model" ${p && !p.error ? "disabled" : ""}>${mine && !p.error ? "Redoing…" : "Redo"}</button>`;
+  const err = mine && p.error ? `<p class="dc-err" role="alert" title="${esc(p.error)}">Couldn't redo. ${esc(p.error)}</p>` : "";
+  const head = `<header class="dc-h ${pin ? "pin" : ""}" data-mk="h-${d.id}">${meta}<div class="dc-hl"><h3 class="dc-t">${hl(d.headline, cx.terms)}</h3>${pin ? pinX(tpKey(d, 0)) : ""}${x}${redo}</div>${err}</header>`;
+  const tps = d.topics.map((t, ti) => topicHtml(cx, d, t, ti, solo)).join("");
+  return `${lrHtml(cx, range(d.fromSeq, d.toSeq))}<section class="dc ${read ? "read" : ""} ${solo ? "solo" : ""} ${mine && !p.error ? "redoing" : ""}" data-k="d-${d.id}" data-ch="${d.id}" ${mine && !p.error ? 'aria-busy="true"' : ""}>${head}<div class="tps">${tps}</div></section>`;
+}
+
+const pinX = (key) => `<span class="pin-r"><span class="pin-n" aria-live="off"></span><button class="pin-x" data-act="unf" data-tp="${esc(key)}" aria-label="Fold the originals back">Fold<svg class="cv" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg></button></span>`;
+
+/* A topic: title and state, what happened, then its originals behind a disclosure. Unfolded, the originals open right
+   under it and the title pins to the top of the reader while you read through them. A one-topic digest skips the title:
+   the headline already names it, so the card's head pins instead. */
+function topicHtml(cx, d, t, ti, solo) {
+  const key = tpKey(d, ti);
+  const open = ui.unf.has(key);
+  const head = solo ? "" : `<header class="tp-h ${open ? "pin" : ""}">${stateMark(t.state)}<h4 class="tp-t">${hl(t.title, cx.terms)}</h4>${open ? pinX(key) : ""}</header>`;
+  const its = t.seqs.map((q) => itemAt(cx.c, q)).filter(Boolean);
+  const who = [...new Map(its.map((i) => [i.from.addr.toLowerCase(), i.from])).values()];
+  const avs = who.slice(0, 3).map((p) => avatarHtml(p, cx.shared.has(orgDomain(p.addr)))).join("");
+  const btn = `<button class="tp-o ${open ? "on" : ""}" data-act="unf" data-tp="${esc(key)}" aria-expanded="${open}" title="${esc(who.map(short).join(", "))}"><span class="tp-av" aria-hidden="true">${avs}</span>${plural(t.seqs.length, "original")}${who.length > 3 ? `<span class="tp-n">· ${plural(who.length, "person", "people")}</span>` : ""}${CHEV_D}</button>`;
+  const items = open ? its : [];
+  return `<section class="tp ${open ? "open" : ""} ${solo ? "solo" : ""}" data-k="tp-${esc(key)}" data-tp="${esc(key)}" ${seqAttr(t.seqs, "tp")}>${head}<p class="tp-b">${hl(t.body, cx.terms)}</p>${btn}${open ? `<div class="unf">${rawRunHtml({ ...cx, marked: true }, items)}</div>` : ""}</section>`;
+}
+
+function bodyHtml(i) {
+  const open = ui.long.has(i.id);
+  return `<div class="body clip ${open ? "open" : ""}">${i.bodyNew.trim() ? originalMd(i.bodyNew) : `<p class="b-none">(no text)</p>`}</div><button class="more" data-act="long" data-item="${i.id}" aria-expanded="${open}">${open ? "Show less" : "Show all"}</button>`;
+}
+
+/* Original bubbles in final's grouping: one sender, no pause of 5 minutes, one group. end is the last seq of the
+   undigested run they belong to, so each bubble offers Digest from here; originals unfolded under a topic pass none. */
+function rawRunHtml(cx, items, end = null) {
+  const out = [];
+  let g = null;
+  let prevDay = null;
+  const flush = () => {
+    if (!g) return;
+    const f = g.items[0].from;
+    const av = `<span class="g-av">${avatarHtml(f, cx.shared.has(orgDomain(f.addr)))}</span>`;
+    const col = `<div class="g-col"><div class="g-head"><b title="${esc(f.addr)}">${esc(f.name || f.addr)}</b><time datetime="${esc(g.at)}" title="${esc(abs(g.at))}">${hm(g.at)}</time></div>${g.items.map((i) => rawHtml(cx, i, end)).join("")}</div>`;
+    out.push(`<section class="sg ${g.me ? "me" : ""}">${g.me ? col + av : av + col}</section>`);
+    g = null;
+  };
+  for (const i of items) {
+    if (dayKey(i.occurredAt) !== prevDay && prevDay !== null) {
+      flush();
+      out.push(`<div class="day" role="separator"><span>${dayLabel(i.occurredAt)}</span></div>`);
+    }
+    prevDay = dayKey(i.occurredAt);
+    const lr = lrHtml(cx, [i.seq]);
+    if (lr) {
+      flush();
+      out.push(lr);
+    }
+    const prev = g?.items.at(-1);
+    if (!prev || prev.from.addr.toLowerCase() !== i.from.addr.toLowerCase() || Date.parse(i.occurredAt) - Date.parse(prev.occurredAt) >= TIME_GAP) {
+      flush();
+      g = { me: isMe(i.from), at: i.occurredAt, items: [] };
+    }
+    g.items.push(i);
+  }
+  flush();
+  return out.join("");
+}
+
+// Digest from here floats over the bubble's top corner, so revealing it never moves a bubble.
+function rawHtml(cx, i, end) {
+  const r = curResult();
+  const hit = r?.byItem.get(i.id);
+  const cur = cx.cur === i.seq;
+  const f = hit && ["from", "source"].find((k) => hit.some((x) => x.f === k)) && !hit.some((x) => x.f === "body");
+  const tag = f ? `<span class="bh" title="Matched in ${FIELD[f]}">${FIELD[f]}</span>` : "";
+  const p = ui.pending[cx.c.id];
+  const run = p && !p.error && (p.kind === "here" || p.kind === "earlier");
+  const busy = run && p.fromSeq <= i.seq && i.seq <= p.toSeq;
+  const mine = p?.kind === "here" && p.fromSeq === i.seq ? p : null;
+  const label = mine && !p.error ? "Digesting…" : end === i.seq ? "Digest this message" : `Digest ${end - i.seq + 1} from here`;
+  const here = end == null ? "" : `<span class="dfh-w"><button class="dfh ${mine && !p.error ? "on" : ""}" data-act="dfh" data-seq="${i.seq}" data-pv="${i.seq}-${end}" ${p && !p.error ? "disabled" : ""}>${ARR_D}${label}</button></span>`;
+  const err = mine?.error ? `<p class="dfh-e" role="alert"><span title="${esc(mine.error)}">Couldn't digest ${plural(mine.n, "message")}. ${esc(mine.error)}</span><button class="gp-go" data-act="dfh" data-seq="${i.seq}">Try again</button></p>` : "";
+  return `<div class="bl ${here ? "dg" : ""} ${busy ? "busy" : ""}" ${seqAttr([i.seq], "raw")}><div class="bb raw ${hit ? "hit" : ""} ${cur ? "cur" : ""}" data-item="${i.id}">${bodyHtml(i)}</div>${tag}${here}</div>${err}`;
+}
+
+// The undigested tail: how close it is to the next auto digest, a way to digest it now, then its originals.
+function tailHtml(cx, s) {
+  const c = cx.c;
+  const p = ui.pending[c.id]?.kind === "now" ? ui.pending[c.id] : null;
+  const n = s.items.length;
+  const chars = autoChars(c);
+  const thr = data.digest.threshold;
+  let head;
+  if (p && !p.error) {
+    const bar = (w, cls = "") => `<span class="sk-b ${cls}" style="--w:${w}"></span>`;
+    const topic = (a, b, z) => `<div class="sk-tp"><span class="sk-s"></span><div>${bar(a, "sk-tt")}${bar(b)}${bar(z)}</div></div>`;
+    head = `<div class="dc sk" data-mk="sk" role="status" aria-live="polite"><p class="sk-l"><span class="sk-dot" aria-hidden="true"></span>Digesting ${plural(p.n, "message")}${p.kind === "auto" ? " automatically" : ""}…</p><div aria-hidden="true">${bar("64%", "sk-h")}${topic("30%", "92%", "58%")}${topic("24%", "84%", "40%")}</div></div>`;
+  } else if (p?.error) {
+    head = `<div class="tl-h err" data-mk="tl" role="alert"><span class="tl-k">Couldn't digest ${plural(p.n, "message")}</span><span class="tl-e" title="${esc(p.error)}">${esc(p.error)}</span><button class="tl-go" data-act="dnow">Try again</button></div>`;
+  } else {
+    const meter = chars == null ? "" : `<span class="tl-n">${chars.toLocaleString("en")} of ${thr.toLocaleString("en")}</span><span class="tl-m" role="meter" aria-label="Characters toward the next digest" aria-valuemin="0" aria-valuemax="${thr}" aria-valuenow="${chars}" style="--p:${Math.min(1, chars / thr)}"><i></i></span>`;
+    const [a, b] = reqRange(c, { kind: "now" });
+    head = `<div class="tl-h" data-mk="tl"><span class="tl-k">Not digested</span>${meter}<button class="tl-go" data-act="dnow" data-pv="${a}-${b}">Digest now</button></div>`;
+  }
+  return `<section class="tl ${p && !p.error ? "busy" : ""}" data-k="tl">${head}${n ? rawRunHtml(cx, s.items, lastSeq(c)) : ""}</section>`;
 }
 
 // The reader is the device: the notch is its status bar on top, the actions are a toolbar docked at its bottom.
@@ -722,59 +786,86 @@ function dockHtml(c) {
   else acts.push(b("done", `Done<kbd>E</kbd>`, "primary"));
   if (!unread) acts.push(b("unread", "Mark unread"));
   if (!st.muted) acts.push(b("mute", "Mute"));
-  acts.push(`<button data-act="tx" aria-haspopup="dialog">Original</button>`);
   const last = lastItem(c);
   if (last?.link) acts.push(`<a class="ext" href="${esc(last.link)}" target="_blank" rel="noreferrer">Open in ${esc(srcApp(last))}${EXT_ICON}</a>`);
-  return `<div class="r-dock" data-conv="${c.id}" style="${tint(c.bucket)}">${acts.join("")}</div><button class="r-x" data-act="close" title="Close (Esc)" aria-label="Close">${X_ICON}</button>`;
+  return `<div class="r-dock" data-conv="${c.id}" style="${convTint(c)}">${acts.join("")}</div><button class="r-x" data-act="close" title="Close (Esc)" aria-label="Close">${X_ICON}</button>`;
 }
 
-function pointsHtml(c) {
-  const pts = (c.points || []).filter((p) => itemById[p.itemId]);
-  if (!pts.length) return "";
-  const rows = pts.map((p) => {
-    const n = c.itemIds.indexOf(p.itemId) + 1;
-    return `<li><button class="pt" data-act="jump" data-item="${p.itemId}" title="Jump to #${n}"><i class="pk pk-${p.kind}">${KINDS[p.kind] || "Info"}</i><span class="pt-t">${hl(p.text, curResult() ? qTerms() : [])}</span><span class="pt-n">#${n}</span></button></li>`;
-  });
-  return `<ol class="pts" aria-label="Points">${rows.join("")}</ol>`;
-}
-
-/* Summary, update and points pinned under the notch. Folded, the card retracts up into the notch's band and leaves
-   a one-line bar; the stream scrolls underneath both. */
-function ctxHtml(c) {
+/* The header pinned under the notch: where the conversation lives and its title. Folded, it retracts into the notch's
+   band and leaves a one-line bar; the stream scrolls underneath. */
+const freshOf = (c) => Math.max(0, lastSeq(c) - (ui.snap[c.id] ?? seenSeq(c)));
+function crumbHtml(c) {
   const its = itemsOf(c);
-  const fresh = ui.snap[c.id]?.size || 0;
-  const rel = relText(c);
-  const nPts = (c.points || []).length;
-  const merge = c.threadIds.length > 1 && c.mergeReason;
+  const fresh = freshOf(c);
+  const [first, ...more] = tagsOf(c).sort((a, b) => (a === homeTag(c) ? -1 : b === homeTag(c) ? 1 : 0));
+  return `<b>${esc(tagName(first))}</b>${more.map((t) => `<span class="tg">${esc(tagName(t))}</span>`).join("")}<span>${esc(srcOf(c))}</span><span>${fresh ? `${fresh} new this time` : "Read"}</span><span>${plural(its.length, "message")} · ${plural(participants(c).length, "person", "people")}</span><span>${day(its[0]?.occurredAt || c.firstAt)} – ${day(lastIso(c))}</span>`;
+}
+const barMeta = (c) => (freshOf(c) ? `${freshOf(c)} new` : plural(itemsOf(c).length, "message"));
+function ctxHtml(c) {
   const T = curResult() ? qTerms() : [];
   return `<div class="ctx ${ui.fold ? "fold" : ""}">
     <div class="ctx-full">
-      <p class="r-crumb"><b>${esc(bucketName(c.bucket))}</b><span>${fresh ? `${fresh} new this time` : "Read"}</span><span>${plural(its.length, "message")} · ${plural(participants(c).length, "person", "people")}</span><span>${day(its[0]?.occurredAt || c.firstAt)} – ${day(lastIso(c))}</span>${rel.map((r) => `<span class="rel">${r}</span>`).join("")}</p>
+      <p class="r-crumb">${crumbHtml(c)}</p>
       <h2 class="r-title">${hl(c.title, T)}</h2>
-      <div class="ctx-sumrow"><p class="ctx-sum ${ui.sumOpen ? "open" : ""}">${hl(c.summary, T)}${ui.sumOpen && merge ? `<span class="ctx-merge">${esc(c.mergeReason)}</span>` : ""}</p><button class="ctx-more" data-act="sum" aria-expanded="${ui.sumOpen}">${ui.sumOpen ? "Less" : "Full summary"}</button></div>
-      ${c.update ? `<p class="r-update"><span class="r-label">Since you last looked</span>${hl(c.update, T)}</p>` : ""}
-      ${pointsHtml(c)}
     </div>
-    <button class="ctx-bar" data-act="unfold" tabindex="${ui.fold ? 0 : -1}" aria-label="Show summary and points"><span class="cb-dot"></span><b>${esc(c.title)}</b><span class="cb-meta">${fresh ? `${fresh} new` : plural(its.length, "message")}${nPts ? ` · ${plural(nPts, "point")}` : ""}</span><span class="cb-go">Summary and points</span></button>
+    <div class="ctx-bar"><button class="cb-main" data-act="unfold" tabindex="${ui.fold ? 0 : -1}" aria-label="Show header"><span class="cb-dot"></span><b>${esc(c.title)}</b><span class="cb-meta">${barMeta(c)}</span></button></div>
   </div>`;
 }
 
 function readerHtml(c) {
-  return `<div class="conv" data-conv="${c.id}" style="${tint(c.bucket)}">${ctxHtml(c)}<div class="st"><div class="st-in">${streamHtml(c)}</div></div></div>`;
+  return `<div class="conv" data-conv="${c.id}" style="${convTint(c)}">${ctxHtml(c)}<div class="st"><div class="st-in">${streamHtml(c)}</div></div></div>`;
+}
+
+// After the stream's HTML lands: clamp long originals, mark search terms inside them.
+function afterStream() {
+  const inner = $(".st-in");
+  if (!inner) return;
+  for (const b of inner.querySelectorAll(".body.clip:not(.open)")) b.classList.toggle("over", b.scrollHeight > b.clientHeight + 2);
+  if (curResult()) for (const b of inner.querySelectorAll(".body")) markDom(b, qTerms());
+}
+
+function paintStream() {
+  const c = ui.selected && conv(ui.selected);
+  const inner = $(".st-in");
+  if (!c || !inner) return;
+  inner.innerHTML = streamHtml(c);
+  $(".r-crumb").innerHTML = crumbHtml(c);
+  $(".cb-meta").textContent = barMeta(c);
+  afterStream();
+  markStuck($(".st"));
 }
 
 function setFold(f) {
   ui.fold = f;
   $(".ctx")?.classList.toggle("fold", f);
-  $(".ctx-bar")?.setAttribute("tabindex", f ? "0" : "-1");
+  $(".cb-main")?.setAttribute("tabindex", f ? "0" : "-1");
   $(".st")?.style.setProperty("--vis", f ? "var(--bar-h)" : "var(--ctx-h)");
 }
 
-// Scrolling down into the stream folds the card; reaching the top again unfolds it.
+/* A pinned head is stuck once it has left its own section's top: then it gets a ground, its Fold button and where you
+   are among the topic's originals. */
+function markStuck(st) {
+  if (!st) return;
+  for (const h of st.querySelectorAll(".pin")) {
+    const r = h.getBoundingClientRect();
+    const stuck = r.top - h.parentElement.getBoundingClientRect().top > 1;
+    h.classList.toggle("stuck", stuck);
+    if (!stuck) continue;
+    const bls = [...h.parentElement.querySelectorAll(".unf .bl")];
+    const at = bls.findIndex((b) => b.getBoundingClientRect().bottom > r.bottom + 8);
+    h.querySelector(".pin-n").textContent = bls.length < 2 ? "" : `${at < 0 ? bls.length : at + 1} of ${bls.length}`;
+  }
+}
+
+// Scrolling down into the stream folds the header; reaching the top again unfolds it.
 let lastY = 0;
 let down = 0;
+// A morph moves the scroll position to keep your place; that is not you scrolling, so it neither folds nor unfolds.
+let quietUntil = 0;
 function onStreamScroll(e) {
   const y = e.currentTarget.scrollTop;
+  markStuck(e.currentTarget);
+  if (performance.now() < quietUntil) return void (lastY = y);
   if (y <= 8) {
     if (ui.fold) setFold(false);
     down = 0;
@@ -785,48 +876,199 @@ function onStreamScroll(e) {
   lastY = y;
 }
 
-const bubble = (st, id) => st.querySelector(`.bb[data-item="${CSS.escape(id)}"]`);
 const topIn = (st, el) => el.getBoundingClientRect().top - st.getBoundingClientRect().top;
-// How much of the stream's top the context card (or its folded bar) covers.
+// How much of the stream's top the header (or its folded bar) covers.
 const cardH = () => (ui.fold ? $(".ctx-bar").offsetHeight + 12 : $(".ctx-full").offsetHeight);
-// The first bubble whose middle is below the card: where you are reading.
-function topVisibleItem() {
+const seqsOf = (el) => el.dataset.seqs.split(" ").map(Number);
+// The block that shows message q: its own original if one is on screen, else whatever stands for it.
+function unitFor(st, q) {
+  const own = st.querySelector(`.bl[data-u="raw"][data-seqs="${q}"]`);
+  return own || [...st.querySelectorAll("[data-seqs]")].find((el) => seqsOf(el).includes(q));
+}
+const ringOf = (el) => (el.matches(".bl") ? el.querySelector(".bb") : el);
+
+// Scroll message q in under the folded header (and under its topic's pinned head), then ring it once.
+function jumpTo(q, smooth) {
   const st = $(".st");
-  const edge = st.getBoundingClientRect().top + cardH();
-  const bbs = [...st.querySelectorAll(".bb")];
-  const b = bbs.find((el) => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2 > edge; }) || bbs.at(-1);
-  return b?.dataset.item;
+  const el = st && unitFor(st, q);
+  if (!el) return;
+  setFold(true);
+  const pin = el.matches(".bl") ? el.closest(".tp.open")?.querySelector(".tp-h.pin") || el.closest(".dc.solo")?.querySelector(".dc-h.pin") : null;
+  st.scrollTo({ top: st.scrollTop + topIn(st, el) - cardH() - (pin?.offsetHeight || 0) - (ui.search ? 44 : 16), behavior: reduceMotion.matches || !smooth ? "auto" : "smooth" });
+  lastY = st.scrollTop;
+  quietUntil = performance.now() + 700;
+  ringOf(el).animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], { pseudoElement: "::after", duration: 1800, easing: "ease-out" });
 }
 
-/* After a paint: size the stream under the card, then land, keep or jump. keepTop is the scroll position to keep when
-   the same conversation repaints, or null when it was just opened. */
+/* After a paint: size the stream under the header, then land, keep or jump. keepTop is the scroll position to keep
+   when the same conversation repaints, or null when it was just opened. */
 function settleReader(keepTop) {
   const st = $(".st");
   const full = $(".ctx-full");
-  const sum = $(".ctx-sum");
-  if (!ui.sumOpen && sum.scrollHeight <= sum.clientHeight + 2) $(".ctx-more").remove();
   const h = full.offsetHeight;
   st.style.setProperty("--ctx-h", `${h}px`);
-  // The stream's scrollbar eats into its right inset; the card above has none, so the stream gives that width back.
+  // The stream's scrollbar eats into its right inset; the header above has none, so the stream gives that width back.
   st.style.setProperty("--sbw", `${st.offsetWidth - st.clientWidth}px`);
   st.style.setProperty("--bar-h", `${$(".ctx-bar").offsetHeight + 12}px`);
   setFold(ui.fold);
+  afterStream();
   if (keepTop != null) st.scrollTop = keepTop;
   else {
     const mark = st.querySelector(".lr");
-    st.scrollTop = mark ? Math.max(0, mark.offsetTop - h - 4) : 0;
+    st.scrollTop = mark ? Math.max(0, topIn(st, mark) - h - 4) : st.scrollHeight;
   }
-  const jump = ui.jump && bubble(st, ui.jump);
+  const jump = ui.jump;
   ui.jump = null;
-  if (jump) {
-    setFold(true);
-    st.scrollTo({ top: st.scrollTop + topIn(st, jump) - cardH() - (ui.search ? 44 : 16), behavior: reduceMotion.matches || !ui.jumpSmooth ? "auto" : "smooth" });
-    ui.jumpSmooth = false;
-    jump.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], { pseudoElement: "::after", duration: 1800, easing: "ease-out" });
-  }
+  if (jump != null) jumpTo(jump, ui.jumpSmooth);
+  ui.jumpSmooth = false;
   lastY = st.scrollTop;
   down = 0;
+  markStuck(st);
   st.addEventListener("scroll", onStreamScroll, { passive: true });
+}
+
+/* The landing morph. Every block carries the messages it stands for, so when a digest lands on undigested originals each
+   slides into the topic that cites it and fades while the topics rise out of them; blocks that only moved slide (FLIP
+   on transform). Reduced motion: a 120ms crossfade, nothing moves. land(), when given, places the scroll
+   instead of keeping the first visible message where it was. */
+const overlap = (a, b) => a.some((q) => b.includes(q));
+const sameSeqs = (a, b) => a.length === b.length && a.every((q, k) => q === b[k]);
+let morphing = [];
+function morph(mutate, land = null) {
+  const st = $(".st");
+  const inner = $(".st-in");
+  if (!st || !inner) return mutate();
+  for (const a of morphing) a.finish?.();
+  morphing = [];
+  inner.querySelectorAll(".ghost").forEach((g) => g.remove());
+  const sr = st.getBoundingClientRect();
+  const top = sr.top + cardH();
+  const grab = () =>
+    [...$(".st-in").querySelectorAll("[data-seqs], [data-mk]")]
+      .map((el) => ({ el, r: el.getBoundingClientRect(), seqs: el.dataset.seqs ? seqsOf(el) : null, mk: el.dataset.mk, u: el.dataset.u }))
+      .filter((x) => x.r.height && x.r.bottom > top - 80 && x.r.top < sr.bottom + 80);
+  const before = grab();
+  const anchor = before.find((x) => x.seqs && x.r.bottom > top + 8);
+  const oldTop = st.scrollTop;
+  const rm = reduceMotion.matches;
+  const snapshot = rm ? inner.cloneNode(true) : null;
+  mutate();
+  if (land) land();
+  else if (anchor) {
+    const q = anchor.seqs[0];
+    const els = [...$(".st-in").querySelectorAll("[data-seqs]")];
+    const to = els.find((el) => seqsOf(el).includes(q)) || els.find((el) => seqsOf(el)[0] >= q);
+    if (to) st.scrollTop += to.getBoundingClientRect().top - anchor.r.top;
+  }
+  lastY = st.scrollTop;
+  quietUntil = performance.now() + 700;
+  down = 0;
+  markStuck(st);
+  const now = $(".st-in");
+  if (rm) {
+    const ms = 120;
+    snapshot.classList.add("ghost", "xf");
+    snapshot.style.top = `${st.scrollTop - oldTop}px`;
+    st.append(snapshot);
+    morphing.push(snapshot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms, easing: "linear", fill: "forwards" }));
+    morphing.at(-1).finished.then(() => snapshot.remove(), () => snapshot.remove());
+    morphing.push(now.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms, easing: "linear" }));
+    return;
+  }
+  const after = grab();
+  const nr = now.getBoundingClientRect();
+  const union = (rs) => ({ left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)) });
+  let born = 0;
+  for (const a of after) {
+    const src = a.mk ? before.filter((b) => b.mk === a.mk) : before.filter((b) => b.seqs && overlap(b.seqs, a.seqs));
+    let anim;
+    if (!src.length) {
+      anim = a.el.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 360, delay: 140 + Math.min(born++, 10) * 18, easing: EASE, fill: "backwards" });
+    } else if (src.length === 1 && (a.mk || (src[0].u === a.u && sameSeqs(src[0].seqs, a.seqs)))) {
+      const dx = src[0].r.left - a.r.left;
+      const dy = src[0].r.top - a.r.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+      anim = a.el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 560, easing: GLIDE });
+    } else {
+      const u = union(src.map((b) => b.r));
+      anim = a.el.animate([{ opacity: 0, transform: `translate(${u.left - a.r.left}px, ${u.top - a.r.top}px)` }, { opacity: 1, offset: 0.55 }, { opacity: 1, transform: "none" }], { duration: 560, delay: Math.min(born++, 10) * 16, easing: GLIDE, fill: "backwards" });
+    }
+    morphing.push(anim);
+  }
+  for (const b of before) {
+    const dst = b.mk ? after.filter((a) => a.mk === b.mk) : after.filter((a) => a.seqs && overlap(a.seqs, b.seqs));
+    if (dst.length === 1 && (b.mk || (dst[0].u === b.u && sameSeqs(dst[0].seqs, b.seqs)))) continue;
+    // The old block lives on as a ghost at its old place, travels to where its messages went, and fades.
+    const g = document.createElement("div");
+    const sg = b.el.closest(".sg");
+    g.className = `ghost ${sg?.classList.contains("me") ? "sg me" : sg ? "sg" : ""}`;
+    g.style.cssText = `left:${b.r.left - nr.left}px;top:${b.r.top - nr.top}px;width:${b.r.width}px`;
+    g.append(b.el.cloneNode(true));
+    now.append(g);
+    const u = dst.length ? union(dst.map((a) => a.r)) : null;
+    const anim = g.animate(u ? [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translate(${u.left - b.r.left}px, ${u.top - b.r.top}px) scale(0.98)` }] : [{ opacity: 1 }, { opacity: 0 }], { duration: u ? 460 : 200, easing: u ? GLIDE : "linear", fill: "forwards" });
+    anim.finished.then(() => g.remove(), () => g.remove());
+    morphing.push(anim);
+  }
+}
+
+/* The unfold. A topic opens into its originals right under it: the topic holds still, whatever sits below slides down,
+   and the originals arrive group by group, each head before its bubbles. Folding plays it back up into the body; folding
+   from deep inside the originals lands you on the topic you were in. Reduced motion: a 120ms crossfade. */
+let unfolding = null;
+function unfold(key, open) {
+  const st = $(".st");
+  const tp = st?.querySelector(`.tp[data-tp="${CSS.escape(key)}"]`);
+  if (!tp || unfolding) return;
+  const rm = reduceMotion.matches;
+  const stTop = st.getBoundingClientRect().top;
+  const head = tp.closest(".dc.solo") || tp;
+  const anchor = head.getBoundingClientRect().top;
+  const inside = !open && anchor < stTop + cardH();
+  const before = new Map([...st.querySelectorAll("[data-k]")].map((el) => [el.dataset.k, el.getBoundingClientRect().top]));
+  const paint = () => {
+    unfolding = null;
+    open ? ui.unf.add(key) : ui.unf.delete(key);
+    paintStream();
+    const now = st.querySelector(`.tp[data-tp="${CSS.escape(key)}"]`);
+    const top = (now.closest(".dc.solo") || now).getBoundingClientRect().top;
+    st.scrollTop += inside ? top - (stTop + cardH() + 8) : top - anchor;
+    lastY = st.scrollTop;
+    quietUntil = performance.now() + 500;
+    down = 0;
+    markStuck(st);
+    const box = now.querySelector(".unf");
+    if (rm || inside) return (box || now).animate([{ opacity: 0 }, { opacity: 1 }], { duration: rm ? 120 : 260, easing: rm ? "linear" : EASE });
+    now.querySelector(".tp-o .cv")?.animate([{ transform: `rotate(${open ? 0 : 180}deg)` }, { transform: `rotate(${open ? 180 : 0}deg)` }], { duration: 380, easing: EASE });
+    const moved = new Map();
+    for (const el of st.querySelectorAll("[data-k]")) {
+      const b = before.get(el.dataset.k);
+      if (b != null) moved.set(el, b - el.getBoundingClientRect().top);
+    }
+    for (const [el, dy] of moved) {
+      const rel = dy - (moved.get(el.parentElement.closest("[data-k]")) || 0);
+      if (Math.abs(rel) >= 0.5) el.animate([{ transform: `translateY(${rel}px)` }, { transform: "none" }], { duration: 480, easing: GLIDE });
+    }
+    if (box) stagger(box, st);
+  };
+  const box = tp.querySelector(".unf");
+  if (open || rm || inside || !box) return paint();
+  const vb = st.getBoundingClientRect().bottom;
+  const parts = [...box.querySelectorAll(":scope > .sg, :scope > .day")].filter((el) => el.getBoundingClientRect().top < vb);
+  const anims = parts.reverse().map((el, k) => el.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-10px)" }], { duration: 200, delay: Math.min(k, 8) * 18, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" }));
+  unfolding = Promise.all(anims.map((a) => a.finished)).then(paint, paint);
+}
+
+function stagger(box, st) {
+  const vb = st.getBoundingClientRect().bottom;
+  let k = 0;
+  for (const g of box.querySelectorAll(":scope > .sg, :scope > .day")) {
+    if (g.getBoundingClientRect().top > vb) break;
+    const parts = g.matches(".sg") ? [g.querySelector(".g-av"), g.querySelector(".g-head"), ...g.querySelectorAll(".bl")].filter(Boolean) : [g];
+    let b = 0;
+    for (const el of parts) el.animate([{ opacity: 0, transform: "translateY(-8px)" }, { opacity: 1, transform: "none" }], { duration: 440, delay: 80 + Math.min(k, 10) * 55 + (el.matches(".bl") ? 40 + b++ * 30 : 0), easing: EASE, fill: "backwards" });
+    k++;
+  }
 }
 
 /* List rows FLIP between renders: removed rows close their gap, new rows rise in. The notch's shape and the reader's
@@ -918,9 +1160,9 @@ function flush() {
 function paint(kind, viaVT = false) {
   const app = $("#app");
   const secs = sections();
-  // Pin the bucket, so emptying it leaves you on its clear state instead of jumping to the next bucket.
+  // Pin the tag, so emptying it leaves you on its clear state instead of jumping to the next tag.
   ui.tab ??= currentSection(secs)?.id;
-  const unread = secs.reduce((n, s) => n + s.unread, 0);
+  const unread = data.conversations.filter((c) => !isHidden(c) && isUnread(c)).length;
   document.title = unread ? `(${unread}) weir` : "weir";
   const sel = !ui.status && ui.selected && conv(ui.selected);
   const reading = !!(sel || ui.status);
@@ -928,11 +1170,11 @@ function paint(kind, viaVT = false) {
   const prevConv = last?.conv || "";
   const listTop = $(".list")?.scrollTop || 0;
   const readerTop = ($(".st") || $(".r-scroll"))?.scrollTop || 0;
-  const rkey = ui.status ? "status" : sel ? sel.id : searching() ? "search" : `digest:${ui.tab}`;
+  const rkey = ui.status ? "status" : sel ? sel.id : searching() ? "search" : `empty:${ui.tab}`;
   const capH = root.style.getPropertyValue("--cap-h");
   const prev = last ? capture() : null;
   app.classList.toggle("reading", reading);
-  const body = ui.status ? statusHtml() : sel ? readerHtml(sel) : digestHtml(secs);
+  const body = ui.status ? statusHtml() : sel ? readerHtml(sel) : emptyReaderHtml(secs);
   const tools = ui.status ? `<button class="r-x" data-st="close" title="Close (Esc)" aria-label="Close">${X_ICON}</button>` : sel ? dockHtml(sel) : "";
   app.innerHTML = `<div class="list">${listHtml(secs)}</div><section class="reader ${ui.status ? "sv-open" : ""}" aria-label="Reader"><div class="r-scroll ${sel ? "pane" : ""}">${body}</div>${tools}</section>`;
   paintCap(secs, reading);
@@ -972,6 +1214,18 @@ function paint(kind, viaVT = false) {
   ui.typing = false;
 }
 
+// The list and the notch without touching the reader, so a morph playing in the stream keeps running.
+function paintAround() {
+  const list = $(".list");
+  if (!list || !ui.selected) return render();
+  const secs = sections();
+  const top = list.scrollTop;
+  list.innerHTML = listHtml(secs);
+  list.scrollTop = top;
+  paintCap(secs, true);
+  last.key = capKey(secs, true);
+}
+
 function select(c) {
   if (ui.selected) onLeave(ui.selected);
   ui.selected = c ? c.id : null;
@@ -988,13 +1242,13 @@ function step(d) {
   if (next.id !== ui.selected) (searching() ? openResult : select)(next);
 }
 
-/* Search: every conversation in the run, every bucket, read, cleared and muted. A conversation matches when each
+/* Search: every conversation in the run, every tag, read, cleared and muted. A conversation matches when each
    whitespace-separated term appears somewhere in it (case-insensitive substring), which stands in for SQLite FTS5.
-   Field chips mirror the weir-axi search flags: from: and source: narrow which messages count, in: the bucket. An
+   Field chips mirror the weir-axi search flags: from: and source: narrow which messages count, in: the tag. An
    original matches only on what its message added (bodyNew), never on the history it quotes. */
-const FIELD = { title: "Title", summary: "Conversation summary", point: "Point", gist: "Summary", body: "Original", from: "Sender", source: "Source" };
+const FIELD = { title: "Title", headline: "Digest headline", digest: "Digest", body: "Original", from: "Sender", source: "Source" };
 const CHIP = /(^|\s)(from|in|source):(\S+)/gi;
-const RECENT = LS + "seek.recent";
+const RECENT = LS + "digest.recent";
 const qIn = $(".q-in");
 let index = null;
 let memo = { key: null, index: null, res: [] };
@@ -1006,23 +1260,21 @@ const qTerms = () => (searching() ? termsOf(ui.search.q) : []);
 const chipVals = (k) => (ui.search?.chips || []).filter((c) => c.k === k).map((c) => c.v.toLowerCase());
 const chipText = (c) => `${c.k}:${c.k === "in" ? groupName(c.v) : c.v}`;
 const qText = () => [...ui.search.chips.map(chipText), ui.search.q.trim()].filter(Boolean).join(" ");
-const homeOf = (c) => (data.buckets.some((b) => b.id === c.bucket) ? c.bucket : NONE);
 
-// in: takes a bucket id or display name, case-insensitive.
-function bucketOf(v) {
+// in: takes a tag id or display name, case-insensitive.
+function tagOf(v) {
   const x = v.toLowerCase();
-  if (x === UNSORTED.toLowerCase()) return NONE;
-  return data.buckets.find((b) => b.id.toLowerCase() === x || b.name.toLowerCase() === x)?.id;
+  return views.find((t) => t.id.toLowerCase() === x || t.name.toLowerCase() === x)?.id;
 }
 
 // Lifts finished field tokens out of the typed text: a token a space has closed, or every token once done (blur, Enter).
-// An in: naming no bucket stays plain text.
+// An in: naming no tag stays plain text.
 function takeChips(text, done) {
   const chips = [];
   const rest = text.replace(CHIP, (m, pre, k, v, at, all) => {
     if (!done && at + m.length === all.length) return m;
     k = k.toLowerCase();
-    if (k === "in") v = bucketOf(v);
+    if (k === "in") v = tagOf(v);
     if (!v) return m;
     chips.push({ k, v });
     return pre;
@@ -1030,10 +1282,18 @@ function takeChips(text, done) {
   return { chips, rest: chips.length ? rest.replace(/^\s+/, "").replace(/\s{2,}/g, " ") : text };
 }
 
+// A topic counts as said where its first message was, so a hit on it steps there.
 function buildIndex() {
   return data.conversations.map((c) => {
-    const recs = [{ f: "title", text: c.title }, { f: "summary", text: c.summary || "" }, ...(c.points || []).map((p) => ({ f: "point", text: p.text }))];
-    for (const i of itemsOf(c)) recs.push({ f: "gist", item: i.id, text: i.gist || "" }, { f: "body", item: i.id, text: i.bodyNew || "" }, { f: "from", item: i.id, text: `${i.from.name || ""} <${i.from.addr}>` }, { f: "source", item: i.id, text: i.sourceLabel || "" });
+    const recs = [{ f: "title", text: c.title }];
+    for (const d of shownDigests(c)) {
+      recs.push({ f: "headline", text: d.headline });
+      for (const t of d.topics) {
+        const i = itemAt(c, t.seqs[0]);
+        if (i) recs.push({ f: "digest", item: i.id, text: `${t.title} ${t.body}` });
+      }
+    }
+    for (const i of itemsOf(c)) recs.push({ f: "body", item: i.id, text: i.bodyNew || "" }, { f: "from", item: i.id, text: `${i.from.name || ""} <${i.from.addr}>` }, { f: "source", item: i.id, text: i.sourceLabel || "" });
     for (const r of recs) r.low = r.text.toLowerCase();
     return { c, recs };
   });
@@ -1053,7 +1313,7 @@ function results() {
   const narrowed = narrow.from.length + narrow.source.length > 0;
   const res = [];
   for (const { c, recs } of index) {
-    if (!ins.every((b) => homeOf(c) === b)) continue;
+    if (!ins.every((t) => c.views.includes(t))) continue;
     const admitted = new Set(c.itemIds.filter((id) => ["from", "source"].every((k) => narrow[k].every((v) => recs.some((r) => r.item === id && r.f === k && r.low.includes(v))))));
     if (narrowed && !admitted.size) continue;
     const pool = narrowed ? recs.filter((r) => !r.item || admitted.has(r.item)) : recs;
@@ -1074,9 +1334,10 @@ function results() {
   return res;
 }
 
-const groupOf = (c) => (isHidden(c) ? CLEARED : homeOf(c));
-const groupName = (g) => (g === CLEARED ? "Cleared" : g === NONE ? UNSORTED : bucketName(g));
-const shown = () => results().filter((r) => !ui.search.group || groupOf(r.c) === ui.search.group);
+// A result counts in every tag its conversation carries; a done or muted one only under Cleared.
+const inGroup = (c, g) => (g === CLEARED ? isHidden(c) : !isHidden(c) && c.views.includes(g));
+const groupName = (g) => (g === CLEARED ? "Cleared" : tagName(g));
+const shown = () => results().filter((r) => !ui.search.group || inGroup(r.c, ui.search.group));
 const curResult = () => (searching() && ui.selected ? results().find((r) => r.c.id === ui.selected) : null);
 const curHit = () => curResult()?.items[ui.search.at];
 
@@ -1103,6 +1364,7 @@ function markDom(el, terms) {
   const nodes = [];
   while (walk.nextNode()) nodes.push(walk.currentNode);
   for (const n of nodes) {
+    if (n.parentElement.closest("mark")) continue;
     const html = hl(n.data, terms);
     if (!html.includes("<mark>")) continue;
     const box = document.createElement("template");
@@ -1135,23 +1397,31 @@ function excerpt(body, terms, before = 48, span = 120) {
   return "";
 }
 
+// The topic that cites message seq, if a shown digest covers it.
+function topicFor(c, seq) {
+  const d = shownDigests(c).find((x) => x.fromSeq <= seq && seq <= x.toSeq);
+  return d && d.topics.find((t) => t.seqs.includes(seq));
+}
+
 // Up to 3 lines per result: matching messages first, in conversation order, then the conversation's own fields.
 function hitLines(r) {
   const out = [];
   for (const id of r.items.slice(0, 3)) {
     const recs = r.byItem.get(id);
-    out.push({ f: ["gist", "body", "from", "source"].find((k) => recs.some((x) => x.f === k)), i: itemById[id], n: r.c.itemIds.indexOf(id) + 1 });
+    const f = ["digest", "body", "from", "source"].find((k) => recs.some((x) => x.f === k));
+    out.push({ f, i: itemById[id], text: recs.find((x) => x.f === f).text, n: itemById[id].seq, c: r.c });
   }
   for (const x of r.conv) if (out.length < 3 && x.f !== "title") out.push({ f: x.f, text: x.text });
   return out;
 }
 
 function hitLineHtml(h, terms) {
-  if (!h.i) return `<li class="hl"><span class="hl-k"><i>${FIELD[h.f]}</i></span><span class="hl-t hl-z">${hl(excerpt(h.text, terms, 16, 60), terms)}</span></li>`;
+  if (!h.i) return `<li class="hl"><span class="hl-k"><i>${FIELD[h.f]}</i></span><span class="hl-t hl-z">${hl(excerpt(h.text, terms, 16, 60) || h.text, terms)}</span></li>`;
   const k = `<span class="hl-k"><b>#${h.n}</b><span class="hl-who">${esc(short(h.i.from))}</span><i>${FIELD[h.f]}</i></span>`;
-  if (h.f === "gist") return `<li class="hl">${k}<span class="hl-t hl-z">${hl(h.i.gist, terms)}</span></li>`;
+  if (h.f === "digest") return `<li class="hl">${k}<span class="hl-t hl-z">${hl(h.text, terms)}</span></li>`;
   const t = h.f === "body" ? excerpt(h.i.bodyNew, terms) : h.f === "from" ? `${h.i.from.name || ""} <${h.i.from.addr}>`.trim() : h.i.sourceLabel;
-  return `<li class="hl hl-${h.f}">${k}<span class="hl-t hl-o">${hl(t, h.f === "body" ? terms : [...terms, ...chipVals(h.f)])}</span><span class="hl-g">${esc(h.i.gist || firstSentence(h.i.bodyNew))}</span></li>`;
+  const tp = topicFor(h.c, h.n);
+  return `<li class="hl hl-${h.f}">${k}<span class="hl-t hl-o">${hl(t, h.f === "body" ? terms : [...terms, ...chipVals(h.f)])}</span>${tp ? `<span class="hl-g">${esc(tp.title)}</span>` : ""}</li>`;
 }
 
 const stateLabel = (c) => (S(c).muted ? "Muted" : "Done");
@@ -1164,11 +1434,11 @@ function resRowHtml(r, terms) {
   const more = r.items.length - lines.filter((h) => h.i).length;
   const st = isHidden(c) ? `<span class="row-st">${stateLabel(c)}</span>` : "";
   const iso = new Date(r.at).toISOString();
-  return `<article class="row res ${isUnread(c) ? "unread" : ""} ${ui.selected === c.id ? "sel" : ""}" data-k="s-${c.id}" data-conv="${c.id}" data-open tabindex="0" aria-current="${ui.selected === c.id}" style="${tint(c.bucket)}">
+  return `<article class="row res ${isUnread(c) ? "unread" : ""} ${ui.selected === c.id ? "sel" : ""}" data-k="s-${c.id}" data-conv="${c.id}" data-open tabindex="0" aria-current="${ui.selected === c.id}" style="${convTint(c)}">
     <span class="row-av">${avatarHtml(from)}</span>
     <span class="row-title" title="${esc(c.title)}">${hl(c.title, terms)}</span>
     <span class="row-time" title="${esc(abs(iso))}">${relShort(iso)}</span>
-    <span class="row-meta"><span class="row-b">${esc(bucketName(c.bucket))}</span>${st}<span class="row-n">${r.items.length ? plural(r.items.length, "matching message") : "Matched the conversation"}</span></span>
+    <span class="row-meta"><span class="row-b">${esc(tagsOf(c).map(tagName).join(" · "))}</span>${st}<span class="row-n">${r.items.length ? plural(r.items.length, "matching message") : "Matched the conversation"}</span></span>
     ${lines.length ? `<ol class="hits">${lines.map((h) => hitLineHtml(h, terms)).join("")}${more > 0 ? `<li class="hl-more">${more} more</li>` : ""}</ol>` : ""}
   </article>`;
 }
@@ -1185,17 +1455,14 @@ function resListHtml() {
   return `${head}<div class="rows res">${rs.map((r) => resRowHtml(r, terms)).join("")}</div>`;
 }
 
-const groupsOf = (res) => {
-  const order = [NONE, ...data.buckets.map((b) => b.id), CLEARED];
-  return order.map((g) => ({ g, rs: res.filter((r) => groupOf(r.c) === g) })).filter((x) => x.rs.length);
-};
+const groupsOf = (res) => [...views.map((t) => t.id), CLEARED].map((g) => ({ g, rs: res.filter((r) => inGroup(r.c, g)) })).filter((x) => x.rs.length);
 
-// The bucket sentence turned into the results sentence: the query in the field above is its subject, so the line
-// below reads on from it: “freeze” appears in 1 Action and 2 Reading.
+// The tag sentence turned into the results sentence: the query in the field above is its subject, so the line
+// below reads on from it: “freeze” appears in 3 Me, 1 On-call and 2 Untagged.
 function searchNavHtml() {
   if (!searching()) {
     const recent = JSON.parse(localStorage.getItem(RECENT) || "[]");
-    return `<p class="s-tail q-hint"><span class="grp">Searches titles, summaries, originals, senders and sources,</span> <span class="grp">cleared and muted included.</span> <span class="grp">Every word must appear.</span> <span class="grp">Narrow with <code>from:</code> <code>in:</code> <code>source:</code></span></p>${recent.length ? `<p class="s-tail q-recent"><span class="glue">Recent</span>${recent.map((r) => `<button class="w" data-recent="${esc(r)}">${esc(r)}</button>`).join("")}</p>` : ""}`;
+    return `<p class="s-tail q-hint"><span class="grp">Searches titles, digests, originals, senders and sources,</span> <span class="grp">cleared and muted included.</span> <span class="grp">Every word must appear.</span> <span class="grp">Narrow with <code>from:</code> <code>in:</code> <code>source:</code></span></p>${recent.length ? `<p class="s-tail q-recent"><span class="glue">Recent</span>${recent.map((r) => `<button class="w" data-recent="${esc(r)}">${esc(r)}</button>`).join("")}</p>` : ""}`;
   }
   const res = results();
   if (!res.length) return `<h1 class="s-main"><span class="allclear">${nothing()}</span></h1><p class="s-tail">Try fewer words, or drop a filter.</p>`;
@@ -1203,7 +1470,7 @@ function searchNavHtml() {
   const ws = groupsOf(res).map(({ g, rs }) => {
     const avs = `<span class="avs">${senders(rs.map((r) => r.c)).map(avatarHtml).join("")}</span>`;
     const sel = g === on;
-    return `<button class="w w-main ${sel ? "on" : ""}" data-sg="${g}" style="${g === CLEARED ? "" : tint(g === NONE ? null : g)}" aria-pressed="${sel}" aria-label="${esc(`${rs.length} ${groupName(g)}. ${sel ? "Show all" : "Show only these"}`)}">${avs}<span class="w-n">${rs.length}</span> <span class="w-name">${esc(groupName(g))}</span></button>`;
+    return `<button class="w w-main ${sel ? "on" : ""}" data-sg="${g}" style="${g === CLEARED ? "" : tint(g)}" aria-pressed="${sel}" aria-label="${esc(`${rs.length} ${groupName(g)}. ${sel ? "Show all" : "Show only these"}`)}">${avs}<span class="w-n">${rs.length}</span> <span class="w-name">${esc(groupName(g))}</span></button>`;
   });
   const msgs = res.reduce((n, r) => n + r.items.length, 0);
   return `<h1 class="s-main">${enumerate(ws, glue("appears in ", "glue lead"), glue(".", "glue end"))}</h1>
@@ -1238,10 +1505,8 @@ function restorePrior() {
   ui.tab = p.tab;
   ui.selected = p.selected;
   if (p.selected) {
-    if (p.snap) ui.snap[p.selected] = p.snap;
+    if (p.snap != null) ui.snap[p.selected] = p.snap;
     ui.fold = p.fold;
-    ui.old = new Set(p.old);
-    ui.sumOpen = p.sumOpen;
   }
   ui.restore = { list: p.listTop, reader: p.readerTop };
 }
@@ -1257,7 +1522,7 @@ function openSearch() {
     chips: [],
     group: null,
     at: 0,
-    prior: { tab: ui.tab, selected: ui.selected, snap: ui.snap[ui.selected], fold: ui.fold, old: [...ui.old], sumOpen: ui.sumOpen, listTop: sv ? sv.list : $(".list").scrollTop, readerTop: sv ? sv.reader : ($(".st") || $(".r-scroll")).scrollTop },
+    prior: { tab: ui.tab, selected: ui.selected, snap: ui.snap[ui.selected], fold: ui.fold, listTop: sv ? sv.list : $(".list").scrollTop, readerTop: sv ? sv.reader : ($(".st") || $(".r-scroll")).scrollTop },
   };
   ui.focusQ = true;
   render();
@@ -1284,7 +1549,7 @@ function setQuery(q, chips = ui.search?.chips) {
     if (ui.selected) onLeave(ui.selected);
     ui.selected = null;
     s.at = 0;
-    if (s.group && !results().some((r) => groupOf(r.c) === s.group)) s.group = null;
+    if (s.group && !results().some((r) => inGroup(r.c, s.group))) s.group = null;
     ui.tabJump = true;
   }
   ui.typing = true;
@@ -1309,15 +1574,24 @@ function openResult(c) {
   goHit(0);
 }
 
-// Land on a matching message: open the "N earlier" run that hides it, then scroll it in under the folded card.
+/* Land on a matching message: open the read digest it sits in and, when the match is in an original, unfold the topic
+   that cites it, then scroll it in under the folded header. */
 function goHit(k) {
   const r = curResult();
   if (!r?.items.length) return render();
   ui.search.at = Math.max(0, Math.min(r.items.length - 1, k));
   const id = r.items[ui.search.at];
-  const run = streamRows(r.c).find((x) => x.k === "older" && x.items.some((i) => i.id === id));
-  if (run) ui.old.add(run.items[0].id);
-  ui.jump = id;
+  const seq = itemById[id].seq;
+  const ds = shownDigests(r.c);
+  const d = ds.find((x) => x.fromSeq <= seq && seq <= x.toSeq);
+  if (d) {
+    ui.shape.set(d.id, "card");
+    if (d.toSeq <= (ui.snap[r.c.id] ?? seenSeq(r.c))) ui.earlier = true;
+  }
+  const inBody = r.byItem.get(id).some((x) => x.f !== "digest");
+  const ti = d ? d.topics.findIndex((t) => t.seqs.includes(seq)) : -1;
+  if (d && inBody && ti >= 0) ui.unf.add(tpKey(d, ti));
+  ui.jump = seq;
   render();
 }
 
@@ -1373,18 +1647,18 @@ async function dismiss(c, mutate) {
   }
 }
 
-const done = (c) => dismiss(c, () => setS(c, { seenAt: lastIso(c), clearedAt: lastIso(c) }));
+const done = (c) => dismiss(c, () => setS(c, { seenSeq: lastSeq(c), clearedSeq: lastSeq(c) }));
 const mute = (c) => dismiss(c, () => setS(c, { muted: true }));
 
 function restore(c) {
-  setS(c, { clearedAt: null, muted: false });
+  setS(c, { clearedSeq: null, muted: false });
   render();
 }
 
-function clearAll(bucketId) {
-  const s = sections().find((x) => x.id === bucketId);
+function clearAll(tagId) {
+  const s = sections().find((x) => x.id === tagId);
   if (!s?.convs.length) return;
-  for (const c of s.convs) setS(c, { seenAt: lastIso(c), clearedAt: lastIso(c) });
+  for (const c of s.convs) setS(c, { seenSeq: lastSeq(c), clearedSeq: lastSeq(c) });
   if (s.convs.some((c) => c.id === ui.selected)) {
     onLeave(ui.selected);
     ui.selected = null;
@@ -1400,367 +1674,156 @@ function reset() {
   render();
 }
 
-function simulate() {
-  ui.sims++;
-  index = null;
-  const muted = data.conversations.filter((c) => S(c).muted);
-  const cleared = data.conversations.filter((c) => !S(c).muted && isCleared(c));
-  const pool = ui.sims % 2 === 0 && muted.length ? muted : cleared.length ? cleared : muted;
-  if (!pool.length) return console.info("weir dev: nothing to simulate; mark one Done or Mute it first.");
-  const c = pool[Math.floor(Math.random() * pool.length)];
-  const now = new Date().toISOString();
-  const item = { ...lastItem(c), id: `sim-${Date.now()}`, subject: `Re: ${c.title}`, bodyNew: "(simulated reply)", bodyQuoted: "", gist: "", occurredAt: now };
+// The last digested seq before q, 0 when no digest sits before it.
+const floorBelow = (c, q) => Math.max(0, ...shownDigests(c).filter((d) => d.toSeq < q).map((d) => d.toSeq));
+
+/* The seqs a manual request covers, as manualRange in data/digest.ts computes them on the server. now: the undigested
+   tail. here: an undigested message to the end of its run. earlier: an undigested message back toward the previous
+   digest, the whole gap in "run" mode, else one model call's worth (maxInput chars of bodyNew, at least one message).
+   redo: one digest's exact range. */
+function reqRange(c, req) {
+  switch (req.kind) {
+    case "now":
+      return [floorOf(c) + 1, lastSeq(c)];
+    case "here":
+      return [req.fromSeq, Math.min(lastSeq(c) + 1, ...shownDigests(c).filter((d) => d.fromSeq > req.fromSeq).map((d) => d.fromSeq)) - 1];
+    case "earlier": {
+      const floor = floorBelow(c, req.upTo);
+      if (earlierMode === "run") return [floor + 1, req.upTo];
+      let from = req.upTo;
+      let n = itemAt(c, from).bodyNew.length;
+      while (from - 1 > floor && n + itemAt(c, from - 1).bodyNew.length <= data.digest.maxInput) n += itemAt(c, --from).bodyNew.length;
+      return [from, req.upTo];
+    }
+    case "redo": {
+      const d = shownDigests(c).find((x) => x.id === req.id);
+      return d ? [d.fromSeq, d.toSeq] : null;
+    }
+  }
+}
+
+/* One POST /__digest per manual request ({ kind: "now" | "here" | "earlier" | "redo" }); the server picks the range from
+   the stored digests and answers 409 instead of writing an overlap. A failure keeps everything as it was and says so
+   where the action was. What lands opens as a card. Digest earlier keeps its bar where it was on screen, so the new card
+   opens below it and pushes the digest underneath down. */
+async function runDigest(c, req) {
+  if (ui.pending[c.id] && !ui.pending[c.id].error) return;
+  const range = reqRange(c, req);
+  if (!range || range[1] < range[0]) return;
+  const [fromSeq, toSeq] = range;
+  const p = (ui.pending[c.id] = { ...req, fromSeq, toSeq, n: toSeq - fromSeq + 1 });
+  if (ui.selected === c.id) morph(paintStream);
+  const wire = { now: {}, here: { fromSeq }, earlier: { upTo: req.upTo, whole: earlierMode === "run" }, redo: { redo: { fromSeq, toSeq } } }[req.kind];
+  let made = [];
+  try {
+    const r = await fetch("/__digest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: c.id, ...wire }) });
+    const body = await r.json().catch(() => ({ error: `The server answered ${r.status} without a digest.` }));
+    if (!r.ok || body.error) throw new Error(body.error || `The server answered ${r.status}.`);
+    made = body.digests;
+    data.digests = [...data.digests.filter((d) => d.id !== body.replaced), ...made];
+    for (const d of made) ui.shape.set(d.id, "card");
+    delete ui.pending[c.id];
+    index = null;
+  } catch (e) {
+    ui.pending[c.id] = { ...p, error: e.message || String(e) };
+    console.info("weir digest:", e.message || e);
+  }
+  const st = ui.selected === c.id && $(".st");
+  if (!st) return render();
+  const mk = req.kind === "earlier" ? `ge-${floorBelow(c, req.upTo) + 1}` : null;
+  const r = mk && st.querySelector(`[data-mk="${mk}"]`)?.getBoundingClientRect();
+  const sr = st.getBoundingClientRect();
+  const at = r && r.bottom > sr.top && r.top < sr.bottom ? r.top : null;
+  const land = () => {
+    const el = st.querySelector(`[data-mk="${mk}"]`) || (made[0] && st.querySelector(`[data-k="d-${made[0].id}"]`));
+    if (el) st.scrollTop += el.getBoundingClientRect().top - at;
+  };
+  morph(paintStream, at == null ? null : land);
+  paintAround();
+}
+
+/* Simulated traffic: a plausible reply lands in the open Teams conversation (or payments-oncall) and is stored by
+   POST /__sim. In an AI-enabled conversation the server digests at once when the text since the last digest reaches the
+   threshold, and the reply carries that digest. */
+const SIM_LINES = [
+  "Update on the retry storm: the second wave of 502s from the acquirer gateway lined up with their TLS cert rotation at 14:05. Their status page now confirms it. Our circuit breaker opened after 40s as designed, but the retry queue kept re-enqueuing the same 1.2k authorizations because the idempotency key is built from the cart id, not the attempt. So we are double-counting in the dashboard, not double-charging. I checked 30 samples in the ledger and none settled twice.",
+  "I can take the follow-up with the acquirer. What I need from our side before I call them: the exact window (first and last failed auth with timestamps in UTC), the share of traffic on the affected BIN ranges, and whether any merchant saw a hard decline instead of a soft one. If someone can pull those by 17:00 I will send the incident note tonight so their account manager has it before the Thursday sync.",
+  "Pulled the numbers. Window is 14:04:51 to 14:31:07 UTC. 18.4% of card traffic was on the affected BIN ranges, mostly the two big EU issuers. Soft declines only, code 91 (issuer unavailable), so customers saw 'try again' and 71% of them did succeed on the second attempt. Three merchants opened tickets: Fernhill, Lumen Rides and Okapi Books. Lumen is the loud one, they want a credit for the failed rides during their evening peak.",
+  "Heads up for the postmortem: the runbook step that says 'fail over to the secondary acquirer' did not work, because the secondary still has the old webhook secret from the September rotation. Failover requests were accepted but the callbacks bounced, so those payments stayed in pending for up to 20 minutes. I rotated the secret just now and verified one test transaction end to end. We should add a weekly synthetic check that exercises the failover path, otherwise we only learn about this during the next incident.",
+  "On the Lumen credit: finance is fine with a goodwill credit capped at the fees for the affected window, which comes to about 1,900 EUR. They need a decision owner on our side and a written summary of the impact before they issue it. I suggest we offer it proactively on the Thursday call instead of waiting for the escalation. Can someone confirm they own the customer comms for this one?",
+  "Last thing for today: I drafted the timeline in the incident doc, sections 1 to 3 are done (detection, mitigation, customer impact). Section 4 (root cause) is waiting on the acquirer's written confirmation, and section 5 (actions) has the failover synthetic check, the idempotency key change and the dashboard dedupe as candidates. Please add owners and dates next to each action before the review on Friday at 10:00.",
+];
+let sims = 0;
+
+async function simulate() {
+  const open = ui.selected && conv(ui.selected);
+  const c = open?.source === "teams" ? open : conv("c-teams:payments-oncall");
+  if (!c || (ui.pending[c.id] && !ui.pending[c.id].error)) return console.info("weir dev: no Teams conversation to simulate into, or a digest is running.");
+  const its = itemsOf(c);
+  const people = [...new Map(its.filter((i) => !isMe(i.from) && !/bot@/.test(i.from.addr)).map((i) => [i.from.addr.toLowerCase(), i.from])).values()];
+  const from = people[(lastSeq(c) + 1) % Math.max(1, people.length)] || its.at(-1).from;
+  const text = SIM_LINES[sims++ % SIM_LINES.length];
+  const r = await fetch("/__sim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: c.id, from, text }) }).catch(() => null);
+  const body = r && (await r.json().catch(() => null));
+  if (!body?.item) return console.info("weir dev: /__sim failed", body?.error);
+  const item = body.item;
   data.items.push(item);
   itemById[item.id] = item;
   c.itemIds = [...c.itemIds, item.id];
-  c.lastAt = now;
-  c.update = "(simulated) New reply";
-  c.pending = true;
-  render();
+  c.bySeq.set(item.seq, item);
+  c.lastSeq = item.seq;
+  c.lastAt = item.occurredAt;
+  data.digests.push(...body.digests);
+  index = null;
+  if (ui.selected === c.id && !ui.status && $(".st-in")) {
+    setS(c, { seenSeq: item.seq });
+    morph(paintStream);
+    paintAround();
+    const st = $(".st");
+    st.scrollTo({ top: st.scrollHeight, behavior: reduceMotion.matches ? "auto" : "smooth" });
+  } else render();
 }
 
-/* The Original view: the whole conversation as a parallel text, gists on the left, originals on the right.
-   pairs[k] (k >= 1, pairs[0] is the column tops) holds G and H, the scrollTop that brings gist k and original k to the
-   top of their column. Both columns are tied through that table: while you read inside original k its gist holds at
-   the top; over the last stretch before original k+1 arrives, gist k+1 rises with it at the same speed, so the two
-   reach the top line together. Scrolling the gist column alone browses it freely until the originals move again. */
-let tx = null;
-
-function txHtml(c, picked) {
-  const its = itemsOf(c);
-  const fresh = ui.snap[c.id] || new Set();
-  const shared = sharedDomains(c);
-  const L = [];
-  const R = [];
-  let prevDay = null;
-  let marked = false;
-  let prevTag = null;
-  its.forEach((i, j) => {
-    const n = j + 1;
-    if (dayKey(i.occurredAt) !== prevDay) {
-      prevDay = dayKey(i.occurredAt);
-      L.push(`<li class="tx-day" aria-hidden="true"><span>${dayLabel(i.occurredAt)}</span></li>`);
-      R.push(`<div class="tx-day" role="separator"><span>${dayLabel(i.occurredAt)}</span></div>`);
-    }
-    if (!marked && fresh.has(i.id)) {
-      marked = true;
-      L.push(`<li class="tx-lr" aria-hidden="true"><span>Last read</span></li>`);
-      R.push(`<div class="tx-lr" role="separator"><span>Last read</span></div>`);
-    }
-    const me = isMe(i.from);
-    const cls = `${i.id === picked ? "picked" : ""} ${fresh.has(i.id) ? "new" : ""} ${me ? "me" : ""}`;
-    const gist = esc(i.gist || firstSentence(i.bodyNew));
-    const tnew = fresh.has(i.id) ? `<i class="tx-new">New</i>` : "";
-    L.push(`<li class="xg ${cls}" data-item="${i.id}"><button class="xg-b" data-tx="go" data-item="${i.id}"><span class="xg-meta"><b class="tx-n">#${n}</b><span class="xg-who">${esc(short(i.from))}</span><time datetime="${esc(i.occurredAt)}">${hm(i.occurredAt)}</time>${tnew}</span><span class="xg-gist"><span>${gist}</span><span class="xg-w" aria-hidden="true">${gist}</span></span></button></li>`);
-    const tag = srcTag(i);
-    const showTag = tag !== prevTag;
-    prevTag = tag;
-    R.push(`<article class="to ${cls}" data-item="${i.id}" tabindex="-1" aria-labelledby="toh-${j}">
-      <header class="to-h" id="toh-${j}"><span class="to-av">${avatarHtml(i.from, shared.has(orgDomain(i.from.addr)))}</span><span class="to-who"><b>${esc(me ? ME : i.from.name || i.from.addr)}</b><span class="to-addr">${esc(i.from.addr)}</span></span><span class="to-meta"><span class="to-src ${showTag ? "" : "same"}">${esc(tag)}</span><time datetime="${esc(i.occurredAt)}">${abs(i.occurredAt)}</time><b class="tx-n">#${n}</b></span></header>
-      <p class="to-lede">${gist}</p>
-      <div class="body">${i.bodyNew.trim() ? originalMd(i.bodyNew) : `<p class="b-none">(no text)</p>`}</div>
-      ${i.bodyQuoted ? `<button class="q-toggle" data-tx="quote" data-item="${i.id}" aria-expanded="false">Show quoted</button>` : ""}
-    </article>`);
-  });
-  return `<div class="tx-scrim" data-tx="close"></div>
-  <div class="tx-sheet">
-    <header class="tx-head">
-      <div class="tx-id"><p class="tx-crumb"><b>${esc(bucketName(c.bucket))}</b><span>${plural(its.length, "message")} · ${plural(participants(c).length, "person", "people")}</span><span>${day(its[0].occurredAt)} – ${day(lastIso(c))}</span></p><h2 class="tx-title" id="tx-title">${esc(c.title)}</h2></div>
-      <button class="tx-x" data-tx="close" aria-label="Close" title="Close (Esc)">${X_ICON}</button>
-    </header>
-    <div class="tx-cols">
-      <section class="tx-lc" aria-label="Summary"><p class="tx-lab">Summary<span>${its.length}</span></p><ol class="tx-l">${L.join("")}<li class="tx-end" aria-hidden="true"></li></ol></section>
-      <section class="tx-rc" aria-label="Original"><p class="tx-lab">Original<span class="tx-pos"></span><a class="tx-ext" target="_blank" rel="noreferrer"></a></p><div class="tx-r"><div class="tx-r-in">${R.join("")}<div class="tx-end"><span>End of conversation · ${plural(its.length, "message")}</span></div></div></div></section>
-    </div>
-  </div>`;
-}
-
-// opener: a selector, not an element, so focus finds its way back even if a repaint replaced the control meanwhile.
-function openTx(c, id, opener) {
-  if (tx) return;
-  const dlg = document.createElement("dialog");
-  dlg.className = "tx";
-  dlg.setAttribute("aria-labelledby", "tx-title");
-  dlg.setAttribute("aria-modal", "true");
-  dlg.style.cssText = tint(c.bucket);
-  dlg.innerHTML = txHtml(c, id);
-  if (searching()) markDom($(".tx-cols", dlg), qTerms());
-  document.body.append(dlg);
-  const ids = c.itemIds.filter((x) => itemById[x]);
-  const at = (sel, x) => dlg.querySelector(`${sel}[data-item="${CSS.escape(x)}"]`);
-  tx = {
-    dlg,
-    opener,
-    left: $(".tx-l", dlg),
-    right: $(".tx-r", dlg),
-    pairs: [{ G: 0, H: 0 }, ...ids.map((x) => ({ id: x, gist: at(".xg", x), art: at(".to", x), G: 0, H: 0 }))],
-    landK: ids.indexOf(id) + 1,
-    mode: "lock", // lock: gists follow the originals; free: gist column browsed on its own; catch: easing back; glide: a gist click in flight
-    touched: false,
-    active: 0,
-    expectL: 0,
-    expectR: 0,
-    raf: 0,
-    glide: 0,
-  };
-  dlg.showModal();
-  txMeasure();
-  txLand(tx.landK);
-  $(".to.picked", dlg).focus({ preventScroll: true });
-  tx.right.addEventListener("scroll", txOnRight, { passive: true });
-  tx.left.addEventListener("scroll", txOnLeft, { passive: true });
-  dlg.addEventListener("cancel", (e) => {
-    e.preventDefault();
-    closeTx();
-  });
-  dlg.addEventListener("click", txOnClick);
-  tx.ro = new ResizeObserver(() => {
-    if (!tx) return;
-    txMeasure();
-    if (!tx.touched) txLand(tx.landK);
-    else if (tx.mode === "lock") txFollow();
-  });
-  for (const el of [tx.left, tx.right, $(".tx-r-in", dlg)]) tx.ro.observe(el);
-  const rm = reduceMotion.matches;
-  $(".tx-scrim", dlg).animate([{ opacity: 0 }, { opacity: 1 }], { duration: rm ? 160 : 280, easing: "linear" });
-  $(".tx-sheet", dlg).animate(rm ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(22px) scale(0.985)" }, { opacity: 1, transform: "none" }], { duration: rm ? 160 : 520, easing: "cubic-bezier(0.32, 0.72, 0, 1)" });
-  if (rm) return;
-  // The gist column arrives a beat late and settles onto the original's line.
-  tx.left.animate([{ opacity: 0, transform: "translateY(44px)" }, { opacity: 1, transform: "none" }], { duration: 640, delay: 90, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "backwards" });
-}
-
-// Rects keep the fractional offsets that offsetTop rounds away; dividing by the sheet's scale cancels the open animation.
-function txMeasure() {
-  const { pairs, left, right, dlg } = tx;
-  const sheet = $(".tx-sheet", dlg);
-  const s = sheet.getBoundingClientRect().height / sheet.offsetHeight || 1;
-  const lt = left.getBoundingClientRect().top - left.scrollTop * s;
-  const rt = $(".tx-r-in", dlg).getBoundingClientRect().top;
-  for (const p of pairs.slice(1)) {
-    p.G = (p.gist.getBoundingClientRect().top - lt) / s;
-    p.H = (p.art.getBoundingClientRect().top - rt) / s;
-  }
-  const last = pairs.at(-1);
-  $(".tx-l > .tx-end", dlg).style.height = `${Math.max(0, left.clientHeight - last.gist.offsetHeight)}px`;
-  $(".tx-r-in > .tx-end", dlg).style.height = `${Math.max(72, right.clientHeight - last.art.offsetHeight)}px`;
-}
-
-function txLeftFor(p) {
-  const P = tx.pairs;
-  let k = 0;
-  while (k + 1 < P.length && P[k + 1].H <= p) k++;
-  const a = P[k];
-  const b = P[k + 1];
-  if (!b) return a.G;
-  const d = b.G - a.G;
-  const z = Math.min(d, b.H - a.H);
-  const s = b.H - z;
-  return p <= s || z <= 0 ? a.G : a.G + ((p - s) * d) / z;
-}
-
-// The active pair is the one at the top line, or the one rising to it in lockstep.
-function txActive(p) {
-  const P = tx.pairs;
-  let k = 1;
-  for (let j = 2; j < P.length; j++) {
-    const z = Math.min(P[j].G - P[j - 1].G, P[j].H - P[j - 1].H);
-    if (p > (z > 0 ? P[j].H - z + 0.5 : P[j].H - 0.5)) k = j;
-    else break;
-  }
-  return k;
-}
-
-function txSetL(y) {
-  tx.left.scrollTop = y;
-  tx.expectL = tx.left.scrollTop;
-}
-function txSetR(y) {
-  tx.right.scrollTop = y;
-  tx.expectR = tx.right.scrollTop;
-}
-
-function txLand(k) {
-  txSetR(tx.pairs[k].H);
-  txSetL(tx.pairs[k].G);
-  tx.mode = "lock";
-  txSpy();
-}
-
-function txSpy(k = txActive(tx.right.scrollTop)) {
-  if (k === tx.active) return;
-  const P = tx.pairs;
-  const prev = P[tx.active];
-  prev?.gist?.classList.remove("on");
-  prev?.art?.classList.remove("on");
-  prev?.gist?.firstElementChild.removeAttribute("aria-current");
-  tx.active = k;
-  P[k].gist.classList.add("on");
-  P[k].art.classList.add("on");
-  P[k].gist.firstElementChild.setAttribute("aria-current", "true");
-  $(".tx-pos", tx.dlg).textContent = `${k} of ${P.length - 1}`;
-  const item = itemById[P[k].id];
-  const ext = $(".tx-ext", tx.dlg);
-  ext.innerHTML = `Open in ${esc(srcApp(item))}${EXT_ICON}`;
-  item.link ? ext.setAttribute("href", item.link) : ext.removeAttribute("href");
-}
-
-function txFollow() {
-  if (!tx) return;
-  tx.raf = 0;
-  const target = txLeftFor(tx.right.scrollTop);
-  const cur = tx.left.scrollTop;
-  if (tx.mode === "catch" && !reduceMotion.matches && Math.abs(target - cur) > 2) {
-    txSetL(cur + (target - cur) * 0.24);
-    tx.raf = requestAnimationFrame(txFollow);
-  } else {
-    txSetL(target);
-    tx.mode = "lock";
-  }
-  txSpy();
-}
-
-function txOnRight() {
-  if (!tx || tx.mode === "glide") return;
-  if (Math.abs(tx.right.scrollTop - tx.expectR) > 1) tx.touched = true;
-  if (tx.mode === "free") tx.mode = "catch";
-  if (!tx.raf) tx.raf = requestAnimationFrame(txFollow);
-}
-
-function txOnLeft() {
-  if (!tx || tx.mode === "glide" || Math.abs(tx.left.scrollTop - tx.expectL) <= 1) return;
-  tx.touched = true;
-  tx.mode = "free";
-}
-
-function txGo(k) {
-  cancelAnimationFrame(tx.glide);
-  const r0 = tx.right.scrollTop;
-  const l0 = tx.left.scrollTop;
-  const { H: r1, G: l1 } = tx.pairs[k];
-  txSpy(k);
-  if (reduceMotion.matches || (Math.abs(r1 - r0) < 2 && Math.abs(l1 - l0) < 2)) {
-    txSetR(r1);
-    txSetL(l1);
-    tx.mode = "lock";
-    return;
-  }
-  tx.mode = "glide";
-  const dur = Math.min(760, 380 + Math.abs(r1 - r0) * 0.05);
-  const t0 = performance.now();
-  const frame = (now) => {
-    if (!tx) return;
-    const t = Math.min(1, (now - t0) / dur);
-    const e = 1 - (1 - t) ** 4;
-    txSetR(r0 + (r1 - r0) * e);
-    txSetL(l0 + (l1 - l0) * e);
-    if (t < 1) return void (tx.glide = requestAnimationFrame(frame));
-    tx.mode = "lock";
-    txSpy();
-  };
-  tx.glide = requestAnimationFrame(frame);
-}
-
-function txQuote(btn) {
-  const open = btn.getAttribute("aria-expanded") === "true";
-  if (open) btn.nextElementSibling?.remove();
-  else btn.insertAdjacentHTML("afterend", `<div class="quoted">${esc(itemById[btn.dataset.item].bodyQuoted)}</div>`);
-  btn.textContent = open ? "Show quoted" : "Hide quoted";
-  btn.setAttribute("aria-expanded", String(!open));
-}
-
-function txOnClick(e) {
-  if (!tx) return;
-  const t = e.target.closest("[data-tx]");
-  if (!t) return;
-  const act = t.dataset.tx;
-  if (act === "close") return closeTx();
-  tx.touched = true;
-  if (act === "go") return txGo(tx.pairs.findIndex((p) => p.id === t.dataset.item));
-  if (act === "quote") return txQuote(t);
-}
-
-function txKey(e) {
-  if (e.key === "Escape") {
-    e.preventDefault();
-    return closeTx();
-  }
-  if (e.key !== "Tab") return;
-  e.preventDefault();
-  const f = [...tx.dlg.querySelectorAll("button, a[href]")].filter((el) => el.getClientRects().length);
-  const cur = document.activeElement;
-  const i = f.indexOf(cur);
-  let next;
-  if (i >= 0) next = f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length];
-  else if (e.shiftKey) next = f.findLast((el) => cur.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) || f.at(-1);
-  else next = f.find((el) => cur.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) || f[0];
-  next.focus();
-}
-
-function closeTx() {
-  if (!tx || tx.closing) return;
-  const t = tx;
-  t.closing = true;
-  const finish = () => {
-    t.ro.disconnect();
-    cancelAnimationFrame(t.raf);
-    cancelAnimationFrame(t.glide);
-    t.dlg.close();
-    t.dlg.remove();
-    tx = null;
-    document.querySelector(t.opener)?.focus({ preventScroll: true });
-  };
-  const rm = reduceMotion.matches;
-  $(".tx-scrim", t.dlg).animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 120 : 220, easing: "linear", fill: "forwards" });
-  $(".tx-sheet", t.dlg)
-    .animate(rm ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(12px) scale(0.99)" }], { duration: rm ? 120 : 200, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" })
-    .finished.then(finish, finish);
-}
-
-/* The status view answers "is it working right now": sources, enrichment, the config with Reload, and the theme. The
+/* The status view answers "is it working right now": sources, digests, the config with Reload, and the theme. The
    daemon serves this in the real app; here it is faked from the run, and the dev switcher breaks a source or the config. */
 const THEME_KEY = LS + "theme";
 const THEMES = ["system", "light", "dark"];
 const CONFIG_ERRORS = [
-  { file: "~/.weir/config.toml", path: "bucket[2].ai", msg: 'unknown AI profile "carefull"' },
-  { file: "prompts/action.md", msg: "file not found" },
+  { file: "~/.weir/config.toml", path: "ai.digest", msg: 'unknown AI profile "carefull"' },
+  { file: "prompts/digest.md", msg: "file not found" },
 ];
 let status = null;
 
 function initStatus() {
   const now = Date.now();
-  const runs = data.enrichRuns || [];
-  const fail = runs.findLast((r) => !r.ok);
-  const teams = data.items.filter((i) => srcApp(i) === "Teams").length;
+  const teams = data.items.filter((i) => i.source === "teams").length;
+  const ds = data.digests.filter((d) => Array.isArray(d.topics));
   status = {
     sources: [
       { id: "gmail", name: "Personal Gmail", app: "Gmail", syncedAt: now - 3 * 60e3, lastGoodAt: now - 26 * 60e3, items: data.items.length - teams, error: 'oauth2: "invalid_grant" "Token has been expired or revoked."' },
-      { id: "teams", name: "#release-war-room", app: "Teams (synthetic)", syncedAt: now - 60e3, items: teams },
+      { id: "teams", name: "Teams", app: "Teams", syncedAt: now - 60e3, items: teams },
     ],
-    enrich: {
-      profile: "luna",
-      lastAt: Date.parse(data.generatedAt),
-      ms: runs.reduce((n, r) => n + r.ms, 0),
-      failure: fail && { what: `${fail.stage} batch ${fail.batch}`, error: fail.error, log: `~/.weir/logs/enrich/${fail.stage}-${fail.batch}.txt`, retried: runs.some((r) => r.ok && r.stage === fail.stage && r.batch === fail.batch) },
-    },
+    enrich: { profile: ds[0]?.model || "luna", lastAt: Date.parse(data.generatedAt), digests: ds.length, ms: ds.length ? ds.reduce((n, d) => n + d.ms, 0) / ds.length : 0 },
     config: { path: "~/.weir/config.toml", loadedAt: now - 42 * 60e3, failedAt: null, errors: [], reloading: false },
   };
 }
 
 const failing = (s) => s.id === "gmail" && broken.source;
 const statusAlert = () => broken.source || status.config.errors.length > 0;
-const dur = (ms) => `${Math.floor(ms / 60000)}m ${pad(Math.round((ms % 60000) / 1000))}s`;
-const waitingCount = () => data.conversations.filter((c) => !c.summary || c.pending).length;
+const waitingCount = () => data.conversations.filter((c) => (ui.pending[c.id] && !ui.pending[c.id].error) || autoChars(c) >= data.digest.threshold).length;
 
 function statusHtml() {
   const { sources, enrich, config } = status;
   const stopped = config.errors.length > 0;
   const down = sources.filter(failing);
   const verdict = stopped
-    ? ["warn", "Sync and enrich stopped", "The config did not load. Fix it and Reload. Everything synced so far stays readable."]
+    ? ["warn", "Sync and digests stopped", "The config did not load. Fix it and Reload. Everything synced so far stays readable."]
     : down.length
-      ? ["warn", `${down[0].name} can't sync.`, "The other sources and enrichment keep running."]
+      ? ["warn", `${down[0].name} can't sync.`, "The other sources and digests keep running."]
       : ["ok", "Everything is running.", `Last sync ${ago(Math.max(...sources.map((s) => s.syncedAt)))}.`];
   const waiting = waitingCount();
+  const aiTags = data.tags.filter((t) => t.ai);
+  const running = data.conversations.filter((c) => ui.pending[c.id] && !ui.pending[c.id].error);
   const row = (k, v, cls = "") => `<div class="sv-row ${cls}"><dt>${k}</dt><dd>${v}</dd></div>`;
   const src = sources
     .map((s) => {
@@ -1774,7 +1837,6 @@ function statusHtml() {
       </li>`;
     })
     .join("");
-  const f = enrich.failure;
   const cfgState = config.reloading
     ? `<span class="sv-busy">Reloading…</span>`
     : stopped
@@ -1789,11 +1851,12 @@ function statusHtml() {
       <p class="sv-verdict"><b>${verdict[1]}</b><span>${verdict[2]}</span></p>
     </header>
     <section class="sv-sec" aria-labelledby="sv-h-src"><h3 class="sv-h" id="sv-h-src">Sources</h3><ul class="sv-srcs">${src}</ul></section>
-    <section class="sv-sec" aria-labelledby="sv-h-en"><h3 class="sv-h" id="sv-h-en">Enrichment</h3><dl class="sv-dl">
-      ${row("Waiting", waiting ? plural(waiting, "conversation") : "None", stopped ? "held" : "")}
-      ${row("Last run", `${abs(new Date(enrich.lastAt).toISOString())}<span class="sv-dim">took ${dur(enrich.ms)}</span>`)}
+    <section class="sv-sec" aria-labelledby="sv-h-en"><h3 class="sv-h" id="sv-h-en">Digests</h3><dl class="sv-dl">
+      ${row("AI on", aiTags.length ? `<ul class="sv-tags">${aiTags.map((t) => `<li><b>${esc(t.name)}</b><span class="sv-dim">since ${abs(t.aiSince)} · ${plural(data.conversations.filter((c) => c.tags.includes(t.name)).length, "conversation")}</span></li>`).join("")}</ul>` : `No tag has <code>ai = true</code>`)}
+      ${row("Queue", running.length ? `<ul class="sv-tags">${running.map((c) => `<li><b>${esc(c.title)}</b><span class="sv-dim">${seqSpan(ui.pending[c.id].fromSeq, ui.pending[c.id].toSeq)} · running</span></li>`).join("")}</ul>` : waiting ? plural(waiting, "conversation") : "Empty", stopped ? "held" : "")}
+      ${row("Last run", `${abs(new Date(enrich.lastAt).toISOString())}<span class="sv-dim">${plural(enrich.digests, "digest")}, ${(enrich.ms / 1000).toFixed(1)}s each on average</span>`)}
+      ${row("Threshold", `${data.digest.threshold.toLocaleString("en")} characters of new text`)}
       ${row("AI profile", `<code>${esc(enrich.profile)}</code>`)}
-      ${f ? row("Last failure", `<span>${esc(f.what)}: ${esc(f.error)}</span><code class="sv-path">${esc(f.log)}</code>${f.retried ? `<span class="sv-dim">Retried and succeeded.</span>` : ""}`, "stack") : ""}
     </dl></section>
     <section class="sv-sec" aria-labelledby="sv-h-cfg"><h3 class="sv-h" id="sv-h-cfg">Config</h3><dl class="sv-dl">
       ${row("File", `<code class="sv-path">${esc(config.path)}</code>`)}
@@ -1857,7 +1920,7 @@ function reloadConfig() {
 }
 
 const cap = $(".cap");
-// A vertical wheel over an overflowing bucket strip scrolls it sideways; a trackpad's horizontal swipe passes through.
+// A vertical wheel over an overflowing tag strip scrolls it sideways; a trackpad's horizontal swipe passes through.
 cap.addEventListener(
   "wheel",
   (e) => {
@@ -1896,30 +1959,46 @@ document.addEventListener("click", (e) => {
   }
   const act = t.dataset.act;
   const c = conv(t.dataset.conv || t.closest("[data-conv]")?.dataset?.conv);
-  const id = t.dataset.item;
-  if (act === "tx" && c) return openTx(c, curHit() || topVisibleItem(), `.r-dock [data-act="tx"]`);
-  if (act === "old") {
-    ui.old.add(id);
-    return render();
+  if (act === "rr" || act === "rrx") {
+    const id = t.dataset.ch;
+    return morph(() => {
+      ui.shape.set(id, act === "rr" ? "card" : "row");
+      paintStream();
+    });
   }
-  if (act === "jump" && c) {
-    const run = streamRows(c).find((r) => r.k === "older" && r.items.some((i) => i.id === id));
-    if (run) ui.old.add(run.items[0].id);
-    ui.jump = id;
-    return render();
+  if (act === "earlier") {
+    return morph(() => {
+      ui.earlier = true;
+      paintStream();
+    });
   }
-  if (act === "sum") {
-    ui.sumOpen = !ui.sumOpen;
-    return render();
+  if (act === "unf") {
+    const k = t.dataset.tp;
+    if (ui.unf.has(k)) return unfold(k, false);
+    return unfold(k, true);
   }
+  if (act === "long") {
+    const id = t.dataset.item;
+    ui.long.has(id) ? ui.long.delete(id) : ui.long.add(id);
+    const body = t.previousElementSibling;
+    body.classList.toggle("open", ui.long.has(id));
+    t.textContent = ui.long.has(id) ? "Show less" : "Show all";
+    t.setAttribute("aria-expanded", String(ui.long.has(id)));
+    if (!ui.long.has(id)) body.closest("[data-seqs]")?.scrollIntoView({ block: "nearest", behavior: reduceMotion.matches ? "auto" : "smooth" });
+    return;
+  }
+  if (act === "dnow" && c) return runDigest(c, { kind: "now" });
+  if (act === "dfh" && c) return runDigest(c, { kind: "here", fromSeq: Number(t.dataset.seq) });
+  if (act === "dup" && c) return runDigest(c, { kind: "earlier", upTo: Number(t.dataset.seq) });
+  if (act === "redo" && c) return runDigest(c, { kind: "redo", id: t.dataset.ch });
   if (act === "unfold") return setFold(false);
-  if (act === "clearall") return clearAll(t.dataset.bucket);
+  if (act === "clearall") return clearAll(t.dataset.tag);
   if (act === "done" && c) return done(c);
   if (act === "mute" && c) return mute(c);
   if (act === "restore" && c) return restore(c);
   if (act === "unread" && c) {
-    setS(c, { seenAt: new Date(lastMs(c) - 1).toISOString() });
-    ui.snap[c.id] = new Set([lastItem(c).id]);
+    setS(c, { seenSeq: lastSeq(c) - 1 });
+    ui.snap[c.id] = lastSeq(c) - 1;
     return render();
   }
   if (act === "close") return select(null);
@@ -1932,8 +2011,33 @@ document.addEventListener("click", (e) => {
   if (t.dataset.open !== undefined && c) return searching() ? openResult(c) : select(ui.selected === c.id ? null : c);
 });
 
+/* The range preview: while a digest action is hovered or focused, the bubbles it would digest take a rail and a tint.
+   Touch has no hover, so tapping a bubble reveals its Digest from here and previews that range; tapping elsewhere hides
+   both. */
+const coarse = matchMedia("(hover: none)");
+let pvBy = null;
+function previewRange(el) {
+  if (el === pvBy) return;
+  pvBy = el;
+  const [a, b] = el ? el.dataset.pv.split("-").map(Number) : [1, 0];
+  for (const bl of document.querySelectorAll(".st-in .bl.dg")) {
+    const q = Number(bl.dataset.seqs);
+    bl.classList.toggle("pv", a <= q && q <= b);
+  }
+}
+const pvOf = (t) => t?.closest?.("[data-pv]") || null;
+document.addEventListener("pointerover", (e) => e.pointerType !== "touch" && previewRange(pvOf(e.target) || pvOf(document.activeElement)));
+document.addEventListener("focusin", (e) => previewRange(pvOf(e.target) || (pvBy?.matches(":hover") ? pvBy : null)));
+document.addEventListener("focusout", (e) => !e.relatedTarget && !pvBy?.matches(":hover") && previewRange(null));
+document.addEventListener("click", (e) => {
+  if (!coarse.matches || e.target.closest(".bl.dg a, .bl.dg button")) return;
+  const bl = e.target.closest(".st-in .bl.dg");
+  for (const x of document.querySelectorAll(".bl.tap")) if (x !== bl) x.classList.remove("tap");
+  bl?.classList.toggle("tap");
+  previewRange(bl?.classList.contains("tap") ? bl.querySelector("[data-pv]") : null);
+});
+
 document.addEventListener("keydown", (e) => {
-  if (tx) return txKey(e);
   if (ui.status && e.key === "Escape") {
     e.preventDefault();
     return closeStatus();

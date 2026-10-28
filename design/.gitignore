@@ -1,4 +1,9 @@
-# Real mailbox content and everything derived from it (regenerate with data/fetch.ts + enrich scripts)
+# Per-call prompt and output logs from data/digest.ts and manual digests; regenerable, bulky
+prototype/data/out/logs/
+prototype/data/out/data.json.*.tmp
+# Screenshots from verification runs; regenerable, PR images go to PR attachments
+prototype/ui/shots/
+# Legacy local real-mail dirs and files from the removed fetch pipeline; nothing reads them
 prototype/data/raw/
 prototype/data/logs/
 prototype/data/runs/
