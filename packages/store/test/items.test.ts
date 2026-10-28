@@ -23,7 +23,7 @@ describe("store items", () => {
     Effect.gen(function* () {
       const file = tempDbFile();
       const [written] = yield* Effect.gen(function* () {
-        const stream = yield* upsertStream("mail", mailStream);
+        const { stream } = yield* upsertStream("mail", mailStream);
         return yield* writeItems(stream, [rawItem("m1", { body: "kept" })]);
       }).pipe(Effect.provide(Database.layer(file)));
       if (written === undefined) return expect.unreachable();
@@ -38,7 +38,7 @@ describe("store items", () => {
 
   it.effect("re-upserting an item keeps its seq and replaces its content", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [first] = yield* writeItems(stream, [rawItem("m1", { body: "draft" })]);
       const [second] = yield* writeItems(stream, [rawItem("m1", { body: "final" })]);
       if (first === undefined || second === undefined) return expect.unreachable();
@@ -53,7 +53,7 @@ describe("store items", () => {
 
   it.effect("marks items from the stream's own addresses case-insensitively", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [mine, theirs] = yield* writeItems(stream, [
         rawItem("m1", { from: { name: "Me", address: "me@EXAMPLE.com" } }),
         rawItem("m2"),
@@ -69,7 +69,7 @@ describe("store items", () => {
 
   it.effect("changing the stream's own addresses refreshes from_me on stored items", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const written = yield* writeItems(stream, [
         rawItem("m1", { from: { name: "Alias", address: "alias@example.com" } }),
         rawItem("m2", { from: { name: "Élise", address: "élise@example.com" } }),
@@ -83,14 +83,20 @@ describe("store items", () => {
         [false, false, false].map(Option.some),
       );
 
-      yield* upsertStream("mail", {
+      const conversations = written.slice(0, 2).map(({ conversationId }) => conversationId);
+      const added = yield* upsertStream("mail", {
         ...mailStream,
         me: [...mailStream.me, "ALIAS@example.com", "ÉLISE@EXAMPLE.COM"],
       });
       expect(yield* items).toEqual(withFromMe([true, true, false]));
+      expect(added.fromMeChanged.toSorted()).toEqual(conversations.toSorted());
 
-      yield* upsertStream("mail", mailStream);
+      const removed = yield* upsertStream("mail", mailStream);
       expect(yield* items).toEqual(withFromMe([false, false, false]));
+      expect(removed.fromMeChanged.toSorted()).toEqual(conversations.toSorted());
+
+      const unchanged = yield* upsertStream("mail", mailStream);
+      expect(unchanged.fromMeChanged).toEqual([]);
     }).pipe(Effect.provide(storeLayer())),
   );
 
@@ -98,7 +104,7 @@ describe("store items", () => {
     Effect.gen(function* () {
       const now = DateTime.makeUnsafe("2026-10-28T12:34:56.789Z");
       yield* TestClock.setTime(DateTime.toEpochMillis(now));
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [written] = yield* writeItems(stream, [rawItem("m1")]);
       if (written === undefined) return expect.unreachable();
 
@@ -111,7 +117,7 @@ describe("store items", () => {
 
   it.effect("stores offset timestamps as UTC so conversations order by real time", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [early, late] = yield* writeItems(stream, [
         rawItem("early", { occurredAt: "2026-10-28T10:30:00+02:00" }),
         rawItem("late", { occurredAt: "2026-10-28T09:00:00Z" }),
@@ -137,7 +143,7 @@ describe("store items", () => {
     ["from_me", 7],
   ] as const)("a stored %s of %s fails getItem with a SchemaError", ([column, value]) =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [written] = yield* writeItems(stream, [rawItem("m1")]);
       if (written === undefined) return expect.unreachable();
 
@@ -150,7 +156,7 @@ describe("store items", () => {
 
   it.effect("conversation aggregates follow live items, including an item that moves away", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const opener = rawItem("a", { threadId: "t1", occurredAt: "2026-10-28T09:00:00Z" });
       const reply = rawItem("b", {
         threadId: "t1",
@@ -205,7 +211,7 @@ describe("store items", () => {
 
   it.effect("a batch that moves an item between threads only creates the final conversation", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const written = yield* writeItems(stream, [
         rawItem("x", { threadId: "t1", bodyNew: "first" }),
         rawItem("y", { threadId: "t3" }),
@@ -237,7 +243,7 @@ describe("store items", () => {
 
   it.effect("a conversation whose items all moved away is no longer found", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [before] = yield* writeItems(stream, [rawItem("x", { threadId: "t1" })]);
       const [after] = yield* writeItems(stream, [rawItem("x", { threadId: "t2" })]);
       if (before === undefined || after === undefined) return expect.unreachable();
@@ -254,7 +260,7 @@ describe("store items", () => {
 
   it.effect("a batch that fails partway leaves items, conversations and search untouched", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       yield* writeItems(stream, [rawItem("a", { threadId: "t1", bodyNew: "kept" })]);
       const before = yield* snapshot;
 
@@ -272,7 +278,7 @@ describe("store items", () => {
 
   it.effect("a soft delete that fails after marking items rolls the marks back", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       yield* writeItems(stream, [rawItem("m1")]);
       const sql = yield* SqlClient.SqlClient;
       const items = sql`SELECT * FROM item`;

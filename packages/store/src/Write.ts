@@ -30,6 +30,9 @@ const decodeStream = Schema.decodeUnknownEffect(Schema.Tuple([StreamRow]));
 const decodeConversationId = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ id: ConversationId })]),
 );
+const decodeConversationIds = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ id: ConversationId })),
+);
 const decodeSeq = Schema.decodeUnknownEffect(Schema.Tuple([Schema.Struct({ seq: Seq })]));
 const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamRow));
 const decodeAddresses = Schema.decodeUnknownEffect(
@@ -94,17 +97,21 @@ export const upsertStream = Effect.fnUntraced(function* (
         yield* indexItems(sql`item.stream_id = ${stream.id}`);
       }
       const me = ownAddresses(stream);
-      if (previous.some((old) => ownAddresses(old).symmetricDifference(me).size > 0)) {
-        const addresses = yield* decodeAddresses(
-          yield* sql`SELECT DISTINCT from_address FROM item WHERE stream_id = ${stream.id}`,
-        );
-        const mine = addresses
-          .map(({ fromAddress }) => fromAddress)
-          .filter((address) => me.has(address.toLowerCase()));
-        yield* sql`UPDATE item SET from_me = (${sql.in("from_address", mine)})
-          WHERE stream_id = ${stream.id}`;
+      if (!previous.some((old) => ownAddresses(old).symmetricDifference(me).size > 0)) {
+        return { stream, fromMeChanged: [] };
       }
-      return stream;
+      const addresses = yield* decodeAddresses(
+        yield* sql`SELECT DISTINCT from_address FROM item WHERE stream_id = ${stream.id}`,
+      );
+      const mine = addresses
+        .map(({ fromAddress }) => fromAddress)
+        .filter((address) => me.has(address.toLowerCase()));
+      const changed = yield* decodeConversationIds(
+        yield* sql`UPDATE item SET from_me = (${sql.in("from_address", mine)})
+          WHERE stream_id = ${stream.id} AND from_me IS NOT (${sql.in("from_address", mine)})
+          RETURNING conversation_id AS id`,
+      );
+      return { stream, fromMeChanged: [...new Set(changed.map(({ id }) => id))] };
     }),
   );
 });

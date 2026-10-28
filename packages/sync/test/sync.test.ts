@@ -182,6 +182,29 @@ describe("syncStream tags", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("a change to the stream's me retags conversations even on an empty page", () =>
+    Effect.gen(function* () {
+      const fromMeTags: Tags = [
+        { name: "sent", match: { type: "eq", target: "/fromMe", is: true } },
+      ];
+      const { source } = scriptedSource(
+        new Map([
+          [null, page({ cursor: "c1", upserts: [rawItem("a1", { threadId: "t1" })] })],
+          ["c1", page({ cursor: "c1" })],
+        ]),
+      );
+      yield* syncStream("mail", source, mailStream, fromMeTags);
+      expect(yield* tagsByThread).toEqual([]);
+
+      const aliased = { ...mailStream, me: [...mailStream.me, "ADA@example.com"] };
+      yield* syncStream("mail", source, aliased, fromMeTags);
+      expect(yield* tagsByThread).toEqual(["t1:sent"]);
+
+      yield* syncStream("mail", source, mailStream, fromMeTags);
+      expect(yield* tagsByThread).toEqual([]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("re-upserting an item recomputes its conversation and can remove a tag", () =>
     Effect.gen(function* () {
       yield* run(
