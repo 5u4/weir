@@ -37,7 +37,7 @@ const callSource = <A>(sourceId: string, call: () => Promise<A>) =>
       }),
   });
 
-const errorMessage = (failure: unknown) =>
+export const errorMessage = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
 
 const writePage = Effect.fnUntraced(function* (

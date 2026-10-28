@@ -1,11 +1,12 @@
-import type { Config, SourceConfig } from "@weir/contract/Config";
+import type { SourceConfig } from "@weir/contract/Config";
 import type { Source, SourcePlugin } from "@weir/contract/Source";
+import * as Cause from "effect/Cause";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
-import { syncSource } from "./Sync.ts";
-import { recomputeAllTags } from "./Tags.ts";
+import { errorMessage, syncSource } from "./Sync.ts";
+import type { Tags } from "./Tags.ts";
 
 export type PluginRegistry = Readonly<Record<string, SourcePlugin<unknown>>>;
 
@@ -23,7 +24,7 @@ export interface ScheduledSource {
   readonly source: Source;
 }
 
-const formatPath = (path: ReadonlyArray<PropertyKey>) =>
+export const formatConfigPath = (path: ReadonlyArray<PropertyKey>) =>
   path.map((key) => (typeof key === "number" ? `[${key}]` : `[${JSON.stringify(key)}]`)).join("");
 
 export const loadSources = Effect.fnUntraced(function* (
@@ -36,7 +37,7 @@ export const loadSources = Effect.fnUntraced(function* (
     const plugin = Object.hasOwn(registry, config.plugin) ? registry[config.plugin] : undefined;
     if (plugin === undefined) {
       issues.push({
-        path: formatPath(["source", index, "plugin"]),
+        path: formatConfigPath(["source", index, "plugin"]),
         message: `unknown plugin "${config.plugin}"`,
       });
       continue;
@@ -47,7 +48,7 @@ export const loadSources = Effect.fnUntraced(function* (
     if (result.issues !== undefined) {
       for (const issue of result.issues) {
         issues.push({
-          path: formatPath([
+          path: formatConfigPath([
             "source",
             index,
             "config",
@@ -71,16 +72,24 @@ export const loadSources = Effect.fnUntraced(function* (
   return loaded;
 });
 
-export const run = Effect.fnUntraced(function* (config: Config, registry: PluginRegistry) {
-  const sources = yield* loadSources(config.source, registry);
-  yield* recomputeAllTags(config.tag);
-  return yield* Effect.forEach(
+export const run = (
+  sources: ReadonlyArray<ScheduledSource>,
+  tags: Tags,
+  report: (sourceId: string, listingError: string | null) => Effect.Effect<void>,
+) =>
+  Effect.forEach(
     sources,
     ({ id, every, source }) =>
-      syncSource(id, source, config.tag).pipe(
-        Effect.catch((error) => Effect.logError(`sync of ${id} failed`, error)),
+      syncSource(id, source, tags).pipe(
+        Effect.matchCauseEffect({
+          onFailure: (cause) =>
+            Effect.logError(`sync of ${id} failed`, cause).pipe(
+              Effect.andThen(report(id, errorMessage(Cause.squash(cause)))),
+            ),
+          onSuccess: () => report(id, null),
+        }),
+        Effect.uninterruptible,
         Effect.repeat(Schedule.spaced(every)),
       ),
     { concurrency: "unbounded", discard: true },
   );
-});
