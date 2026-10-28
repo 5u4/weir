@@ -1,0 +1,26 @@
+{
+  "name": "@weir/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Api": "./src/Api.ts",
+    "./Daemon": "./src/Daemon.ts",
+    "./Home": "./src/Home.ts",
+    "./Http": "./src/Http.ts"
+  },
+  "bin": {
+    "weir-daemon": "./src/main.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@weir/contract": "workspace:*",
+    "@weir/plugin-gws": "workspace:*",
+    "@weir/store": "workspace:*",
+    "@weir/sync": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:"
+  }
+}
