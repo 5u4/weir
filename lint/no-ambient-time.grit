@@ -1,0 +1,20 @@
+language js
+
+or {
+  `Date.now()`,
+  `new Date()`,
+  JsStringLiteralExpression() as $sql where {
+    $sql <: or {
+      r"(?is).*current_timestamp.*",
+      r"(?is).*datetime\('now'\).*"
+    }
+  },
+  JsTemplateExpression() as $sql where {
+    $sql <: or {
+      r"(?is).*current_timestamp.*",
+      r"(?is).*datetime\('now'\).*"
+    }
+  }
+} as $hit where {
+  register_diagnostic(span=$hit, message="Read time through Effect's Clock (DateTime.now), never the global Date or SQLite's clock.", severity="error")
+}

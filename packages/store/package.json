@@ -1,0 +1,20 @@
+{
+  "name": "@weir/store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Database": "./src/Database.ts",
+    "./Rows": "./src/Rows.ts",
+    "./Write": "./src/Write.ts",
+    "./Read": "./src/Read.ts"
+  },
+  "dependencies": {
+    "@effect/sql-sqlite-bun": "catalog:",
+    "@weir/contract": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:"
+  }
+}
