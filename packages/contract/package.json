@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@weir/fixtures": "workspace:*"
   }
 }

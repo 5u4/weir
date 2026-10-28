@@ -21,6 +21,9 @@
       "dependencies": {
         "effect": "catalog:",
       },
+      "devDependencies": {
+        "@weir/fixtures": "workspace:*",
+      },
     },
     "packages/fixtures": {
       "name": "@weir/fixtures",
