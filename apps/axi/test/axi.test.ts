@@ -188,4 +188,16 @@ describe("weir-axi", () => {
       );
     }),
   );
+
+  it.live("treats a daemon.json port outside 1..65535 as not valid", () =>
+    Effect.gen(function* () {
+      const home = Home.make(mkdtempSync(join(tmpdir(), "weir-axi-")));
+      for (const port of [65536, 0, -1]) {
+        writeFileSync(home.daemon, JSON.stringify({ port, pid: 1 }));
+        const { output, exitCode } = yield* axi(home.root, "search", "invoice");
+        expect(exitCode).toBe(1);
+        expect(output.error).toBe(`${home.daemon} is not valid; restart weir-daemon`);
+      }
+    }),
+  );
 });
