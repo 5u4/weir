@@ -34,12 +34,23 @@ describe("RawItem", () => {
     expect(() => decodeRawItem(withoutBodyNew)).toThrow();
   });
 
-  it.each(["2026-10-28T09:15:00", "2026-10-28", "not a date", "2026-13-45T09:15:00Z"])(
-    "rejects occurredAt %s",
-    (occurredAt) => {
-      expect(() => decodeRawItem({ ...item, occurredAt })).toThrow();
-    },
-  );
+  it.each([
+    "2026-10-28T09:15:00",
+    "2026-10-28",
+    "not a date",
+    "2026-13-45T09:15:00Z",
+    "2026-02-29T09:15:00Z",
+    "2026-04-31T09:15:00Z",
+    "2026-02-30T09:15:00+02:00",
+  ])("rejects occurredAt %s", (occurredAt) => {
+    expect(() => decodeRawItem({ ...item, occurredAt })).toThrow();
+  });
+
+  it("accepts a leap-day occurredAt", () => {
+    expect(decodeRawItem({ ...item, occurredAt: "2024-02-29T23:30:00-05:00" }).occurredAt).toBe(
+      "2024-02-29T23:30:00-05:00",
+    );
+  });
 
   it("accepts a UTC occurredAt", () => {
     expect(decodeRawItem({ ...item, occurredAt: "2026-10-28T07:15:00.123Z" }).occurredAt).toBe(

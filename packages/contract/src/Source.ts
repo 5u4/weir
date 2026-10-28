@@ -3,9 +3,22 @@ import type { StandardSchemaV1 } from "effect/StandardSchema";
 
 const isoWithOffset = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 
+const isRealDateTime = (input: string): boolean => {
+  const year = Number(input.slice(0, 4));
+  const month = Number(input.slice(5, 7));
+  const day = Number(input.slice(8, 10));
+  const calendarDay = new Date(0);
+  calendarDay.setUTCFullYear(year, month - 1, day);
+  return (
+    calendarDay.getUTCMonth() === month - 1 &&
+    calendarDay.getUTCDate() === day &&
+    !Number.isNaN(Date.parse(input))
+  );
+};
+
 const IsoDateTimeWithOffset = Schema.String.check(
   Schema.isPattern(isoWithOffset),
-  Schema.makeFilter((input: string) => !Number.isNaN(Date.parse(input)) || "invalid date"),
+  Schema.makeFilter((input: string) => isRealDateTime(input) || "invalid date"),
 );
 
 export const Party = Schema.Struct({
