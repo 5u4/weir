@@ -1,14 +1,6 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { decode } from "@toon-format/toon";
 import { Api } from "@weir/daemon/Api";
 import { plugins } from "@weir/daemon/Daemon";
@@ -45,30 +37,8 @@ const searches: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
   ],
 ];
 
-const canonical = (path: string): string => {
-  const absolute = resolve(path);
-  if (existsSync(absolute)) return realpathSync(absolute);
-  const parent = dirname(absolute);
-  return parent === absolute ? absolute : join(canonical(parent), basename(absolute));
-};
-
-const refuse = (reason: string): never => {
-  console.error(`weir demo: ${reason}`);
-  process.exit(2);
-};
-
-const requested = process.env.WEIR_HOME;
-if (requested !== undefined && canonical(requested) === canonical(join(homedir(), ".weir"))) {
-  refuse(
-    `refusing to run against ~/.weir (WEIR_HOME=${requested}); unset WEIR_HOME to use a temporary home`,
-  );
-}
-if (requested !== undefined && existsSync(requested) && readdirSync(requested).length > 0) {
-  refuse(`WEIR_HOME=${requested} is not empty; the demo needs an empty or missing directory`);
-}
-const root = requested ?? mkdtempSync(join(tmpdir(), "weir-demo-"));
-mkdirSync(root, { recursive: true });
-const home = Home.make(root);
+const home = Home.make(mkdtempSync(join(tmpdir(), "weir-demo-")));
+console.error(`weir demo: WEIR_HOME=${home.root}`);
 
 const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
 const port = portProbe.port;
@@ -186,7 +156,7 @@ const demo = Effect.gen(function* () {
 );
 
 const exit = await Effect.runPromiseExit(demo);
-if (requested === undefined) rmSync(root, { recursive: true, force: true });
+rmSync(home.root, { recursive: true, force: true });
 if (exit._tag === "Failure") {
   console.error(`weir demo failed:\n${String(exit.cause)}`);
   process.exit(1);
