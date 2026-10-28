@@ -11,6 +11,7 @@ import {
   ItemRow,
   type Seq,
   SourcedItemRow,
+  StreamId,
   UtcIso,
 } from "./Rows.ts";
 
@@ -143,4 +144,15 @@ export const conversationIds = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* decodeConversationIds(yield* sql`SELECT id FROM conversation ORDER BY id`);
   return rows.map(({ id }) => id);
+});
+
+const decodeStreamIds = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: StreamId })));
+
+export const streamId = Effect.fnUntraced(function* (sourceId: string, externalId: string) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeStreamIds(
+      yield* sql`SELECT id FROM stream WHERE source_id = ${sourceId} AND external_id = ${externalId}`,
+    ),
+  ).pipe(Option.map(({ id }) => id));
 });
