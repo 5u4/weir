@@ -10,7 +10,7 @@ const matches = (query: SearchQuery) =>
   search(query).pipe(Effect.map((conversations) => new Set(conversations.map(({ id }) => id))));
 
 const writeBodies = Effect.fnUntraced(function* (bodies: ReadonlyArray<string>) {
-  const stream = yield* upsertStream("mail", mailStream);
+  const { stream } = yield* upsertStream("mail", mailStream);
   const written = yield* writeItems(
     stream,
     bodies.map((body, index) => rawItem(`m${index}`, { bodyNew: body })),
@@ -56,7 +56,7 @@ describe("search", () => {
 
   it.effect("requires every term somewhere in the same conversation", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [both] = yield* writeItems(stream, [
         rawItem("a", { threadId: "both", bodyNew: "idempotency keys" }),
         rawItem("b", { threadId: "both", bodyNew: "backfill job" }),
@@ -70,7 +70,7 @@ describe("search", () => {
 
   it.effect("a soft-deleted item stops matching until it is upserted again", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const item = rawItem("m1", { bodyNew: "migration plan" });
       const [written] = yield* writeItems(stream, [item]);
 
@@ -85,7 +85,7 @@ describe("search", () => {
 
   it.effect("indexes only the new text, not quoted history", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [reply] = yield* writeItems(stream, [
         rawItem("m1", { body: "fresh reply\n\n> Northwind cutover", bodyNew: "fresh reply" }),
       ]);
@@ -96,7 +96,7 @@ describe("search", () => {
 
   it.effect("renaming a stream reindexes its live items under the new name", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [live] = yield* writeItems(stream, [
         rawItem("live", { threadId: "live", bodyNew: "status report" }),
         rawItem("gone", { threadId: "gone", bodyNew: "status report" }),
@@ -112,7 +112,7 @@ describe("search", () => {
 
   it.effect("orders results by their newest matching item, not their newest item", () =>
     Effect.gen(function* () {
-      const stream = yield* upsertStream("mail", mailStream);
+      const { stream } = yield* upsertStream("mail", mailStream);
       const [olderMatch, , newerMatch] = yield* writeItems(stream, [
         rawItem("a1", {
           threadId: "a",
@@ -146,8 +146,11 @@ describe("search", () => {
 
   it.effect("tag, source, from and since each narrow the results", () =>
     Effect.gen(function* () {
-      const work = yield* upsertStream("work", mailStream);
-      const home = yield* upsertStream("home", { ...mailStream, id: "home@example.com" });
+      const { stream: work } = yield* upsertStream("work", mailStream);
+      const { stream: home } = yield* upsertStream("home", {
+        ...mailStream,
+        id: "home@example.com",
+      });
       const [ada, bob] = yield* writeItems(work, [
         rawItem("ada", {
           bodyNew: "status report",

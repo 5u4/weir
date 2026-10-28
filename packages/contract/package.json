@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./Config": "./src/Config.ts",
+    "./Rule": "./src/Rule.ts",
     "./Source": "./src/Source.ts"
   },
   "dependencies": {
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@weir/fixtures": "workspace:*"
   }
 }

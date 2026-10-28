@@ -6,11 +6,14 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 import {
   ConversationId,
+  ConversationStateRow,
+  ConversationTagRow,
   ItemInsert,
   Seq,
-  type StreamId,
+  StreamId,
   StreamInsert,
   StreamRow,
+  SyncRunInsert,
   UtcIso,
 } from "./Rows.ts";
 
@@ -19,12 +22,16 @@ export type StoredItem = RawItem & { readonly bodyNew: string };
 export interface WrittenItem {
   readonly seq: Seq;
   readonly conversationId: ConversationId;
-  readonly inserted: boolean;
+  readonly previousConversationId: ConversationId | null;
 }
 
+const decodeStreamIds = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: StreamId })));
 const decodeStream = Schema.decodeUnknownEffect(Schema.Tuple([StreamRow]));
 const decodeConversationId = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ id: ConversationId })]),
+);
+const decodeConversationIds = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ id: ConversationId })),
 );
 const decodeSeq = Schema.decodeUnknownEffect(Schema.Tuple([Schema.Struct({ seq: Seq })]));
 const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamRow));
@@ -34,6 +41,8 @@ const decodeAddresses = Schema.decodeUnknownEffect(
 const decodeItemRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId })),
 );
+const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
+const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
 
 const ownAddresses = (stream: StreamRow) =>
   new Set(stream.me.map((address) => address.toLowerCase()));
@@ -88,17 +97,21 @@ export const upsertStream = Effect.fnUntraced(function* (
         yield* indexItems(sql`item.stream_id = ${stream.id}`);
       }
       const me = ownAddresses(stream);
-      if (previous.some((old) => ownAddresses(old).symmetricDifference(me).size > 0)) {
-        const addresses = yield* decodeAddresses(
-          yield* sql`SELECT DISTINCT from_address FROM item WHERE stream_id = ${stream.id}`,
-        );
-        const mine = addresses
-          .map(({ fromAddress }) => fromAddress)
-          .filter((address) => me.has(address.toLowerCase()));
-        yield* sql`UPDATE item SET from_me = (${sql.in("from_address", mine)})
-          WHERE stream_id = ${stream.id}`;
+      if (!previous.some((old) => ownAddresses(old).symmetricDifference(me).size > 0)) {
+        return { stream, fromMeChanged: [] };
       }
-      return stream;
+      const addresses = yield* decodeAddresses(
+        yield* sql`SELECT DISTINCT from_address FROM item WHERE stream_id = ${stream.id}`,
+      );
+      const mine = addresses
+        .map(({ fromAddress }) => fromAddress)
+        .filter((address) => me.has(address.toLowerCase()));
+      const changed = yield* decodeConversationIds(
+        yield* sql`UPDATE item SET from_me = (${sql.in("from_address", mine)})
+          WHERE stream_id = ${stream.id} AND from_me IS NOT (${sql.in("from_address", mine)})
+          RETURNING conversation_id AS id`,
+      );
+      return { stream, fromMeChanged: [...new Set(changed.map(({ id }) => id))] };
     }),
   );
 });
@@ -194,9 +207,10 @@ export const writeItems = Effect.fnUntraced(function* (
                 deleted_at = excluded.deleted_at
               RETURNING seq`,
           );
+          const previousConversationId = prior[0]?.conversationId ?? null;
           touched.add(conversationId);
-          for (const { conversationId: previous } of prior) touched.add(previous);
-          return { seq, conversationId, inserted: prior.length === 0 } satisfies WrittenItem;
+          if (previousConversationId !== null) touched.add(previousConversationId);
+          return { seq, conversationId, previousConversationId } satisfies WrittenItem;
         }),
       );
       yield* indexItems(
@@ -235,4 +249,75 @@ export const softDeleteItems = Effect.fnUntraced(function* (
       return conversationIds;
     }),
   );
+});
+
+export const addConversationTags = Effect.fnUntraced(function* (
+  rows: ReadonlyArray<ConversationTagRow>,
+) {
+  if (rows.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`INSERT INTO conversation_tag ${sql.insert(yield* encodeTags(rows))}
+    ON CONFLICT (conversation_id, tag) DO NOTHING`;
+});
+
+export const replaceConversationTags = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+  rows: ReadonlyArray<ConversationTagRow>,
+) {
+  if (conversationIds.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM conversation_tag WHERE ${sql.in("conversation_id", conversationIds)}`;
+  yield* addConversationTags(rows);
+});
+
+export const advanceSeenSeq = Effect.fnUntraced(function* (
+  seen: ReadonlyArray<{ readonly conversationId: ConversationId; readonly seq: Seq }>,
+) {
+  if (seen.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* encodeStates(
+    seen.map(({ conversationId, seq }) => ({
+      conversationId,
+      seenSeq: seq,
+      clearedSeq: Seq.make(0),
+      muted: false,
+    })),
+  );
+  yield* sql`INSERT INTO conversation_state ${sql.insert(rows)}
+    ON CONFLICT (conversation_id) DO UPDATE SET
+      seen_seq = max(conversation_state.seen_seq, excluded.seen_seq)`;
+});
+
+export const saveCursor = Effect.fnUntraced(function* (
+  streamId: StreamId,
+  cursor: string,
+  { backfilled }: { readonly backfilled: boolean },
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const backfilledAt = backfilled ? yield* Schema.encodeEffect(UtcIso)(yield* DateTime.now) : null;
+  yield* sql`UPDATE stream SET
+      cursor = ${cursor},
+      backfilled_at = coalesce(backfilled_at, ${backfilledAt})
+    WHERE id = ${streamId}`;
+});
+
+export const recordSyncRun = Effect.fnUntraced(function* (run: SyncRunInsert) {
+  const sql = yield* SqlClient.SqlClient;
+  const row = yield* Schema.encodeEffect(SyncRunInsert)(run);
+  yield* sql`INSERT INTO sync_run ${sql.insert(row)}`;
+  yield* sql`UPDATE stream SET last_sync_at = ${row.startedAt}, last_error = ${row.error}
+    WHERE id = ${row.streamId}`;
+});
+
+export const recordSourceFailure = Effect.fnUntraced(function* (
+  sourceId: string,
+  run: Omit<SyncRunInsert, "streamId">,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const streams = yield* decodeStreamIds(
+    yield* sql`SELECT id FROM stream WHERE source_id = ${sourceId} ORDER BY id`,
+  );
+  yield* Effect.forEach(streams, ({ id }) => recordSyncRun({ ...run, streamId: id }), {
+    discard: true,
+  });
 });
