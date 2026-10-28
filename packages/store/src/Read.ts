@@ -47,16 +47,16 @@ export const search = Effect.fnUntraced(function* ({
   const terms = query
     .split(/\s+/u)
     .filter((term) => term.length > 0)
-    .map((term) =>
+    .map((term, index) =>
       [...term].length >= 3
-        ? sql`SELECT conversation_id FROM search_fts
+        ? sql`SELECT ${index} AS term, conversation_id, item_seq FROM search_fts
             WHERE search_fts MATCH ${`"${term.replaceAll('"', '""')}"`}`
-        : sql`SELECT conversation_id FROM search_fts WHERE ${contains(sql, "text", term)}`,
+        : sql`SELECT ${index} AS term, conversation_id, item_seq FROM search_fts
+            WHERE ${contains(sql, "text", term)}`,
     );
   const conditions = [
     sql`EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)`,
   ];
-  if (terms.length > 0) conditions.push(sql`c.id IN (${sql.join(" INTERSECT ", false)(terms)})`);
   if (tag !== undefined) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id AND conversation_tag.tag = ${tag})`,
@@ -71,23 +71,35 @@ export const search = Effect.fnUntraced(function* ({
   }
   if (since !== undefined)
     conditions.push(sql`c.last_at >= ${yield* Schema.encodeEffect(UtcIso)(since)}`);
+  const filtered = sql`WHERE ${sql.and(conditions)}`;
+  const limited = limit === undefined ? sql.literal("") : sql`LIMIT ${limit}`;
   return yield* decodeConversations(
-    yield* sql`SELECT c.* FROM conversation c
-      WHERE ${sql.and(conditions)}
-      ORDER BY c.last_at DESC, c.id DESC
-      ${limit === undefined ? sql.literal("") : sql`LIMIT ${limit}`}`,
+    terms.length === 0
+      ? yield* sql`SELECT c.* FROM conversation c ${filtered}
+          ORDER BY c.last_at DESC, c.id DESC ${limited}`
+      : yield* sql`WITH hit AS (${sql.join(" UNION ALL ", false)(terms)}),
+          matched AS (
+            SELECT hit.conversation_id, max(item.occurred_at) AS matched_at
+            FROM hit LEFT JOIN item ON item.seq = hit.item_seq AND item.deleted_at IS NULL
+            GROUP BY hit.conversation_id
+            HAVING count(DISTINCT hit.term) = ${terms.length}
+          )
+          SELECT c.* FROM conversation c JOIN matched ON matched.conversation_id = c.id
+          ${filtered}
+          ORDER BY matched.matched_at DESC, c.id DESC ${limited}`,
   );
 });
 
 export const getConversation = Effect.fnUntraced(function* (id: ConversationId) {
   const sql = yield* SqlClient.SqlClient;
+  const items = yield* decodeItems(
+    yield* sql`SELECT * FROM item WHERE conversation_id = ${id} AND deleted_at IS NULL ORDER BY seq`,
+  );
+  if (items.length === 0) return Option.none<ConversationDetail>();
   const conversation = Arr.head(
     yield* decodeConversations(yield* sql`SELECT * FROM conversation WHERE id = ${id}`),
   );
   if (Option.isNone(conversation)) return Option.none<ConversationDetail>();
-  const items = yield* decodeItems(
-    yield* sql`SELECT * FROM item WHERE conversation_id = ${id} AND deleted_at IS NULL ORDER BY seq`,
-  );
   const tags = yield* decodeTags(
     yield* sql`SELECT * FROM conversation_tag WHERE conversation_id = ${id} ORDER BY tag`,
   );

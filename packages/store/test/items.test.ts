@@ -67,6 +67,33 @@ describe("store items", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("changing the stream's own addresses refreshes from_me on stored items", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      const written = yield* writeItems(stream, [
+        rawItem("m1", { from: { name: "Alias", address: "alias@example.com" } }),
+        rawItem("m2", { from: { name: "Élise", address: "élise@example.com" } }),
+        rawItem("m3"),
+      ]);
+      const items = Effect.forEach(written, ({ seq }) => getItem(seq));
+      const before = yield* items;
+      const withFromMe = (fromMe: ReadonlyArray<boolean>) =>
+        before.map((item, index) => Option.map(item, (row) => ({ ...row, fromMe: fromMe[index] })));
+      expect(before.map(Option.map(({ fromMe }) => fromMe))).toEqual(
+        [false, false, false].map(Option.some),
+      );
+
+      yield* upsertStream("mail", {
+        ...mailStream,
+        me: [...mailStream.me, "ALIAS@example.com", "ÉLISE@EXAMPLE.COM"],
+      });
+      expect(yield* items).toEqual(withFromMe([true, true, false]));
+
+      yield* upsertStream("mail", mailStream);
+      expect(yield* items).toEqual(withFromMe([false, false, false]));
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("stamps synced_at from the Clock", () =>
     Effect.gen(function* () {
       const now = DateTime.makeUnsafe("2026-10-28T12:34:56.789Z");
@@ -173,6 +200,50 @@ describe("store items", () => {
       expect(Option.map(movedTo, ({ conversation }) => conversation.title)).toEqual(
         Option.some("Team chat"),
       );
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a batch that moves an item between threads only creates the final conversation", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      const written = yield* writeItems(stream, [
+        rawItem("x", { threadId: "t1", bodyNew: "first" }),
+        rawItem("y", { threadId: "t3" }),
+        rawItem("x", { threadId: "t2", bodyNew: "second" }),
+      ]);
+
+      const keys = yield* Effect.forEach(written, ({ conversationId }) =>
+        Effect.map(
+          getConversation(conversationId),
+          Option.map(({ conversation }) => conversation.key),
+        ),
+      );
+      expect(keys).toEqual([Option.some("t2"), Option.some("t3")]);
+      const sql = yield* SqlClient.SqlClient;
+      expect(yield* sql`SELECT external_id, body_new FROM item ORDER BY seq`).toEqual([
+        { externalId: "x", bodyNew: "second" },
+        { externalId: "y", bodyNew: "" },
+      ]);
+      expect(yield* sql`SELECT key FROM conversation ORDER BY key`).toEqual([
+        { key: "t2" },
+        { key: "t3" },
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a conversation whose items all moved away is no longer found", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      const [before] = yield* writeItems(stream, [rawItem("x", { threadId: "t1" })]);
+      const [after] = yield* writeItems(stream, [rawItem("x", { threadId: "t2" })]);
+      if (before === undefined || after === undefined) return expect.unreachable();
+
+      expect(yield* getConversation(before.conversationId)).toEqual(Option.none());
+      expect(
+        Option.map(yield* getConversation(after.conversationId), ({ items }) =>
+          items.map(({ seq }) => seq),
+        ),
+      ).toEqual(Option.some([before.seq]));
     }).pipe(Effect.provide(storeLayer())),
   );
 

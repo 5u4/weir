@@ -110,6 +110,40 @@ describe("search", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("orders results by their newest matching item, not their newest item", () =>
+    Effect.gen(function* () {
+      const stream = yield* upsertStream("mail", mailStream);
+      const [olderMatch, , newerMatch] = yield* writeItems(stream, [
+        rawItem("a1", {
+          threadId: "a",
+          bodyNew: "invoice due",
+          occurredAt: "2026-10-28T09:00:00Z",
+        }),
+        rawItem("a2", { threadId: "a", bodyNew: "thanks", occurredAt: "2026-10-28T12:00:00Z" }),
+        rawItem("b1", {
+          threadId: "b",
+          bodyNew: "invoice sent",
+          occurredAt: "2026-10-28T10:00:00Z",
+        }),
+      ]);
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO search_fts (text, conversation_id, item_seq, digest_id)
+        VALUES ('invoice digest', ${olderMatch?.conversationId}, NULL, 1)`;
+
+      const ids = (query: SearchQuery) =>
+        Effect.map(search(query), (conversations) => conversations.map(({ id }) => id));
+      expect(yield* ids({ query: "invoice", limit: 1 })).toEqual([newerMatch?.conversationId]);
+      expect(yield* ids({ query: "invoice" })).toEqual([
+        newerMatch?.conversationId,
+        olderMatch?.conversationId,
+      ]);
+      expect(yield* ids({ query: "" })).toEqual([
+        olderMatch?.conversationId,
+        newerMatch?.conversationId,
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("tag, source, from and since each narrow the results", () =>
     Effect.gen(function* () {
       const work = yield* upsertStream("work", mailStream);

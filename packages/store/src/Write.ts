@@ -27,12 +27,16 @@ const decodeConversationId = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ id: ConversationId })]),
 );
 const decodeSeq = Schema.decodeUnknownEffect(Schema.Tuple([Schema.Struct({ seq: Seq })]));
-const decodeNames = Schema.decodeUnknownEffect(
-  Schema.Array(Schema.Struct({ name: Schema.String })),
+const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamRow));
+const decodeAddresses = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ fromAddress: Schema.String })),
 );
 const decodeItemRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId })),
 );
+
+const ownAddresses = (stream: StreamRow) =>
+  new Set(stream.me.map((address) => address.toLowerCase()));
 
 const indexItems = Effect.fnUntraced(function* (items: Statement.Fragment) {
   const sql = yield* SqlClient.SqlClient;
@@ -67,8 +71,8 @@ export const upsertStream = Effect.fnUntraced(function* (
   });
   return yield* sql.withTransaction(
     Effect.gen(function* () {
-      const previous = yield* decodeNames(
-        yield* sql`SELECT name FROM stream
+      const previous = yield* decodeStreams(
+        yield* sql`SELECT * FROM stream
           WHERE source_id = ${sourceId} AND external_id = ${descriptor.id}`,
       );
       const [stream] = yield* decodeStream(
@@ -82,6 +86,17 @@ export const upsertStream = Effect.fnUntraced(function* (
       );
       if (previous.some(({ name }) => name !== stream.name)) {
         yield* indexItems(sql`item.stream_id = ${stream.id}`);
+      }
+      const me = ownAddresses(stream);
+      if (previous.some((old) => ownAddresses(old).symmetricDifference(me).size > 0)) {
+        const addresses = yield* decodeAddresses(
+          yield* sql`SELECT DISTINCT from_address FROM item WHERE stream_id = ${stream.id}`,
+        );
+        const mine = addresses
+          .map(({ fromAddress }) => fromAddress)
+          .filter((address) => me.has(address.toLowerCase()));
+        yield* sql`UPDATE item SET from_me = (${sql.in("from_address", mine)})
+          WHERE stream_id = ${stream.id}`;
       }
       return stream;
     }),
@@ -121,11 +136,12 @@ export const writeItems = Effect.fnUntraced(function* (
 ) {
   const sql = yield* SqlClient.SqlClient;
   const syncedAt = yield* DateTime.now;
-  const me = new Set(stream.me.map((address) => address.toLowerCase()));
+  const me = ownAddresses(stream);
+  const latest = [...new Map(items.map((item) => [item.externalId, item])).values()];
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       const touched = new Set<ConversationId>();
-      const written = yield* Effect.forEach(items, (item) =>
+      const written = yield* Effect.forEach(latest, (item) =>
         Effect.gen(function* () {
           const prior = yield* decodeItemRefs(
             yield* sql`SELECT seq, conversation_id FROM item
