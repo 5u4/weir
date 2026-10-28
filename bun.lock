@@ -7,7 +7,10 @@
       "devDependencies": {
         "@biomejs/biome": "catalog:",
         "@effect/language-service": "catalog:",
+        "@toon-format/toon": "catalog:",
         "@types/bun": "catalog:",
+        "@weir/axi": "workspace:*",
+        "@weir/daemon": "workspace:*",
         "@weir/fixtures": "workspace:*",
         "effect": "catalog:",
         "lefthook": "2.2.2",
