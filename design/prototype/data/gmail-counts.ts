@@ -1,11 +1,13 @@
 // cd design/prototype && bun data/gmail-counts.ts [--check] — tag counts for the Gmail fixtures, written to
 // packages/fixtures/expected-tags.json. The rules come from packages/fixtures/config.toml and run through the prototype's
 // rule.ts on the fixtures' gws messages, both as fake-gws serves them and trimmed the way the gws plugin stores raw.
+// --check also syncs the real gws plugin against fake-gws and requires its RawItems to give the same counts.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Schema from "effect/Schema";
 import { gmailMessages, type GeneratedMessage, type MessagePart } from "../../../packages/fixtures/src/gmail.ts";
 import { scenarios } from "../../../packages/fixtures/src/scenarios.ts";
+import { gws } from "../../../plugins/gws/src/index.ts";
 import type { RuleInput } from "./digest";
 import { match, Rule } from "./rule";
 
@@ -77,24 +79,55 @@ const itemTags = messages.map((m) => {
   return { threadId: m.threadId, tags: full };
 });
 
-const count = (hit: (tags: string[]) => boolean) => {
-  const items = itemTags.filter((i) => hit(i.tags));
-  return { conversations: new Set(items.map((i) => i.threadId)).size, items: items.length };
-};
-const threadTags = new Map<string, Set<string>>();
-for (const i of itemTags) threadTags.set(i.threadId, new Set([...(threadTags.get(i.threadId) ?? []), ...i.tags]));
-const untaggedThreads = [...threadTags].filter(([, t]) => t.size === 0).map(([id]) => id);
-const expected = {
-  source: SOURCE,
-  conversations: threadTags.size,
-  items: itemTags.length,
-  tags: Object.fromEntries(tags.map((t) => [t.name, count((x) => x.includes(t.name))])),
-  untagged: {
-    conversations: untaggedThreads.length,
-    items: itemTags.filter((i) => untaggedThreads.includes(i.threadId)).length,
-  },
+type ItemTags = { threadId: string; tags: string[] };
+const summarize = (itemTags: ItemTags[]) => {
+  const count = (hit: (tags: string[]) => boolean) => {
+    const items = itemTags.filter((i) => hit(i.tags));
+    return { conversations: new Set(items.map((i) => i.threadId)).size, items: items.length };
+  };
+  const threadTags = new Map<string, Set<string>>();
+  for (const i of itemTags) threadTags.set(i.threadId, new Set([...(threadTags.get(i.threadId) ?? []), ...i.tags]));
+  const untaggedThreads = [...threadTags].filter(([, t]) => t.size === 0).map(([id]) => id);
+  return {
+    source: SOURCE,
+    conversations: threadTags.size,
+    items: itemTags.length,
+    tags: Object.fromEntries(tags.map((t) => [t.name, count((x) => x.includes(t.name))])),
+    untagged: {
+      conversations: untaggedThreads.length,
+      items: itemTags.filter((i) => untaggedThreads.includes(i.threadId)).length,
+    },
+  };
 };
 
+const pluginItemTags = async (): Promise<ItemTags[]> => {
+  const source = gws.create({ command: [join(import.meta.dir, "../../../node_modules/.bin/fake-gws")], backfill: "newer_than:30d" });
+  const [stream] = await source.streams();
+  if (!stream) throw new Error("gws plugin returned no stream");
+  const result: ItemTags[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const page = await source.sync(stream.id, cursor);
+    for (const i of page.upserts) {
+      const input: RuleInput = {
+        source: SOURCE,
+        threadId: i.threadId,
+        containerId: i.containerId,
+        containerName: i.containerName,
+        title: i.title ?? "",
+        from: i.from,
+        fromMe: stream.me.includes(i.from.address),
+        body: i.body,
+        raw: i.raw,
+      };
+      result.push({ threadId: i.threadId ?? i.containerId, tags: tags.filter((t) => match(t.match, input)).map((t) => t.name) });
+    }
+    cursor = page.cursor;
+    if (!page.more) return result;
+  }
+};
+
+const expected = summarize(itemTags);
 const json = `${JSON.stringify(expected, null, 2)}\n`;
 for (const [name, c] of [...Object.entries(expected.tags), ["Untagged", expected.untagged] as const]) {
   console.log(`${name}: ${c.conversations} conversations, ${c.items} items`);
@@ -104,6 +137,12 @@ if (process.argv.includes("--check")) {
     console.error(`${OUT} is stale; run bun data/gmail-counts.ts`);
     process.exit(1);
   }
+  const plugin = `${JSON.stringify(summarize(await pluginItemTags()), null, 2)}\n`;
+  if (plugin !== json) {
+    console.error(`gws plugin RawItems against fake-gws give different counts than ${OUT}:\n${plugin}`);
+    process.exit(1);
+  }
+  console.log("gws plugin RawItems against fake-gws match expected-tags.json");
 } else {
   writeFileSync(OUT, json);
 }

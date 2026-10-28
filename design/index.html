@@ -176,7 +176,7 @@ sequenceDiagram
 </pre></div>
 
 <ol class="trace">
-<li><strong>sync 拉到这封邮件。</strong>scheduler 每 5 分钟调用一次 plugin 的 <code>sync(stream, cursor)</code>，间隔由 <code>sync_every</code> 决定。gws plugin 从上次的 Gmail historyId 起读 history，返回一条 item，<code>thread_id</code> 是 Gmail 的 thread id，<code>body</code> 是转成 markdown 的正文，<code>raw</code> 是去掉正文和传输、签名头之后的 API 返回。core 按 <code>(stream_id, external_id)</code> upsert，重复 sync 不会产生重复 item。新 item 拿到一个 seq，同时记下 <code>synced_at</code>。core 去掉引用历史和签名，结果写进 <code>body_new</code>，FTS index 同时更新。从这一刻起，UI 和 <code>weir-axi search</code> 都能搜到它。已有的 item 再次 upsert 时，比如 Gmail 加了或去掉一个 label，保留原来的 seq，字段、<code>raw</code>、<code>body_new</code> 和 FTS 行一起替换。<code>last_seq</code> 不变，所以 conversation 不会重新出现，也不会变成未读。tag 怎么跟着变，见<a href="#assign-tags">第 06 节</a>。</li>
+<li><strong>sync 拉到这封邮件。</strong>scheduler 每 5 分钟调用一次 plugin 的 <code>sync(stream, cursor)</code>，间隔由 <code>sync_every</code> 决定。gws plugin 从上次的 Gmail historyId 起读 history，返回一条 item，<code>thread_id</code> 是 Gmail 的 thread id，<code>body</code> 是转成 markdown 的正文，<code>bodyNew</code> 是去掉引用历史和签名后的正文，<code>raw</code> 是去掉正文和传输、签名头之后的 API 返回。core 按 <code>(stream_id, external_id)</code> upsert，重复 sync 不会产生重复 item。新 item 拿到一个 seq，同时记下 <code>synced_at</code>。core 把 <code>bodyNew</code> 写进 <code>body_new</code>，FTS index 同时更新。从这一刻起，UI 和 <code>weir-axi search</code> 都能搜到它。已有的 item 再次 upsert 时，比如 Gmail 加了或去掉一个 label，保留原来的 seq，字段、<code>raw</code>、<code>body_new</code> 和 FTS 行一起替换。<code>last_seq</code> 不变，所以 conversation 不会重新出现，也不会变成未读。tag 怎么跟着变，见<a href="#assign-tags">第 06 节</a>。</li>
 <li><strong>按结构挂进 conversation。</strong>conversation 的 key 是 source 加上 <code>thread_id ?? container_id</code>。这封邮件的 thread 已经有 conversation，它直接挂进去。这一步不调用 AI。</li>
 <li><strong>对新 item 跑 tag rule。</strong>core 用每个 tag 的 rule 匹配这一条 item。命中的 tag 加到 conversation 上。已有的 tag 不会因为新 item 没命中而去掉，因为一条命中就够。这里 <code>work</code> 本来就在。</li>
 <li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>work</code> 视图，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时阅读区里，上一份 digest 之后的三封邮件还是原文气泡。</li>
@@ -308,16 +308,19 @@ flowchart TD
 <h3 id="gws">gws plugin 通过 <code>gws</code> CLI 读 Gmail</h3>
 <p>MVP 唯一的 source plugin 是 <code>gws</code>。它像 AI profile 一样，把 <code>gws</code>（Google Workspace CLI）当成 argv 命令调用。OAuth 由 gws 负责，token 存在 gws 自己的 keyring 里。weir 碰不到任何凭证。</p>
 <ul>
-<li><code>[source.config]</code> 有两个字段。<code>command</code> 是 argv，默认 <code>["gws"]</code>。<code>backfill</code> 是一条 Gmail 搜索语句，比如 <code>newer_than:30d</code>，只用于冷启动。</li>
+<li><code>[source.config]</code> 有两个字段。<code>command</code> 是 argv，默认 <code>["gws"]</code>。<code>backfill</code> 是一条 Gmail 搜索语句，比如 <code>newer_than:30d</code>，用于冷启动，以及 history 过期后的重新列表。</li>
 <li>一个 source 只有一个 stream，就是整个邮箱。Gmail 没有文件夹，收件和发件只是 label 的区别（<code>INBOX</code>、<code>SENT</code>），每封邮件只有一个 message id。所以你发的邮件不用另外同步文件夹就能拉到。<code>openLabel</code> 是 <code>Gmail</code>。</li>
 <li><code>me</code> 是 <code>users.getProfile</code> 的 emailAddress，加上 <code>users.settings.sendAs.list</code> 里的别名。</li>
-<li><code>thread_id</code> 是 Gmail 的 <code>threadId</code>。<code>container_id</code> 是邮箱地址。每封 Gmail 都有 threadId，所以对 gws 来说，container 不会决定 conversation 的 key。</li>
-<li><code>cursor</code> 是 Gmail 的 <code>historyId</code>。</li>
-<li>冷启动时，用 <code>backfill</code> 调 <code>users.messages.list</code>，再对每个 id 调 <code>users.messages.get format=full</code>。分页靠 <code>more = true</code>。</li>
-<li>正文取 <code>text/html</code> 部分转成 markdown。邮件没有 HTML 部分时，取 <code>text/plain</code>，按原型 <code>originalMd</code> 的规则整理成 markdown。每行保留换行，只有真正的列表、表格、引用和 diff 才按 markdown 结构处理。</li>
-<li>之后增量同步，调 <code>users.history.list startHistoryId=&lt;cursor&gt;</code>，读 messageAdded、messageDeleted、labelAdded、labelRemoved 四种记录。新的和 label 变了的 message 都用 <code>messages.get format=full</code> 重新拉一遍，这样 <code>raw.labelIds</code> 总是最新的。</li>
-<li>带 SPAM 或 TRASH label 的邮件跳过。一封邮件被加上 TRASH 或者被删掉，就成为一条 <code>deletions</code>。</li>
-<li><code>gws schema gmail.users.history.list</code> 写明，historyId 一般至少一周有效，少数情况下只有几个小时，收到 HTTP 404 时应用应当做一次完整同步。所以收到 404 时，plugin 退回到 <code>backfill</code> 列表。upsert 按 <code>(stream_id, external_id)</code> 幂等，重拉不会产生重复 item。</li>
+<li><code>thread_id</code> 是 Gmail 的 <code>threadId</code>。<code>container_id</code> 是邮箱地址，<code>container_name</code> 是 <code>Gmail</code>。每封 Gmail 都有 threadId，所以对 gws 来说，container 不会决定 conversation 的 key。</li>
+<li><code>link</code> 是 <code>https://mail.google.com/mail/?authuser=&lt;邮箱地址&gt;#all/&lt;message id&gt;</code>。<code>occurred_at</code> 取 <code>internalDate</code>，写成 UTC 的 ISO 时间。</li>
+<li><code>cursor</code> 是一段 JSON，记录当前阶段。冷启动时是 <code>{"phase":"backfill","startHistoryId":…,"pageToken":…}</code>，之后是 <code>{"phase":"incremental","historyId":…,"pageToken":…}</code>。解析不了的 cursor 直接报错。</li>
+<li>冷启动时，先用 <code>users.getProfile</code> 的 historyId 作为起点，再用 <code>backfill</code> 调 <code>users.messages.list</code>，对每个 id 调 <code>users.messages.get format=full</code>。分页靠 <code>more = true</code>。列表拉完后 cursor 进入 incremental，从这个起点读 history，所以冷启动期间到达的邮件不会漏掉。</li>
+<li>正文取 <code>text/html</code> 部分，用 turndown 转成 markdown。文字原样保留，不转义 markdown 符号。链接文字和地址相同时只写地址。邮件没有 HTML 部分时，取 <code>text/plain</code>，按原型 <code>originalMd</code> 的规则整理成 markdown。每行保留换行，只有真正的列表、表格、引用和 diff 才按 markdown 结构处理。有文件名或带 <code>Content-Disposition: attachment</code> 的 part 是附件，它和它下面的所有 part 都不算正文。每个 part 按自己 <code>Content-Type</code> 里的 <code>charset</code> 解码，没写或者认不出时按 UTF-8。</li>
+<li><code>bodyNew</code> 由 plugin 自己算，不返回 <code>null</code>。HTML 邮件先删掉 <code>gmail_signature</code>、<code>gmail_quote</code> 和 <code>gmail_attr</code> 这几个 class 的元素再转换。纯文本邮件在第一处 <code>-- </code> 签名分隔行截断；一行 <code>On … wrote:</code> 后面紧跟 <code>&gt;</code> 开头的行时，也在这一行截断。</li>
+<li>之后增量同步，调 <code>users.history.list startHistoryId=&lt;cursor&gt;</code>，读 messageAdded、messageDeleted、labelAdded、labelRemoved 四种记录。新的和 label 变了的 message 都用 <code>messages.get format=full</code> 重新拉一遍，这样 <code>raw.labelIds</code> 总是最新的。一页里同一个 id 只拉一次，同一页里既新增又删除的 id 只算删除。</li>
+<li>冷启动列表默认不含带 SPAM 或 TRASH label 的邮件。重新拉到的邮件带 SPAM 或 TRASH，或者 <code>messages.get</code> 返回 404，或者 history 里记着它被删掉，都成为一条 <code>deletions</code>。</li>
+<li><code>gws schema gmail.users.history.list</code> 写明，historyId 一般至少一周有效，少数情况下只有几个小时，收到 HTTP 404 时应用应当做一次完整同步。所以收到 404 时，plugin 以这次 <code>users.getProfile</code> 的 historyId 为新起点，重新从 <code>backfill</code> 列表的第一页开始。upsert 按 <code>(stream_id, external_id)</code> 幂等，重拉不会产生重复 item。history 过期期间被删除或移进 SPAM、TRASH 的邮件不会出现在重拉的列表里，plugin 也就发不出它们的 <code>deletions</code>，这些 item 会留在 weir 里。要清掉它们，core 得拿已存的 id 和 backfill 范围对账。等 contract 有了对账信号再做，比如一个「完整重列」标记，core 据此删掉范围内这次没列出来的 id。</li>
+<li>gws 退出码不为 0 时，plugin 抛出 <code>GwsError</code>，带上退出码，以及 stdout 里 <code>{"error":{code,message,reason}}</code> 的内容。stdout 不是这个格式时，message 取 stderr；stderr 也为空时，message 是 <code>exited with code N</code>。</li>
 </ul>
 
 <h3 id="raw"><code>raw</code> 存什么由 plugin 决定</h3>
@@ -1032,7 +1035,7 @@ help[2]:
 <li><code>FIXTURE_NOW</code> 是 <code>2026-10-25T09:00:00-07:00</code>，从 <code>@weir/fixtures</code> 导出。fake-gws 的默认邮箱和 demo 的时钟都用它，fixtures 的代码里不读系统时间。</li>
 <li><code>packages/fixtures/config.toml</code> 是提交进仓库的 weir config：一个 <code>id = "gmail"</code>、<code>plugin = "gws"</code> 的 source，<code>command = ["fake-gws"]</code>，<code>backfill = "newer_than:30d"</code>，以及从原型 <code>tags.toml</code> 复制的四个 tag。GitHub 的 regex 改成 <code>@github\.example&gt;?$</code>，去掉了 <code>ai</code>，没有 <code>[digest]</code> 和 AI profile。<code>configToml(dir)</code> 生成同样的内容，<code>command</code> 换成 <code>["fake-gws", "--mailbox", dir]</code>。一个测试保证提交的文件和 <code>configToml()</code> 逐字节相同。</li>
 <li><code>packages/fixtures/expected-tags.json</code> 以 <code>expectedTags</code> 导出，记录每个 tag 命中的 conversation 数和 item 数，以及 Untagged 的 conversation 数和其中的 item 数。conversation 按 <code>threadId</code> 分组，一个 conversation 里任意一条 item 命中就算这个 conversation 命中。当前的数是 Me 2/4、On-call 0/0、GitHub 4/9、Promos 2/2、Untagged 6/6（conversation/item）。</li>
-<li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。</li>
+<li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。<code>--check</code> 还会让 <code>plugins/gws</code> 对默认的 fake-gws 做一次冷启动，用它返回的 RawItem 再算一遍计数，和这个文件不一致也失败。这一遍的 <code>fromMe</code> 按 stream 的 <code>me</code> 判断，conversation 按 <code>threadId</code> 分组。</li>
 </ul>
 <p>PR 里的界面截图和录屏只来自 <code>bun run demo</code> 的合成数据，不用真实邮箱。</p>
 </main>
