@@ -2,7 +2,13 @@ import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-re
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import type { CSSProperties, KeyboardEvent, PointerEvent, UIEvent } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  type UIEvent,
+  useRef,
+} from "react";
 import { Avatar } from "./Avatar.tsx";
 import {
   type Block,
@@ -772,13 +778,16 @@ function Conversation({
   frozen,
   watch,
   mark,
+  hidden,
 }: {
   id: ConversationId;
   detail: Detail;
   frozen: number;
   watch: Watch;
   mark: Mark;
+  hidden: boolean;
 }) {
+  const landed = useRef(false);
   const [ui, setUi] = useAtom(readerUi(id));
   const { view } = useAtomValue(route);
   const hue = tagHue(useAtomValue(tagOrder), view, detail);
@@ -825,7 +834,11 @@ function Conversation({
   return (
     <article
       className="conv"
-      ref={land}
+      ref={(root) => {
+        if (hidden || landed.current || root === null) return;
+        landed.current = true;
+        land(root);
+      }}
       aria-label={detail.title}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
@@ -973,6 +986,7 @@ export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) 
               frozen={frozen.value}
               watch={watch}
               mark={{ seen, unread }}
+              hidden={hidden}
             />
           )
         )}
