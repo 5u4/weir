@@ -41,7 +41,6 @@ const Live = Schema.Struct({
 type Live = typeof Live.Type;
 
 const Listing = Schema.Struct({
-  listing: LabelIds,
   pageToken: Schema.NullOr(Schema.String),
   fetched: Schema.Array(Schema.String),
 });
@@ -52,6 +51,7 @@ const Cursor = Schema.fromJsonString(
     Schema.Struct({
       phase: Schema.Literal("backfill"),
       labels: LabelIds,
+      listing: LabelIds,
       ...Listing.fields,
       live: Live,
       turn: Schema.Literals(["backfill", "live"]),
@@ -83,7 +83,7 @@ type Pass = {
   readonly signal: AbortSignal;
 };
 
-const listingStart = (labels: LabelIds): Listing => ({
+const listingStart = (labels: LabelIds): Listing & { readonly listing: LabelIds } => ({
   listing: labels,
   pageToken: null,
   fetched: [],
@@ -164,25 +164,24 @@ export const createSource = (
   sleep: Sleep,
 ): Source => {
   const cli: Gws = { command, sleep };
-  const listingPage = async (pass: Pass, labels: LabelIds, q: string, position: Listing) => {
-    const { listing, pageToken } = position;
-    const [label, ...rest] = listing;
-    const list = await listThreads(cli, label, q, pageToken, LIST_SIZE, pass.signal);
+  const listingPage = async (
+    pass: Pass,
+    labels: LabelIds,
+    labelId: string | null,
+    q: string,
+    position: Listing,
+  ) => {
+    const list = await listThreads(cli, labelId, q, position.pageToken, LIST_SIZE, pass.signal);
     const fetched = new Set(position.fetched);
     const unfetched = (list.threads ?? []).map((t) => t.id).filter((id) => !fetched.has(id));
     const page = await fetchPage(cli, pass.emailAddress, labels, unfetched, pass.signal);
     for (const id of unfetched.slice(0, unfetched.length - page.rest.length)) fetched.add(id);
-    const carried = [...fetched];
-    const next: Listing | null =
-      page.rest.length > 0
-        ? { listing, pageToken, fetched: carried }
-        : list.nextPageToken !== undefined
-          ? { listing, pageToken: list.nextPageToken, fetched: carried }
-          : Arr.isReadonlyArrayNonEmpty(rest)
-            ? { listing: rest, pageToken: null, fetched: carried }
-            : null;
+    const next: Listing = {
+      pageToken: page.rest.length > 0 ? position.pageToken : (list.nextPageToken ?? null),
+      fetched: [...fetched],
+    };
     const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
-    return { changes, next };
+    return { changes, next, done: page.rest.length === 0 && list.nextPageToken === undefined };
   };
 
   const livePage = async (pass: Pass, labels: LabelIds, live: Live) => {
@@ -231,7 +230,8 @@ export const createSource = (
       phase: "gap",
       labels,
       after: Math.floor(live.watermark / 1000) - GAP_SLACK_SECONDS,
-      ...listingStart(labels),
+      pageToken: null,
+      fetched: [],
       live: {
         historyId: pass.historyId,
         pageToken: null,
@@ -246,7 +246,8 @@ export const createSource = (
           if (live === null) return step(pass, gap(position.live));
           return emit(live.changes, { ...position, live: live.live, turn: "backfill" }, "live");
         }
-        const { changes, next } = await listingPage(pass, labels, backfill, position);
+        const [label, ...later] = position.listing;
+        const { changes, next, done } = await listingPage(pass, labels, label, backfill, position);
         const recent = position.live.watermark - HOLD_BACK_MS;
         const pending = new Set(position.live.pending);
         const upserts = changes.upserts.filter((item) => {
@@ -255,24 +256,26 @@ export const createSource = (
           return false;
         });
         const live = { ...position.live, pending: [...pending] };
+        const listing = done ? later : position.listing;
         return emit(
           { upserts, deletions: changes.deletions },
-          next === null
-            ? { phase: "incremental", labels, live }
-            : { ...position, ...next, live, turn: "live" },
+          Arr.isReadonlyArrayNonEmpty(listing)
+            ? { ...position, listing, ...next, live, turn: "live" }
+            : { phase: "incremental", labels, live },
           "backfill",
         );
       }
       case "gap": {
-        const { changes, next } = await listingPage(
+        const { changes, next, done } = await listingPage(
           pass,
           labels,
+          null,
           `after:${position.after}`,
           position,
         );
         return emit(
           changes,
-          next === null
+          done
             ? {
                 phase: "backfill",
                 labels,
@@ -297,7 +300,7 @@ export const createSource = (
       return { phase: "backfill", labels, ...listingStart(labels), live: cold, turn: "backfill" };
     }
     if (sameLabels(position.labels, labels)) return position;
-    if (position.phase === "gap") return { ...position, labels, ...listingStart(labels) };
+    if (position.phase === "gap") return { ...position, labels, pageToken: null, fetched: [] };
     return {
       phase: "backfill",
       labels,

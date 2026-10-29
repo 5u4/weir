@@ -190,7 +190,7 @@ export const listLabels = (gws: Gws, signal: AbortSignal) =>
 
 export const listThreads = (
   gws: Gws,
-  labelId: string,
+  labelId: string | null,
   q: string,
   pageToken: string | null,
   maxResults: number,
@@ -201,7 +201,7 @@ export const listThreads = (
     ["threads", "list"],
     {
       userId: "me",
-      labelIds: [labelId],
+      ...(labelId === null ? {} : { labelIds: [labelId] }),
       q,
       maxResults,
       ...(pageToken === null ? {} : { pageToken }),

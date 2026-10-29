@@ -225,7 +225,37 @@ describe("gws background backfill", () => {
               ({ command, params }) => command === "threads list" && params.q !== "newer_than:30d",
             )
             .map(({ params }) => params.q),
-        ).toEqual([bound, bound]);
+        ).toEqual([bound]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.live(
+    "after a history 404, a reply newer than the gap bound under an older INBOX question lands unread",
+    () =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const seeded = 5;
+        const { home, port, mailbox } = gmailHome(seeded, now, ["INBOX"]);
+        const question = { at: gmailTime(now - 2 * hour), from: "priya", to: ["me"], text: "Q" };
+        const asked = { id: "asked", subject: "Note asked", labels: ["INBOX"] };
+        deliverThreads(mailbox, [{ ...asked, messages: [question] }]);
+        const { client, stream, states } = yield* connect(home, port);
+        yield* eventually(stream, (s) => s?.backfill === "done", 400);
+        expect((yield* states)["Note asked"]).toBe("read");
+
+        const answer = { at: gmailTime(now - 30 * 60_000), from: "me", to: ["priya"], text: "A" };
+        const [reply] = deliverThreads(mailbox, [{ ...asked, messages: [question, answer] }]);
+        expect(reply).toBeDefined();
+        expireHistory(mailbox);
+        const events = yield* openEvents(port);
+        yield* client.reload();
+        const outcome = yield* events.until(
+          (event): event is Extract<Event, { type: "sync" }> =>
+            event.type === "sync" && event.status !== "started",
+        );
+        expect(outcome.status).toBe("done");
+        expect(yield* stream).toMatchObject({ backfill: "done", items: seeded + 2 });
+        expect((yield* states)["Note asked"]).toBe("unread");
       }).pipe(Effect.scoped),
   );
 
