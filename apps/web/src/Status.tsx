@@ -133,7 +133,8 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
     ...(only !== undefined && !perStream ? streamMeta(only, current) : []),
   ];
   const ownError =
-    state._tag === "Failed" && !(perStream && streams.some((s) => s.state._tag === "Failed"));
+    state._tag === "Failed" &&
+    !(perStream && streams.some((s) => s.state._tag === "Failed" && s.state.error === state.error));
   return (
     <li className={`sv-src${state._tag === "Failed" ? " bad" : ""}${stopped ? " held" : ""}`}>
       <span className="sv-led" aria-hidden="true" />

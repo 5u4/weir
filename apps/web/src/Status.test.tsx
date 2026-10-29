@@ -82,6 +82,17 @@ describe("status sources", () => {
       ],
       "work gws Sync failed 2 streams inbox Synced 3h ago 12 items chat Sync failed Tried 5h ago · 12 items rate limited",
     ],
+    [
+      "a listing failure stays visible beside a different stream failure",
+      [
+        source({
+          listing: "failed",
+          error: "invalid_grant",
+          streams: [stream(), stream({ name: "chat", last_error: "rate limited" })],
+        }),
+      ],
+      "work gws Sync failed 2 streams invalid_grant inbox Synced 3h ago 12 items chat Sync failed Tried 3h ago · 12 items rate limited",
+    ],
   ])("%s", (_, sources, expected) => {
     expect(text(sources)).toBe(expected);
   });
