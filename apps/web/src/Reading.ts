@@ -222,7 +222,20 @@ export const searchHits = Atom.family((id: ConversationId) =>
   }),
 );
 
-export const hitAt = Atom.family((_: ConversationId) => Atom.make(0).pipe(Atom.setIdleTTL(0)));
+const hitCursor = Atom.family((_: ConversationId) =>
+  Atom.make<{ readonly key: string | null; readonly at: number }>({ key: null, at: 0 }).pipe(
+    Atom.setIdleTTL(0),
+  ),
+);
+
+export const hitAt = Atom.family((id: ConversationId) =>
+  Atom.make((get) => {
+    const found = Option.getOrElse(get(searchHits(id)), () => []);
+    const { key, at } = get(hitCursor(id));
+    const kept = found.findIndex((hit) => hitKey(hit) === key);
+    return kept !== -1 ? kept : Math.max(0, Math.min(at, found.length - 1));
+  }),
+);
 
 const scrollToHit = (key: string, smooth: boolean) =>
   requestAnimationFrame(() => {
@@ -263,7 +276,7 @@ export const jumpTo = Atom.writable(
     const detail = ctx.get(conversation(id));
     const hit = Option.getOrElse(ctx.get(searchHits(id)), () => [])[at];
     if (!AsyncResult.isSuccess(detail) || hit === undefined) return;
-    ctx.set(hitAt(id), at);
+    ctx.set(hitCursor(id), { key: hitKey(hit), at });
     ctx.set(readerUi(id), reveal(ctx.get(readerUi(id)), detail.value, hit));
     scrollToHit(hitKey(hit), smooth);
   },
@@ -275,11 +288,14 @@ export const landing = Atom.family((id: ConversationId) =>
     get.subscribe(
       searchHits(id),
       (found) => {
-        if (landed || Option.isNone(found)) return;
+        if (Option.isNone(found)) return;
+        const smooth = landed;
         landed = true;
-        if (found.value.length > 0) {
-          queueMicrotask(() => get.registry.set(jumpTo, { id, at: 0, smooth: false }));
-        }
+        const { key } = get.once(hitCursor(id));
+        if (found.value.length === 0 || found.value.some((hit) => hitKey(hit) === key)) return;
+        queueMicrotask(() =>
+          get.registry.set(jumpTo, { id, at: get.registry.get(hitAt(id)), smooth }),
+        );
       },
       { immediate: true },
     );
