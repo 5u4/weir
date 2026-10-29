@@ -1631,6 +1631,8 @@ button {
   padding: 0 5px;
   border: 1px dashed color-mix(in oklch, currentColor 30%, transparent);
   border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   font-size: 0.87em;
   color: color-mix(in oklch, currentColor 62%, transparent);
 }
