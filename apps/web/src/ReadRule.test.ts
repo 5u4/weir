@@ -96,14 +96,14 @@ describe("read rule", () => {
     },
     {
       name: "paused never advances",
-      start: { mode: { _tag: "Paused", seen: 24 } },
+      start: { mode: { _tag: "Paused", seen: 24, from: null, held: false } },
       events: [input, viewport(25), focus(true), leave],
       commands: ["Idle", "Idle", "Idle", "Idle"],
     },
     {
       name: "marking unread drops a pending read and sends nothing until the conversation closes",
       events: [input, viewport(12), pause(), viewport(25), elapsed, focus(true), leave],
-      commands: ["Idle", "Debounce", "Idle", "Idle", "Idle", "Idle", "Idle"],
+      commands: ["Idle", "Debounce", "Unread", "Idle", "Idle", "Idle", "Idle"],
     },
     {
       name: "new messages that arrive after Mark unread are not read either",
@@ -111,9 +111,24 @@ describe("read rule", () => {
       commands: ["Idle", 25, "Idle", "Idle", "Idle", "Idle"],
     },
     {
+      name: "Mark unread waits for a read in flight to be acknowledged",
+      events: [input, viewport(25), pause(), leave, acked(25), acked(25)],
+      commands: ["Idle", 25, "Idle", "Idle", "Unread", "Idle"],
+    },
+    {
+      name: "Mark unread waits for a read in flight to fail",
+      events: [input, viewport(25), pause(), failed(25)],
+      commands: ["Idle", 25, "Idle", "Unread"],
+    },
+    {
+      name: "Mark unread waits for every read in flight",
+      events: [input, viewport(18), elapsed, viewport(25), pause(), acked(25), acked(18)],
+      commands: ["Idle", "Debounce", 18, 25, "Idle", "Idle", "Unread"],
+    },
+    {
       name: "a mark unread that fails resumes reading",
       events: [input, pause(), viewport(25), resume],
-      commands: ["Idle", "Idle", "Idle", 25],
+      commands: ["Idle", "Unread", "Idle", 25],
     },
     {
       name: "scrolling back up never sends a lower seq",
@@ -161,7 +176,7 @@ describe("read rule", () => {
 
   it("sent only ever grows", () => {
     const { state } = run(opened(), [input, viewport(18), elapsed, acked(18), viewport(12), leave]);
-    expect(state).toMatchObject({ candidate: 18, sent: 18, pending: 0, armed: true });
+    expect(state).toMatchObject({ candidate: 18, sent: 18, inFlight: [], armed: true });
   });
 
   it("the sent seq advances only after the read is acknowledged", () => {

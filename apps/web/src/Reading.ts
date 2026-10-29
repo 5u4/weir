@@ -88,15 +88,19 @@ export const reading = Atom.family((id: ConversationId) =>
             settled: (acked) => dispatch({ _tag: acked ? "Acked" : "Failed", seq: command.seq }),
           });
           break;
+        case "Unread":
+          get.registry.set(markUnread, {
+            id,
+            from: command.from,
+            failed: () => dispatch({ _tag: "Resume" }),
+          });
+          break;
         case "Idle":
           break;
       }
       if (advanced) publish({ seen: ReadRule.seen(rule) });
     };
-    const unread = (from: number | null) => {
-      dispatch({ _tag: "Pause", from });
-      get.registry.set(markUnread, { id, from, failed: () => dispatch({ _tag: "Resume" }) });
-    };
+    const unread = (from: number | null) => dispatch({ _tag: "Pause", from });
 
     const observer = new IntersectionObserver((entries) => {
       for (const { target, isIntersecting } of entries) {

@@ -1,11 +1,16 @@
 export type Mode =
   | { readonly _tag: "Reading" }
-  | { readonly _tag: "Paused"; readonly seen: number };
+  | {
+      readonly _tag: "Paused";
+      readonly seen: number;
+      readonly from: number | null;
+      readonly held: boolean;
+    };
 
 export type State = {
   readonly candidate: number;
   readonly sent: number;
-  readonly pending: number;
+  readonly inFlight: ReadonlyArray<number>;
   readonly last: number;
   readonly inView: number;
   readonly armed: boolean;
@@ -30,7 +35,8 @@ export type Event =
 export type Command =
   | { readonly _tag: "Idle" }
   | { readonly _tag: "Debounce" }
-  | { readonly _tag: "Send"; readonly seq: number };
+  | { readonly _tag: "Send"; readonly seq: number }
+  | { readonly _tag: "Unread"; readonly from: number | null };
 
 export const open = (opened: {
   readonly seen: number;
@@ -40,7 +46,7 @@ export const open = (opened: {
 }): State => ({
   candidate: opened.seen,
   sent: opened.seen,
-  pending: 0,
+  inFlight: [],
   last: opened.last,
   inView: 0,
   armed: false,
@@ -48,6 +54,11 @@ export const open = (opened: {
   visible: opened.visible,
   mode: { _tag: "Reading" },
 });
+
+const settled = (inFlight: ReadonlyArray<number>, seq: number) => {
+  const at = inFlight.indexOf(seq);
+  return at === -1 ? inFlight : inFlight.toSpliced(at, 1);
+};
 
 const apply = (state: State, event: Event): State => {
   switch (event._tag) {
@@ -65,16 +76,18 @@ const apply = (state: State, event: Event): State => {
       return {
         ...state,
         sent: Math.max(state.sent, event.seq),
-        pending: state.pending === event.seq ? 0 : state.pending,
+        inFlight: settled(state.inFlight, event.seq),
       };
     case "Failed":
-      return { ...state, pending: state.pending === event.seq ? 0 : state.pending };
+      return { ...state, inFlight: settled(state.inFlight, event.seq) };
     case "Pause":
       return {
         ...state,
         mode: {
           _tag: "Paused",
           seen: Math.max(0, Math.min(event.from ?? state.last, state.last) - 1),
+          from: event.from,
+          held: true,
         },
       };
     case "Resume":
@@ -92,17 +105,24 @@ const flushes = (event: Event) =>
 
 export const step = (state: State, event: Event): readonly [State, Command] => {
   const applied = apply(state, event);
-  if (event._tag === "Acked" || event._tag === "Failed" || applied.mode._tag === "Paused") {
-    return [applied, { _tag: "Idle" }];
+  if (applied.mode._tag === "Paused") {
+    const { mode } = applied;
+    return mode.held && applied.inFlight.length === 0
+      ? [
+          { ...applied, mode: { ...mode, held: false } },
+          { _tag: "Unread", from: mode.from },
+        ]
+      : [applied, { _tag: "Idle" }];
   }
+  if (event._tag === "Acked" || event._tag === "Failed") return [applied, { _tag: "Idle" }];
   const eligible = applied.armed && applied.focused && applied.visible;
   const next = eligible
     ? { ...applied, candidate: Math.max(applied.candidate, applied.inView) }
     : applied;
-  const covered = Math.max(next.sent, next.pending);
+  const covered = Math.max(next.sent, ...next.inFlight);
   if (next.candidate > covered && (flushes(event) || next.candidate >= next.last)) {
     return [
-      { ...next, pending: next.candidate },
+      { ...next, inFlight: [...next.inFlight, next.candidate] },
       { _tag: "Send", seq: next.candidate },
     ];
   }
