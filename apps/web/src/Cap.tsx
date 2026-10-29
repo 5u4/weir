@@ -4,7 +4,14 @@ import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { Fragment } from "react";
 import { Avatars } from "./Avatar.tsx";
 import { Link } from "./Link.tsx";
-import { type Clause, chips, clearedWidget, sentence, type Widget, widgetLabel } from "./Notch.ts";
+import {
+  type Clause,
+  chips,
+  clearedWidget,
+  sentence,
+  type Widget,
+  widgetDescription,
+} from "./Notch.ts";
 import { type Route, route, statusOpen, type View } from "./Route.ts";
 import { StatusIcon } from "./Status.tsx";
 import { counts, searchOpen } from "./Weir.ts";
@@ -97,13 +104,13 @@ function StatusButton({ className, alert }: { className: string; alert: boolean 
   );
 }
 
-function SentenceWidget({ widget, active }: { widget: Widget; active: View | null }) {
+export function SentenceWidget({ widget, active }: { widget: Widget; active: View | null }) {
   return (
     <Link
       to={viewRoute(widget.view)}
       current={active === widget.view}
       className={`w w-${widget.kind}`}
-      label={widgetLabel(widget)}
+      description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
         <>
@@ -112,7 +119,8 @@ function SentenceWidget({ widget, active }: { widget: Widget; active: View | nul
       ) : (
         <>
           <Avatars senders={widget.senders} />
-          {widget.kind !== "clear" && <span className="w-n">{widget.count}</span>}{" "}
+          {widget.kind !== "clear" && <span className="w-n">{widget.count}</span>}
+          {widget.kind !== "clear" && " "}
           <span className="w-name">{widget.name}</span>
         </>
       )}
@@ -133,23 +141,23 @@ function SentenceClause({ clause, active }: { clause: Clause; active: View | nul
   ));
 }
 
-function Chip({ widget, active }: { widget: Widget; active: View | null }) {
+export function Chip({ widget, active }: { widget: Widget; active: View | null }) {
   return (
     <Link
       to={viewRoute(widget.view)}
       current={active === widget.view}
       className={`cw cw-${widget.kind}`}
-      label={widgetLabel(widget)}
+      description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
         <>
-          <span className="cw-name">{widget.name}</span>
-          <span className="w-n">{widget.count}</span>
+          <span className="cw-name">{widget.name}</span> <span className="w-n">{widget.count}</span>
         </>
       ) : (
         <>
           <Avatars senders={widget.senders} />
           {widget.kind !== "clear" && <span className="w-n">{widget.count}</span>}
+          {widget.kind !== "clear" && " "}
           <span className="cw-name">{widget.name}</span>
         </>
       )}

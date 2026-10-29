@@ -105,16 +105,16 @@ export const sentence = (counts: Counts): Sentence => {
   };
 };
 
-export const widgetLabel = ({ kind, name, count }: Widget) => {
+export const widgetDescription = ({ kind }: Widget) => {
   switch (kind) {
     case "updates":
-      return `${count} ${name} with updates`;
+      return "with updates";
     case "quiet":
-      return `${count} ${name} read but not done`;
+      return "read but not done";
     case "clear":
-      return `${name} is clear`;
+      return "is clear";
     case "cleared":
-      return `${name} ${count}`;
+      return undefined;
   }
 };
 

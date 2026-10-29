@@ -9,13 +9,13 @@ export function Link({
   to,
   current,
   className,
-  label,
+  description,
   children,
 }: {
   to: Route;
   current: boolean;
   className: string;
-  label?: string;
+  description?: string | undefined;
   children: ReactNode;
 }) {
   const [, navigate] = useAtom(route);
@@ -24,8 +24,8 @@ export function Link({
       className={`${className}${current ? " on" : ""}`}
       href={href(to)}
       aria-current={current ? "page" : undefined}
-      aria-label={label}
-      title={label}
+      aria-description={description}
+      title={description}
       onClick={(event) => {
         if (event.defaultPrevented || !plainLeftClick(event)) return;
         event.preventDefault();
