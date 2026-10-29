@@ -1,0 +1,592 @@
+import { describe, expect, it } from "@effect/vitest";
+import type { RawItem } from "@weir/contract/Source";
+import * as Database from "@weir/store/Database";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+import type { View } from "../src/Api.ts";
+import * as Http from "../src/Http.ts";
+import {
+  apiClient,
+  eventually,
+  fakePlugin,
+  fakeSource,
+  makeHome,
+  rawItem,
+  sourceConfig,
+} from "./harness.ts";
+
+const tag = (name: string, match: string) => `
+[[tag]]
+name = "${name}"
+match = ${match}
+`;
+
+const config =
+  sourceConfig() +
+  tag("Work", `{ type = "regex", target = "/title", regex = "work", flags = "i" }`) +
+  tag("Lists", `{ type = "regex", target = "/from/address", regex = "lists" }`);
+
+const work: View = { _tag: "Tag", name: "Work" };
+const lists: View = { _tag: "Tag", name: "Lists" };
+const untagged: View = { _tag: "Untagged" };
+const cleared: View = { _tag: "Cleared" };
+
+const item = (externalId: string, thread: string, minute: number, overrides: Partial<RawItem>) =>
+  rawItem(externalId, {
+    threadId: thread,
+    occurredAt: `2026-10-28T09:${String(minute).padStart(2, "0")}:00Z`,
+    ...overrides,
+  });
+
+const start = Effect.gen(function* () {
+  const source = fakeSource([]);
+  const { home, port } = makeHome(config);
+  yield* Layer.build(Http.layer(home, { fake: fakePlugin(source) }));
+  const client = yield* apiClient(port);
+  yield* eventually(client.status(), ({ sources }) =>
+    sources.every(
+      ({ streams }) => streams.length > 0 && streams.every(({ backfill }) => backfill === "done"),
+    ),
+  );
+  const listed = (view: View) =>
+    client
+      .conversations({ query: { view } })
+      .pipe(Effect.map(({ conversations }) => conversations));
+  const deliver = (items: ReadonlyArray<RawItem>) =>
+    Effect.gen(function* () {
+      const { seq } = yield* client.conversations({ query: { view: untagged } });
+      source.pending.push(...items);
+      yield* eventually(
+        client.conversations({ query: { view: untagged } }),
+        (list) => list.seq >= seq + items.length,
+      );
+    });
+  const conversationOf = (title: string) =>
+    client.search({ query: { q: "" } }).pipe(
+      Effect.map(({ conversations }) => {
+        const found = conversations.find((conversation) => conversation.title === title);
+        if (found === undefined) throw new Error(`no conversation titled ${title}`);
+        return found.id;
+      }),
+    );
+  const seqsOf = (id: number) =>
+    client
+      .conversation({ params: { id } })
+      .pipe(Effect.map(({ items }) => items.map(({ seq }) => seq)));
+  return { client, port, home, listed, deliver, conversationOf, seqsOf };
+});
+
+const ids = (rows: ReadonlyArray<{ readonly id: number }>) => rows.map(({ id }) => id);
+const states = (rows: ReadonlyArray<{ readonly id: number; readonly state: string }>) =>
+  rows.map(({ id, state }) => [id, state]);
+
+describe("conversation state", () => {
+  it.live("read advances seen_seq up to the last item and never lowers it", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("a1", "t1", 1, { title: "Work plan" }),
+        item("a2", "t1", 2, { title: "Re: Work plan" }),
+      ]);
+      const id = yield* conversationOf("Work plan");
+      const [s1, s2] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined) throw new Error("expected two items");
+
+      const first = yield* client.read({ params: { id }, payload: { seq: s1 } });
+      expect(first).toMatchObject({ state: "unread", seen_seq: s1, new: 1, items: 2 });
+
+      const lower = yield* client.read({ params: { id }, payload: { seq: s1 - 1 } });
+      expect(lower).toMatchObject({ state: "unread", seen_seq: s1, new: 1 });
+
+      const clamped = yield* client.read({ params: { id }, payload: { seq: s2 + 100 } });
+      expect(clamped).toMatchObject({ state: "read", seen_seq: s2, last_seq: s2, new: 0 });
+
+      const detail = yield* client.conversation({ params: { id } });
+      expect(detail.state).toEqual({ seen_seq: s2, cleared_seq: 0, muted: false, state: "read" });
+      expect(detail.digests).toEqual([]);
+
+      yield* deliver([item("a3", "t1", 3, { title: "Re: Work plan" })]);
+      const reopened = yield* client.conversation({ params: { id } });
+      expect(reopened.state).toMatchObject({ seen_seq: s2, state: "unread" });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("unread moves seen_seq to just before the last or the given item", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("b1", "t1", 1, { title: "Work sync" }),
+        item("b2", "t1", 2, {}),
+        item("b3", "t1", 3, {}),
+      ]);
+      const id = yield* conversationOf("Work sync");
+      const [s1, , s3] = yield* seqsOf(id);
+      if (s1 === undefined || s3 === undefined) throw new Error("expected three items");
+      yield* client.read({ params: { id }, payload: { seq: s3 } });
+
+      const last = yield* client.unread({ params: { id }, payload: {} });
+      expect(last).toMatchObject({ state: "unread", seen_seq: s3 - 1, new: 1 });
+
+      const fromFirst = yield* client.unread({ params: { id }, payload: { seq: s1 } });
+      expect(fromFirst).toMatchObject({ state: "unread", seen_seq: s1 - 1, new: 3, items: 3 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("done hides a conversation until a newer item arrives, restore brings it back read", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([item("c1", "t1", 1, { title: "Work review" }), item("c2", "t1", 2, {})]);
+      const id = yield* conversationOf("Work review");
+      const [, s2] = yield* seqsOf(id);
+      if (s2 === undefined) throw new Error("expected two items");
+
+      const done = yield* client.done({ params: { id }, payload: { seq: s2 } });
+      expect(done).toMatchObject({ state: "done", cleared_seq: s2 });
+      expect(ids(yield* listed(work))).toEqual([]);
+      expect(states(yield* listed(cleared))).toEqual([[id, "done"]]);
+      expect((yield* client.counts()).cleared).toBe(1);
+
+      yield* deliver([item("c3", "t1", 3, {})]);
+      expect(states(yield* listed(work))).toEqual([[id, "unread"]]);
+      expect(ids(yield* listed(cleared))).toEqual([]);
+
+      const stale = yield* client.done({ params: { id }, payload: { seq: s2 } });
+      expect(stale.state).toBe("unread");
+      expect(ids(yield* listed(work))).toEqual([id]);
+
+      yield* client.done({ params: { id }, payload: { seq: stale.last_seq } });
+      const restored = yield* client.restore({ params: { id } });
+      expect(restored).toMatchObject({ state: "read", cleared_seq: 0, seen_seq: stale.last_seq });
+      expect(ids(yield* listed(work))).toEqual([id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a muted conversation stays cleared and out of unread counts until restored", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf } = yield* start;
+      yield* deliver([item("d1", "t1", 1, { title: "Work chatter" })]);
+      const id = yield* conversationOf("Work chatter");
+
+      const muted = yield* client.mute({ params: { id } });
+      expect(muted).toMatchObject({ state: "muted", muted: true });
+
+      yield* deliver([item("d2", "t1", 2, {})]);
+      expect(states(yield* listed(cleared))).toEqual([[id, "muted"]]);
+      expect(ids(yield* listed(work))).toEqual([]);
+      const counts = yield* client.counts();
+      expect(counts.unread).toBe(0);
+      expect(counts.tags.find(({ name }) => name === "Work")).toMatchObject({
+        unread: 0,
+        open: 0,
+      });
+
+      const restored = yield* client.restore({ params: { id } });
+      expect(restored).toMatchObject({ state: "read", muted: false, new: 0 });
+      expect(ids(yield* listed(work))).toEqual([id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("clear marks only the view's conversations done up to the given seq", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("e1", "w1", 1, { title: "Work one" }),
+        item("e2", "w2", 2, { title: "Work two" }),
+        item("e3", "l1", 3, {
+          title: "Digest",
+          from: { name: "L", address: "news@lists.example" },
+        }),
+        item("e4", "u1", 4, { title: "Hello" }),
+        item("e5", "u2", 5, { title: "Read already" }),
+      ]);
+      const workOne = yield* conversationOf("Work one");
+      const workTwo = yield* conversationOf("Work two");
+      const list = yield* conversationOf("Digest");
+      const hello = yield* conversationOf("Hello");
+      const readAlready = yield* conversationOf("Read already");
+      const readRow = yield* client.read({
+        params: { id: readAlready },
+        payload: { seq: 1_000_000 },
+      });
+      expect(readRow.state).toBe("read");
+
+      const others = Effect.all([listed(lists), listed(untagged), listed(cleared)]);
+      const before = yield* others;
+      expect(ids(before[0])).toEqual([list]);
+      expect(ids(before[1]).toSorted()).toEqual([hello, readAlready].toSorted());
+      expect(before[2]).toEqual([]);
+
+      const { seq } = yield* client.conversations({ query: { view: work } });
+      yield* deliver([item("e6", "w2", 6, {})]);
+
+      expect(yield* client.clear({ payload: { view: work, seq } })).toEqual({ cleared: 1 });
+      expect(states(yield* listed(work))).toEqual([[workTwo, "unread"]]);
+      const after = yield* others;
+      expect(after[0]).toEqual(before[0]);
+      expect(after[1]).toEqual(before[1]);
+      expect(states(after[2])).toEqual([[workOne, "done"]]);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("views and counts", () => {
+  it.live("a two-tag conversation counts in both tags and once in total", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("f1", "both", 1, {
+          title: "Work list",
+          from: { name: "List bot", address: "bot@lists.example" },
+        }),
+        item("f2", "work", 2, {
+          title: "Work only",
+          from: { name: "Ada", address: "ada@x.example" },
+        }),
+        item("f3", "work", 3, { from: { name: "Me", address: "me@example.com" } }),
+        item("f4", "none", 4, {
+          title: "Untagged hi",
+          from: { name: "Bo", address: "bo@x.example" },
+        }),
+      ]);
+      const both = yield* conversationOf("Work list");
+      const workOnly = yield* conversationOf("Work only");
+
+      expect(yield* client.counts()).toEqual({
+        unread: 3,
+        tags: [
+          {
+            name: "Work",
+            unread: 2,
+            open: 2,
+            senders: [
+              { name: "Ada", address: "ada@x.example" },
+              { name: "List bot", address: "bot@lists.example" },
+            ],
+          },
+          {
+            name: "Lists",
+            unread: 1,
+            open: 1,
+            senders: [{ name: "List bot", address: "bot@lists.example" }],
+          },
+        ],
+        untagged: { unread: 1, open: 1, senders: [{ name: "Bo", address: "bo@x.example" }] },
+        cleared: 0,
+      });
+
+      expect(
+        (yield* listed(work)).map(({ id, tags, participants }) => [id, tags, participants]),
+      ).toEqual([
+        [workOnly, ["Work"], 2],
+        [both, ["Lists", "Work"], 1],
+      ]);
+
+      yield* client.read({ params: { id: workOnly }, payload: { seq: 1_000_000 } });
+      const afterRead = yield* client.counts();
+      expect(afterRead.unread).toBe(2);
+      expect(afterRead.tags[0]).toMatchObject({ name: "Work", unread: 1, open: 2 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("senders take each unread conversation's latest sender who is not me", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("i1", "busy", 1, { title: "Work busy", from: { name: "A", address: "a@x.example" } }),
+        item("i2", "busy", 2, { from: { name: "B", address: "b@x.example" } }),
+        item("i3", "busy", 3, { from: { name: "C", address: "c@x.example" } }),
+        item("i4", "quiet", 4, {
+          title: "Work quiet",
+          from: { name: "D", address: "d@x.example" },
+        }),
+      ]);
+      const quiet = yield* conversationOf("Work quiet");
+      yield* client.read({ params: { id: quiet }, payload: { seq: 1_000_000 } });
+      yield* deliver([item("i5", "quiet", 5, { from: { name: "Me", address: "me@example.com" } })]);
+
+      const counts = yield* client.counts();
+      expect(counts.tags.find(({ name }) => name === "Work")).toMatchObject({
+        unread: 2,
+        senders: [
+          { name: "D", address: "d@x.example" },
+          { name: "C", address: "c@x.example" },
+        ],
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("unknown tags and conversations are 404, clearing the cleared view is 400", () =>
+    Effect.gen(function* () {
+      const { client, port } = yield* start;
+      for (const name of ["Nope", "Untagged"]) {
+        const view: View = { _tag: "Tag", name };
+        expect((yield* Effect.flip(client.conversations({ query: { view } })))._tag).toBe(
+          "NotFound",
+        );
+      }
+      const clearUnknown = client.clear({
+        payload: { view: { _tag: "Tag", name: "Nope" }, seq: 1 },
+      });
+      expect((yield* Effect.flip(clearUnknown))._tag).toBe("NotFound");
+      for (const request of [
+        client.read({ params: { id: 9999 }, payload: { seq: 1 } }),
+        client.unread({ params: { id: 9999 }, payload: {} }),
+        client.done({ params: { id: 9999 }, payload: { seq: 1 } }),
+        client.mute({ params: { id: 9999 } }),
+        client.restore({ params: { id: 9999 } }),
+      ]) {
+        expect((yield* Effect.flip(request))._tag).toBe("NotFound");
+      }
+
+      const response = yield* Effect.promise(() =>
+        fetch(`http://127.0.0.1:${port}/clear`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ view: "cleared", seq: 1 }),
+        }),
+      );
+      expect(response.status).toBe(400);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("search", () => {
+  it.live("returns rows with up to three marked hit lines, newest first", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, seqsOf } = yield* start;
+      const padding = "lorem ipsum dolor sit amet ".repeat(6);
+      yield* deliver([
+        item("g1", "plan", 1, { title: "Plan", bodyNew: "code freeze starts Monday" }),
+        item("g2", "plan", 2, {
+          bodyNew: "ok",
+          from: { name: "Freeze Bot", address: "bot@x.example" },
+        }),
+        item("g3", "plan", 3, { bodyNew: `${padding}the freeze\nmoved ${padding}` }),
+        item("g4", "plan", 4, { bodyNew: "FREEZE confirmed" }),
+        item("g5", "other", 5, { title: "Other", bodyNew: "freeze too" }),
+      ]);
+      const plan = yield* conversationOf("Plan");
+      const other = yield* conversationOf("Other");
+      const [, s2, s3, s4] = yield* seqsOf(plan);
+      yield* client.done({ params: { id: plan }, payload: { seq: 1_000_000 } });
+      yield* client.mute({ params: { id: other } });
+
+      const { conversations } = yield* client.search({ query: { q: "freeze" } });
+      const planHit = conversations.find(({ id }) => id === plan);
+      const otherHit = conversations.find(({ id }) => id === other);
+      expect(planHit?.state).toBe("done");
+      expect(otherHit?.state).toBe("muted");
+      expect(otherHit?.hits).toEqual([
+        {
+          field: "body",
+          seq: expect.any(Number),
+          digest_id: null,
+          title: null,
+          text: [
+            { text: "freeze", mark: true },
+            { text: " too", mark: false },
+          ],
+        },
+      ]);
+
+      const hits = planHit?.hits ?? [];
+      expect(hits.map(({ field, seq }) => [field, seq])).toEqual([
+        ["body", s4],
+        ["body", s3],
+        ["from", s2],
+      ]);
+      expect(hits[0]?.text).toEqual([
+        { text: "FREEZE", mark: true },
+        { text: " confirmed", mark: false },
+      ]);
+      const snippet = hits[1]?.text ?? [];
+      const snippetText = snippet.map(({ text }) => text).join("");
+      expect(snippetText.startsWith("…") && snippetText.endsWith("…")).toBe(true);
+      expect(snippetText.length).toBeLessThanOrEqual(122);
+      expect(snippetText).toContain("the freeze moved");
+      expect(snippet.filter(({ mark }) => mark).map(({ text }) => text)).toEqual(["freeze"]);
+      expect(hits[2]?.text).toEqual([
+        { text: "Freeze", mark: true },
+        { text: " Bot <bot@x.example>", mark: false },
+      ]);
+
+      const empty = yield* client.search({ query: { q: "" } });
+      expect(empty.conversations.every(({ hits }) => hits.length === 0)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("digest topics and headlines produce hit lines", () =>
+    Effect.gen(function* () {
+      const { client, home, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("j1", "rollout", 1, { title: "Rollout", bodyNew: "kickoff" }),
+        item("j2", "rollout", 2, { bodyNew: "canary looks good" }),
+        item("j3", "rollout", 3, { bodyNew: "thanks" }),
+      ]);
+      const id = yield* conversationOf("Rollout");
+      const [s1, s2, s3] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined || s3 === undefined) {
+        throw new Error("expected three items");
+      }
+      const digestId = 7;
+      const topics = [
+        { title: "Canary plan", state: "open", body: "Ship the canary Friday", seqs: [s1, s2] },
+        { title: "Wrap-up", state: "fyi", body: "Thanked the team", seqs: [s3] },
+        { title: "Canary metrics", state: "fyi", body: "Dashboards", seqs: [s3 + 1000] },
+      ];
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO digest
+          (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+          VALUES (${digestId}, ${id}, ${s1}, ${s3}, 'Canary rollout approved',
+            ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+        yield* sql`INSERT INTO search_fts (rowid, text, conversation_id, item_seq, digest_id)
+          VALUES (${-digestId}, 'Canary rollout approved', ${id}, NULL, ${digestId})`;
+      }).pipe(Effect.provide(Database.layer(home.db)));
+
+      const { conversations } = yield* client.search({ query: { q: "canary" } });
+      const topic = {
+        field: "topic",
+        digest_id: digestId,
+        title: [
+          { text: "Canary", mark: true },
+          { text: " plan", mark: false },
+        ],
+        text: [
+          { text: "Ship the ", mark: false },
+          { text: "canary", mark: true },
+          { text: " Friday", mark: false },
+        ],
+      };
+      expect(conversations.find((conversation) => conversation.id === id)?.hits).toEqual([
+        { ...topic, seq: s2 },
+        {
+          field: "topic",
+          seq: null,
+          digest_id: digestId,
+          title: [
+            { text: "Canary", mark: true },
+            { text: " metrics", mark: false },
+          ],
+          text: [{ text: "Dashboards", mark: false }],
+        },
+        {
+          field: "headline",
+          seq: null,
+          digest_id: digestId,
+          title: null,
+          text: [
+            { text: "Canary", mark: true },
+            { text: " rollout approved", mark: false },
+          ],
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("list rows", () => {
+  const ann = { name: "Ann Lee", address: "ann@x.example" };
+  const bob = { name: "Bob", address: "bob@x.example" };
+  const me = { name: "Me", address: "me@example.com" };
+
+  it.live("from is the newest sender who is not me, senders the first two by appearance", () =>
+    Effect.gen(function* () {
+      const { listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("r1", "team", 1, { title: "Team sync", from: ann, bodyNew: "agenda" }),
+        item("r2", "team", 2, { from: bob }),
+        item("r3", "team", 3, { from: { name: "Ann L", address: "ANN@X.example" } }),
+        item("r4", "team", 4, { from: { name: "Cy", address: "cy@x.example" } }),
+        item("r5", "team", 5, { from: me, bodyNew: "thanks all" }),
+        item("r6", "solo", 6, { title: "Note to self", from: me, bodyNew: "buy milk" }),
+      ]);
+      const team = yield* conversationOf("Team sync");
+      const solo = yield* conversationOf("Note to self");
+      const rows = yield* listed(untagged);
+
+      expect(rows.find(({ id }) => id === team)).toMatchObject({
+        from: { name: "Cy", address: "cy@x.example" },
+        senders: [ann, bob],
+        participants: 4,
+        preview: "Me: thanks all",
+      });
+      expect(rows.find(({ id }) => id === solo)).toMatchObject({
+        from: me,
+        senders: [me],
+        participants: 1,
+        preview: "Me: buy milk",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("preview is the digest headline only when the newest digest reaches the last item", () =>
+    Effect.gen(function* () {
+      const { client, home, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("p1", "spec", 1, { title: "Spec review", from: ann, bodyNew: "draft attached" }),
+        item("p2", "spec", 2, { from: bob, bodyNew: "looks fine" }),
+        item("p3", "spec", 3, {
+          from: ann,
+          bodyNew:
+            "<p>See **the** [spec](https://x.example/spec) ![diagram](https://x.example/a.png) at https://x.example/raw</p>\n\n> quoted",
+        }),
+      ]);
+      const id = yield* conversationOf("Spec review");
+      const [s1, s2, s3] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined || s3 === undefined) {
+        throw new Error("expected three items");
+      }
+      const insertDigest = (digestId: number, fromSeq: number, toSeq: number, headline: string) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const topics = [{ title: "Spec", state: "fyi", body: headline, seqs: [fromSeq] }];
+          yield* sql`INSERT INTO digest
+            (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+            VALUES (${digestId}, ${id}, ${fromSeq}, ${toSeq}, ${headline},
+              ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+        }).pipe(Effect.provide(Database.layer(home.db)));
+      const previews = Effect.gen(function* () {
+        const fromList = (yield* listed(untagged)).find((row) => row.id === id)?.preview;
+        const fromSearch = (yield* client.search({ query: { q: "" } })).conversations.find(
+          (row) => row.id === id,
+        )?.preview;
+        const fromWrite = (yield* client.read({ params: { id }, payload: { seq: s1 } })).preview;
+        return [fromList, fromSearch, fromWrite];
+      });
+      const lastMessage = "Ann: See the spec at quoted";
+
+      expect(yield* previews).toEqual([lastMessage, lastMessage, lastMessage]);
+
+      yield* insertDigest(1, s1, s2, "Draft reviewed");
+      expect(yield* previews).toEqual([lastMessage, lastMessage, lastMessage]);
+
+      yield* insertDigest(2, s3, s3, "Ann shared the spec");
+      const headline = "Ann shared the spec";
+      expect(yield* previews).toEqual([headline, headline, headline]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("an empty plain body previews as no text, long bodies cut at 160 code points", () =>
+    Effect.gen(function* () {
+      const { listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("n1", "blank", 1, { title: "Blank", from: ann, bodyNew: "" }),
+        item("n2", "link", 2, {
+          title: "Link only",
+          from: { name: "", address: "zed.q@x.example" },
+          bodyNew: "https://x.example/only ![x](https://x.example/x.png)",
+        }),
+        item("n3", "long", 3, { title: "Long", from: bob, bodyNew: "😀".repeat(200) }),
+      ]);
+      const rows = yield* listed(untagged);
+      const previewOf = (title: string) =>
+        conversationOf(title).pipe(Effect.map((id) => rows.find((row) => row.id === id)?.preview));
+
+      expect(yield* previewOf("Blank")).toBe("Ann: (no text)");
+      expect(yield* previewOf("Link only")).toBe("zed.q: (no text)");
+      expect(yield* previewOf("Long")).toBe(`Bob: ${"😀".repeat(160)}`);
+    }).pipe(Effect.scoped),
+  );
+});

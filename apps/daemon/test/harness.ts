@@ -118,12 +118,14 @@ export const rawItem = (externalId: string, overrides: Partial<RawItem>): RawIte
 export interface FakeSource {
   streams: () => Promise<ReadonlyArray<StreamDescriptor>>;
   items: ReadonlyArray<RawItem>;
+  pending: Array<RawItem>;
   syncCalls: number;
 }
 
 export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
   streams: async () => [mailStream],
   items,
+  pending: [],
   syncCalls: 0,
 });
 
@@ -135,7 +137,7 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
     sync: async (_streamId, cursor) => {
       state.syncCalls += 1;
       return {
-        upserts: cursor === null ? state.items : [],
+        upserts: cursor === null ? state.items : state.pending.splice(0),
         deletions: [],
         cursor: "done",
         more: false,

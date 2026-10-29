@@ -1,4 +1,5 @@
-import { StreamDescriptor } from "@weir/contract/Source";
+import { Topic, Trigger } from "@weir/contract/Digest";
+import { Party, StreamDescriptor } from "@weir/contract/Source";
 import * as Schema from "effect/Schema";
 
 export const UtcIso = Schema.String.check(
@@ -18,7 +19,6 @@ export const DigestId = Schema.Int.pipe(Schema.brand("DigestId"));
 export type DigestId = typeof DigestId.Type;
 
 const Kind = StreamDescriptor.fields.kind;
-const Trigger = Schema.Literals(["auto", "manual"]);
 
 const streamFields = {
   sourceId: Schema.String,
@@ -92,6 +92,29 @@ export const ConversationStateRow = Schema.Struct({
 });
 export type ConversationStateRow = typeof ConversationStateRow.Type;
 
+export const ConversationState = Schema.Literals(["unread", "read", "done", "muted"]);
+export type ConversationState = typeof ConversationState.Type;
+
+export const ListedConversationRow = Schema.Struct({
+  ...ConversationRow.fields,
+  seenSeq: Seq,
+  clearedSeq: Seq,
+  muted: Schema.BooleanFromBit,
+  state: ConversationState,
+  tags: Schema.fromJsonString(Schema.Array(Schema.String)),
+  newItems: Schema.Int,
+  items: Schema.Int,
+  participants: Schema.Int,
+  from: Schema.fromJsonString(Party),
+  senders: Schema.fromJsonString(Schema.Array(Party)),
+  lastFromName: Schema.String,
+  lastFromAddress: Schema.String,
+  lastFromMe: Schema.BooleanFromBit,
+  lastBodyNew: Schema.String,
+  coveringHeadline: Schema.NullOr(Schema.String),
+});
+export type ListedConversationRow = typeof ListedConversationRow.Type;
+
 export const TagStateRow = Schema.Struct({
   name: Schema.String,
   aiSince: UtcIso,
@@ -112,14 +135,6 @@ export type SyncRunInsert = typeof SyncRunInsert.Type;
 
 export const SyncRunRow = Schema.Struct({ id: Schema.Int, ...syncRunFields });
 export type SyncRunRow = typeof SyncRunRow.Type;
-
-export const Topic = Schema.Struct({
-  title: Schema.String,
-  state: Schema.Literals(["open", "resolved", "fyi"]),
-  body: Schema.String,
-  seqs: Schema.Array(Seq),
-});
-export type Topic = typeof Topic.Type;
 
 export const DigestRow = Schema.Struct({
   id: DigestId,

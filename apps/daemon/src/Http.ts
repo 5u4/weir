@@ -1,9 +1,16 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { untagged } from "@weir/contract/Config";
+import { type Config, untagged } from "@weir/contract/Config";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
-import { ConversationId, type ConversationRow, Seq } from "@weir/store/Rows";
+import {
+  ConversationId,
+  type ConversationRow,
+  type DigestRow,
+  type ListedConversationRow,
+  Seq,
+} from "@weir/store/Rows";
+import * as Write from "@weir/store/Write";
 import { match, ruleInput } from "@weir/sync/Match";
 import type * as Scheduler from "@weir/sync/Scheduler";
 import * as Arr from "effect/Array";
@@ -18,7 +25,19 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { Api, type ConversationSummary, NotFound, type Status, type TagTest } from "./Api.ts";
+import type * as SqlError from "effect/sql/SqlError";
+import {
+  Api,
+  type ConversationSummary,
+  type Counts,
+  type Line,
+  NotFound,
+  type Row,
+  type SearchResult,
+  type Status,
+  type TagTest,
+  type View,
+} from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
@@ -145,7 +164,251 @@ const tagTest = Effect.fnUntraced(function* (file: string, name: string | undefi
   } satisfies TagTest;
 });
 
-const handlers = HttpApiBuilder.group(
+const previewLength = 160;
+
+const preview = ({
+  coveringHeadline,
+  lastBodyNew,
+  lastFromName,
+  lastFromAddress,
+  lastFromMe,
+}: ListedConversationRow) => {
+  if (coveringHeadline !== null) return coveringHeadline;
+  const plain = lastBodyNew
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[#>*_`|~]+/g, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const text = [...plain].slice(0, previewLength).join("");
+  const named = lastFromName.trim() === "" ? (lastFromAddress.split("@")[0] ?? "") : lastFromName;
+  const who = lastFromMe ? "Me" : (named.trim().split(/\s+/u)[0] ?? "");
+  return `${who}: ${text === "" ? "(no text)" : text}`;
+};
+
+const row = (conversation: ListedConversationRow): Row => ({
+  id: conversation.id,
+  source: conversation.sourceId,
+  title: conversation.title,
+  tags: conversation.tags,
+  first_at: DateTime.formatIso(conversation.firstAt),
+  last_at: DateTime.formatIso(conversation.lastAt),
+  last_seq: conversation.lastSeq,
+  seen_seq: conversation.seenSeq,
+  cleared_seq: conversation.clearedSeq,
+  muted: conversation.muted,
+  state: conversation.state,
+  new: conversation.newItems,
+  items: conversation.items,
+  participants: conversation.participants,
+  from: conversation.from,
+  preview: preview(conversation),
+  senders: conversation.senders,
+});
+
+const hitLinesPerConversation = 3;
+const bodySnippetLength = 120;
+const headlineSnippetLength = 60;
+
+const termPattern = (query: string) => {
+  const terms = query
+    .split(/\s+/u)
+    .filter((term) => term.length > 0)
+    .toSorted((left, right) => right.length - left.length);
+  if (terms.length === 0) return null;
+  return new RegExp(
+    terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+    "giu",
+  );
+};
+
+const segments = (text: string, pattern: RegExp) => {
+  const result: Array<{ text: string; mark: boolean }> = [];
+  let at = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > at) result.push({ text: text.slice(at, match.index), mark: false });
+    result.push({ text: match[0], mark: true });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) result.push({ text: text.slice(at), mark: false });
+  return result;
+};
+
+const snippet = (text: string, matchAt: number, length: number) => {
+  if (text.length <= length) return text;
+  const start = Math.max(0, Math.min(matchAt - length / 3, text.length - length));
+  const end = start + length;
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+};
+
+const hitLines = (
+  items: ReadonlyArray<Read.HitItem>,
+  digests: ReadonlyArray<DigestRow>,
+  pattern: RegExp,
+): Array<Line> => {
+  const live = new Set<number>(items.map(({ seq }) => seq));
+  const coveredByTopic = new Set<number>();
+  const topicLines = digests.toReversed().flatMap((digest) =>
+    digest.topics
+      .filter(({ title, body }) => title.search(pattern) !== -1 || body.search(pattern) !== -1)
+      .map((topic): Line => {
+        for (const seq of topic.seqs) coveredByTopic.add(seq);
+        return {
+          field: "topic",
+          seq: topic.seqs.findLast((seq) => live.has(seq)) ?? null,
+          digest_id: digest.id,
+          title: segments(topic.title, pattern),
+          text: segments(topic.body, pattern),
+        };
+      }),
+  );
+  const itemLines = items.flatMap((item): Array<Line> => {
+    if (coveredByTopic.has(item.seq)) return [];
+    const fields = [
+      ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
+      ["from", item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`],
+      ["source", item.streamName],
+    ] as const;
+    for (const [field, text] of fields) {
+      const matchAt = text.search(pattern);
+      if (matchAt === -1) continue;
+      return [
+        {
+          field,
+          seq: item.seq,
+          digest_id: null,
+          title: null,
+          text: segments(
+            field === "body" ? snippet(text, matchAt, bodySnippetLength) : text,
+            pattern,
+          ),
+        },
+      ];
+    }
+    return [];
+  });
+  const headlineLines = digests.toReversed().flatMap((digest): Array<Line> => {
+    const matchAt = digest.headline.search(pattern);
+    if (matchAt === -1) return [];
+    return [
+      {
+        field: "headline",
+        seq: null,
+        digest_id: digest.id,
+        title: null,
+        text: segments(snippet(digest.headline, matchAt, headlineSnippetLength), pattern),
+      },
+    ];
+  });
+  return [...topicLines, ...itemLines, ...headlineLines].slice(0, hitLinesPerConversation);
+};
+
+const sendersPerView = 3;
+
+const listed = Effect.fnUntraced(function* (id: number) {
+  const found = yield* Read.conversation(ConversationId.make(id));
+  if (Option.isNone(found)) return yield* new NotFound({ message: `no conversation ${id}` });
+  return found.value;
+});
+
+const knownView = Effect.fnUntraced(function* (config: Config, view: View) {
+  if (view._tag === "Tag" && !config.tag.some(({ name }) => name === view.name)) {
+    return yield* new NotFound({ message: `no tag "${view.name}"` });
+  }
+});
+
+const counts = Effect.fnUntraced(function* (config: Config) {
+  const tagCounts = yield* Read.tagCounts();
+  const senders = yield* Read.unreadSenders(sendersPerView);
+  const totals = yield* Read.stateTotals();
+  const summaryOf = (tag: string | null) => {
+    const count = tagCounts.find((candidate) => candidate.tag === tag);
+    return {
+      unread: count?.unread ?? 0,
+      open: count?.open ?? 0,
+      senders: senders
+        .filter((sender) => sender.tag === tag)
+        .map(({ name, address }) => ({ name, address })),
+    };
+  };
+  return {
+    unread: totals.unread,
+    tags: config.tag.map(({ name }) => ({ name, ...summaryOf(name) })),
+    untagged: summaryOf(null),
+    cleared: totals.cleared,
+  } satisfies Counts;
+});
+
+const changeState = Effect.fnUntraced(function* (id: number, change: Write.StateChange) {
+  yield* listed(id);
+  yield* Write.changeState([ConversationId.make(id)], change);
+  return row(yield* listed(id));
+});
+
+const dieOnStoreError = <A, R>(
+  effect: Effect.Effect<A, NotFound | SqlError.SqlError | Schema.SchemaError, R>,
+) => effect.pipe(Effect.catchTag(["SqlError", "SchemaError"], Effect.die));
+
+const viewHandlers = HttpApiBuilder.group(
+  Api,
+  "view",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const sql = yield* SqlClient.SqlClient;
+    const withSql = Effect.provideService(SqlClient.SqlClient, sql);
+    return handlers.handleAll({
+      conversations: ({ query: { view } }) =>
+        Effect.gen(function* () {
+          yield* knownView((yield* daemon.state).config, view);
+          const { seq, conversations } = yield* sql.withTransaction(
+            Effect.all({ seq: Read.maxSeq(), conversations: Read.conversations(view) }),
+          );
+          return { seq, conversations: conversations.map(row) };
+        }).pipe(withSql, dieOnStoreError),
+      counts: () =>
+        daemon.state.pipe(
+          Effect.flatMap(({ config }) => counts(config)),
+          withSql,
+          Effect.orDie,
+        ),
+    });
+  }),
+);
+
+const stateHandlers = HttpApiBuilder.group(
+  Api,
+  "state",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    return handlers.handleAll({
+      read: ({ params: { id }, payload: { seq } }) =>
+        changeState(id, { _tag: "Read", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
+      unread: ({ params: { id }, payload: { seq } }) =>
+        changeState(
+          id,
+          seq === undefined ? { _tag: "Unread" } : { _tag: "Unread", seq: Seq.make(seq) },
+        ).pipe(withSql, dieOnStoreError),
+      done: ({ params: { id }, payload: { seq } }) =>
+        changeState(id, { _tag: "Done", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
+      mute: ({ params: { id } }) =>
+        changeState(id, { _tag: "Mute" }).pipe(withSql, dieOnStoreError),
+      restore: ({ params: { id } }) =>
+        changeState(id, { _tag: "Restore" }).pipe(withSql, dieOnStoreError),
+      clear: ({ payload: { view, seq } }) =>
+        Effect.gen(function* () {
+          yield* knownView((yield* daemon.state).config, view);
+          return { cleared: yield* Write.clear(view, Seq.make(seq)) };
+        }).pipe(withSql, dieOnStoreError),
+    });
+  }),
+);
+
+const weirHandlers = HttpApiBuilder.group(
   Api,
   "weir",
   Effect.fnUntraced(function* (handlers) {
@@ -161,7 +424,7 @@ const handlers = HttpApiBuilder.group(
         ),
       search: ({ query: { q, tag, since, ...filters } }) =>
         Effect.gen(function* () {
-          const rows = yield* Read.search({
+          const found = yield* Read.search({
             query: q,
             ...filters,
             ...(tag === undefined
@@ -170,28 +433,60 @@ const handlers = HttpApiBuilder.group(
                   tag:
                     tag === untagged
                       ? { _tag: "Untagged" as const }
-                      : { _tag: "Named" as const, name: tag },
+                      : { _tag: "Tag" as const, name: tag },
                 }),
             ...(since === undefined
               ? {}
               : { since: DateTime.subtractDuration(yield* DateTime.now, since) }),
           });
-          return { conversations: rows.map(summary) };
+          const ids = found.map(({ id }) => id);
+          const rows = new Map(
+            (yield* Read.conversations({ _tag: "Ids", ids })).map((listed) => [listed.id, listed]),
+          );
+          const pattern = termPattern(q);
+          const items = Map.groupBy(
+            pattern === null ? [] : yield* Read.hitItems(ids),
+            ({ conversationId }) => conversationId,
+          );
+          const digests = Map.groupBy(
+            pattern === null ? [] : yield* Read.digests(ids),
+            ({ conversationId }) => conversationId,
+          );
+          return {
+            conversations: found.flatMap(({ id }) => {
+              const listed = rows.get(id);
+              if (listed === undefined) return [];
+              return [
+                {
+                  ...row(listed),
+                  hits:
+                    pattern === null
+                      ? []
+                      : hitLines(items.get(id) ?? [], digests.get(id) ?? [], pattern),
+                },
+              ];
+            }),
+          } satisfies SearchResult;
         }).pipe(withSql, Effect.orDie),
       conversation: ({ params: { id } }) =>
         Effect.gen(function* () {
-          const detail = yield* Read.getConversation(ConversationId.make(id)).pipe(
-            withSql,
-            Effect.orDie,
-          );
+          const state = yield* listed(id);
+          const detail = yield* Read.getConversation(state.id);
           if (Option.isNone(detail)) {
             return yield* new NotFound({ message: `no conversation ${id}` });
           }
           const { conversation, items, tags } = detail.value;
+          const digests = yield* Read.digests([conversation.id]);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
             tags,
+            state: {
+              seen_seq: state.seenSeq,
+              cleared_seq: state.clearedSeq,
+              muted: state.muted,
+              state: state.state,
+            },
             items: items.map((item) => ({
               seq: item.seq,
               occurred_at: DateTime.formatIso(item.occurredAt),
@@ -200,8 +495,19 @@ const handlers = HttpApiBuilder.group(
               title: item.title,
               body_new: item.bodyNew,
             })),
+            digests: digests.map((digest) => ({
+              id: digest.id,
+              conversation_id: digest.conversationId,
+              from_seq: digest.fromSeq,
+              to_seq: digest.toSeq,
+              headline: digest.headline,
+              topics: digest.topics,
+              trigger: digest.trigger,
+              ai_profile: digest.aiProfile,
+              created_at: DateTime.formatIso(digest.createdAt),
+            })),
           };
-        }),
+        }).pipe(withSql, dieOnStoreError),
       item: ({ params: { seq } }) =>
         Effect.gen(function* () {
           const found = yield* Read.getItem(Seq.make(seq)).pipe(withSql, Effect.orDie);
@@ -238,6 +544,8 @@ const handlers = HttpApiBuilder.group(
     });
   }),
 );
+
+const handlers = Layer.mergeAll(weirHandlers, viewHandlers, stateHandlers);
 
 const advertise = (home: WeirHome) =>
   Layer.effectDiscard(
