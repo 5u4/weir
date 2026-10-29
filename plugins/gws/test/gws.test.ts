@@ -19,7 +19,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
 import { abortableSleep, GwsError, Message, type MessagePart, type Sleep } from "../src/gws.ts";
 import { createSource, type GwsConfig, gws } from "../src/index.ts";
@@ -661,6 +661,7 @@ describe("gws quota backoff", () => {
   ])("treats %s as a quota error", async (_, error) => {
     const { delays, sleep } = recorded();
     await expect(failing(error, sleep).streams()).rejects.toMatchObject(error);
+    await vi.waitFor(() => expect(delays).toHaveLength(2 * schedule.length), { timeout: 5_000 });
     expect(delays.toSorted((a, b) => a - b)).toEqual(
       [...schedule, ...schedule].toSorted((a, b) => a - b),
     );
