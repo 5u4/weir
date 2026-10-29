@@ -50,7 +50,7 @@ describe("read", () => {
       ]);
 
       const [row] = yield* conversations({ _tag: "Untagged" });
-      expect(row?.from).toEqual(bob);
+      expect(row?.from).toEqual({ ...bob, me: false });
       expect(yield* unreadSenders(3)).toEqual([{ tag: null, ...bob }]);
     }).pipe(Effect.provide(storeLayer())),
   );

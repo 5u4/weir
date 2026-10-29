@@ -1,6 +1,6 @@
 import { DurationShorthand } from "@weir/contract/Config";
 import { Digest, Trigger } from "@weir/contract/Digest";
-import { Party } from "@weir/contract/Source";
+import { Party, RowParty } from "@weir/contract/Source";
 import { ConversationState } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
@@ -143,9 +143,9 @@ export const Row = Schema.Struct({
   new: Schema.Int,
   items: Schema.Int,
   participants: Schema.Int,
-  from: Party,
+  from: RowParty,
   preview: Schema.String,
-  senders: Schema.Array(Party),
+  senders: Schema.Array(RowParty),
 });
 export type Row = typeof Row.Type;
 

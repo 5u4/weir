@@ -27,6 +27,9 @@ export const Party = Schema.Struct({
 });
 export type Party = typeof Party.Type;
 
+export const RowParty = Schema.Struct({ ...Party.fields, me: Schema.Boolean });
+export type RowParty = typeof RowParty.Type;
+
 export const RawItem = Schema.Struct({
   externalId: Schema.String,
   threadId: Schema.NullOr(Schema.String),
