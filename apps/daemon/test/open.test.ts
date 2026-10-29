@@ -36,6 +36,14 @@ backfill = "newer_than:30d"
 `);
         yield* Layer.build(Http.layer(home, { gws }));
         const client = yield* apiClient(port);
+        yield* eventually(client.status(), ({ sources }) =>
+          sources.every(
+            ({ listing, streams }) =>
+              listing === "ok" &&
+              streams.length > 0 &&
+              streams.every(({ backfill }) => backfill === "done"),
+          ),
+        );
         const details = yield* eventually(
           client
             .search({ query: { q: "" } })
