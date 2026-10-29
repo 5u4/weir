@@ -1,13 +1,13 @@
 import type { CSSProperties } from "react";
 import { hue, monogram, type Sender } from "./Notch.ts";
 
-export function Avatar({ sender }: { sender: Sender }) {
+export function Avatar({ address, mark }: { address: string; mark: string }) {
   return (
     <span
       className="av"
       aria-hidden="true"
-      data-m={monogram(sender)}
-      style={{ "--h": hue(sender.address) } as CSSProperties}
+      data-m={mark}
+      style={{ "--h": hue(address) } as CSSProperties}
     />
   );
 }
@@ -17,7 +17,7 @@ export function Avatars({ senders }: { senders: ReadonlyArray<Sender> }) {
   return (
     <span className="avs" aria-hidden="true">
       {senders.slice(0, 3).map((sender) => (
-        <Avatar key={sender.address} sender={sender} />
+        <Avatar key={sender.address} address={sender.address} mark={monogram(sender)} />
       ))}
     </span>
   );

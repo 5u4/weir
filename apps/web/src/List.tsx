@@ -30,7 +30,7 @@ function ListRow({
   const [current] = useAtom(route);
   const at = useAtomValue(now);
   const last = DateTime.makeUnsafe(row.last_at);
-  const { from, preview, who, names } = face(row);
+  const { from, mark, preview, who, names } = face(row);
   const cleared = view === "cleared";
   return (
     <li
@@ -43,7 +43,7 @@ function ListRow({
         className="row-link"
       >
         <span className="row-av">
-          <Avatar sender={from} />
+          <Avatar address={from.address} mark={mark} />
         </span>
         <span className="row-title">{row.title}</span>
         <span className="row-line">{preview}</span>
