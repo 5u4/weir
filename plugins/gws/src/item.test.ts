@@ -1,3 +1,5 @@
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import type { Message, MessagePart } from "./gws.ts";
 import { toRawItem } from "./item.ts";
@@ -77,6 +79,59 @@ describe("body charset", () => {
       headers: [{ name: "Content-Type", value: "text/plain; charset=x-unknown" }],
     });
     expect(itemOf(part).body).toBe("Un café ?");
+  });
+});
+
+const rendered = (markdown: string) => {
+  const text: string[] = [];
+  const emphasized = new Set<string>();
+  const textOf = (node: Nodes): string =>
+    node.type === "text"
+      ? node.value
+      : "children" in node
+        ? node.children.map(textOf).join("")
+        : "";
+  const walk = (node: Nodes) => {
+    if (node.type === "text") text.push(node.value);
+    if (node.type === "strong" || node.type === "emphasis") emphasized.add(textOf(node));
+    if ("children" in node) node.children.forEach(walk);
+  };
+  walk(fromMarkdown(markdown));
+  return { text: text.join(" "), emphasized: [...emphasized] };
+};
+
+describe("html emphasis", () => {
+  it.each([
+    ["an empty bold", "<p>a<b></b> b</p>", [], ["a", "b"]],
+    ["zero-width bold", "<p><b>&zwnj;</b><b>&#8203;</b>after</p>", [], ["after"]],
+    ["whitespace inside the tags", "<p><b> Foo </b>bar</p>", ["Foo"], ["bar"]],
+    ["line breaks inside the tags", "<p><b><br>Foo<br></b>bar</p>", ["Foo"], ["bar"]],
+    ["nested bold", "<p><b><b>Foo</b></b> bar</p>", ["Foo"], ["bar"]],
+    ["adjacent bold", "<p><b>Up</b><b>date</b> now</p>", ["Update"], ["now"]],
+    [
+      "adjacent bold in a quote",
+      "<blockquote><b>Quo</b><b>ted</b> here</blockquote>",
+      ["Quoted"],
+      ["here"],
+    ],
+    [
+      "a bold image",
+      '<p><b><img src="https://cdn.example/a.png" alt="Logo"></b>next</p>',
+      [],
+      ["next"],
+    ],
+    ["bold paragraphs", "<b><p>One</p><p>Two</p></b>", [], ["One", "Two"]],
+    ["a bold paragraph", "<b><p>Title</p></b><p>body</p>", ["Title"], ["body"]],
+    ["adjacent italics", "<p><i>re</i><i>ad</i> me</p>", ["read"], ["me"]],
+    ["an italic line break", "<p><i><br>It</i> x</p>", ["It"], ["x"]],
+  ])("renders %s without stray delimiters", (_, html, emphasized, words) => {
+    const item = itemOf(text("text/html", html));
+    for (const markdown of [item.body, item.bodyNew ?? ""]) {
+      const view = rendered(markdown);
+      expect(view.text).not.toMatch(/[*_]/);
+      expect(view.emphasized).toEqual(emphasized);
+      for (const word of words) expect(view.text).toContain(word);
+    }
   });
 });
 

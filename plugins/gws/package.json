@@ -12,7 +12,9 @@
     "turndown": "7.2.4"
   },
   "devDependencies": {
+    "@types/mdast": "4.0.4",
     "@types/turndown": "5.0.6",
-    "@weir/fixtures": "workspace:*"
+    "@weir/fixtures": "workspace:*",
+    "mdast-util-from-markdown": "2.1.0"
   }
 }

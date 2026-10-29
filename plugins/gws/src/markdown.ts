@@ -2,6 +2,21 @@ import TurndownService from "turndown";
 
 const QUOTED = ["gmail_signature", "gmail_quote", "gmail_attr"];
 
+const STRONG = { tags: ["strong", "b"], open: "\uE000", close: "\uE001", delimiter: "**" } as const;
+const EM = { tags: ["em", "i"], open: "\uE002", close: "\uE003", delimiter: "_" } as const;
+const SENTINELS = /[\uE000-\uE003]/g;
+const EDGES = /^([\s\u200b\u200c\u2060\ufeff]*)([\s\S]*?)([\s\u200b\u200c\u2060\ufeff]*)$/;
+const LINK_SYNTAX = /!\[[^\]]*\]\([^)]*\)|\]\([^)]*\)|[[\]\s\u200b\u200c\u2060\ufeff]/g;
+const PARAGRAPH_BREAK = /\n\s*\n/;
+
+const emphasis =
+  ({ open, close }: typeof STRONG | typeof EM) =>
+  (content: string) => {
+    const [, lead, inner, trail] = EDGES.exec(content) ?? ["", "", content, ""];
+    if (inner.replace(LINK_SYNTAX, "") === "" || PARAGRAPH_BREAK.test(inner)) return content;
+    return `${lead}${open}${inner}${close}${trail}`;
+  };
+
 const turndown = (dropQuoted: boolean) => {
   const service = new TurndownService({
     br: "",
@@ -15,13 +30,23 @@ const turndown = (dropQuoted: boolean) => {
     filter: (node) => node.nodeName === "A" && node.getAttribute("href") === node.textContent,
     replacement: (content) => content,
   });
+  service.addRule("strong", { filter: [...STRONG.tags], replacement: emphasis(STRONG) });
+  service.addRule("emphasis", { filter: [...EM.tags], replacement: emphasis(EM) });
   if (dropQuoted) {
     service.addRule("quoted", {
       filter: (node) => QUOTED.some((name) => node.classList?.contains(name) ?? false),
       replacement: () => "",
     });
   }
-  return service;
+  return (html: string) =>
+    [STRONG, EM].reduce(
+      (markdown, { open, close, delimiter }) =>
+        markdown
+          .replaceAll(close + open, "")
+          .replaceAll(open, delimiter)
+          .replaceAll(close, delimiter),
+      service.turndown(html.replace(SENTINELS, "")),
+    );
 };
 
 export const htmlBody = turndown(false);
