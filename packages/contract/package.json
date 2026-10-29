@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./Config": "./src/Config.ts",
+    "./Digest": "./src/Digest.ts",
     "./Rule": "./src/Rule.ts",
     "./Source": "./src/Source.ts"
   },

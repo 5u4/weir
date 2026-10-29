@@ -1,3 +1,4 @@
+import { Topic, Trigger } from "@weir/contract/Digest";
 import { StreamDescriptor } from "@weir/contract/Source";
 import * as Schema from "effect/Schema";
 
@@ -18,7 +19,6 @@ export const DigestId = Schema.Int.pipe(Schema.brand("DigestId"));
 export type DigestId = typeof DigestId.Type;
 
 const Kind = StreamDescriptor.fields.kind;
-const Trigger = Schema.Literals(["auto", "manual"]);
 
 const streamFields = {
   sourceId: Schema.String,
@@ -112,14 +112,6 @@ export type SyncRunInsert = typeof SyncRunInsert.Type;
 
 export const SyncRunRow = Schema.Struct({ id: Schema.Int, ...syncRunFields });
 export type SyncRunRow = typeof SyncRunRow.Type;
-
-export const Topic = Schema.Struct({
-  title: Schema.String,
-  state: Schema.Literals(["open", "resolved", "fyi"]),
-  body: Schema.String,
-  seqs: Schema.Array(Seq),
-});
-export type Topic = typeof Topic.Type;
 
 export const DigestRow = Schema.Struct({
   id: DigestId,
