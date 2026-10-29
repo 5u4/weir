@@ -40,20 +40,35 @@ export const reload = Weir.runtime.fn<void>()(
     get.refresh(statusSnapshot);
     yield* get.result(statusSnapshot, { suspendOnWaiting: true });
   }),
+  { reactivityKeys: ["counts", "list"] },
 );
+
+const polled = <A>(atom: Atom.Atom<A>) =>
+  Atom.transform(
+    atom,
+    (get) => {
+      get.once(now);
+      get.subscribe(now, () => get.refresh(atom));
+      get.subscribe(atom, (value) => get.setSelf(value));
+      return get.once(atom);
+    },
+    { initialValueTarget: atom },
+  );
 
 export const searchOpen = Atom.make(false);
 
-export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
+export const counts = polled(Weir.query("view", "counts", { reactivityKeys: ["counts"] }));
 
 const toApiView = Schema.decodeSync(ApiView);
 const toClearableView = Schema.decodeSync(ClearableView);
 
 export const viewList = Atom.family((view: View) =>
-  Weir.query("view", "conversations", {
-    query: { view: toApiView(view) },
-    reactivityKeys: ["list"],
-  }),
+  polled(
+    Weir.query("view", "conversations", {
+      query: { view: toApiView(view) },
+      reactivityKeys: ["list"],
+    }),
+  ),
 );
 
 export const intents = Atom.make<Intents>(new Map()).pipe(Atom.keepAlive);
