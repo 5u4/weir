@@ -59,13 +59,25 @@ export const href = (route: Route) => {
   return search === "" ? "/" : `/?${search}`;
 };
 
+export type Navigation =
+  | { readonly _tag: "Go"; readonly to: Route }
+  | { readonly _tag: "Type"; readonly query: string };
+
+export const destination = (previous: Route, navigation: Navigation): Route =>
+  navigation._tag === "Go"
+    ? navigation.to
+    : {
+        ...previous,
+        query: navigation.query,
+        conversation: navigation.query === "" ? previous.conversation : Option.none(),
+      };
+
 export type Write = "push" | "replace" | "leave" | "none";
 
-export const writeKind = (previous: Route, next: Route): Write => {
+export const writeKind = (previous: Route, navigation: Navigation): Write => {
+  const next = destination(previous, navigation);
   if (href(previous) === href(next)) return "none";
-  if (previous.view !== next.view || previous.query === next.query || previous.query === "") {
-    return "push";
-  }
+  if (navigation._tag === "Go" || previous.query === "") return "push";
   return next.query === "" ? "leave" : "replace";
 };
 
@@ -89,9 +101,10 @@ export const route = Atom.writable(
     get.addFinalizer(() => removeEventListener("popstate", sync));
     return parse(location.search);
   },
-  (ctx, next: Route) => {
+  (ctx, navigation: Navigation) => {
     const previous = ctx.get(route);
-    switch (writeKind(previous, next)) {
+    const next = destination(previous, navigation);
+    switch (writeKind(previous, navigation)) {
       case "none":
         return;
       case "push":

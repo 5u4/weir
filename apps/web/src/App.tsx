@@ -17,7 +17,7 @@ function Link({ to, current, children }: { to: Route; current: boolean; children
       onClick={(event) => {
         if (event.defaultPrevented || !plainLeftClick(event)) return;
         event.preventDefault();
-        navigate(to);
+        navigate({ _tag: "Go", to });
       }}
     >
       {children}
@@ -53,13 +53,7 @@ export function App() {
         aria-label="Search"
         placeholder="Search"
         value={current.query}
-        onChange={({ target: { value } }) =>
-          navigate({
-            ...current,
-            query: value,
-            conversation: value === "" ? current.conversation : Option.none(),
-          })
-        }
+        onChange={({ target: { value } }) => navigate({ _tag: "Type", query: value })}
       />
       <pre id="status">
         {AsyncResult.match(result, {
