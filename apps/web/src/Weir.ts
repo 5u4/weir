@@ -93,14 +93,8 @@ const events = Stream.callback<string, Disconnected>((queue) =>
 export const live = Weir.runtime.atom((get) =>
   Stream.runForEach(events, (event) =>
     Effect.gen(function* () {
-      const { view, conversation: open } = get.registry.get(route);
-      const listed = AsyncResult.getOrElse(
-        AsyncResult.map(get.registry.get(viewList(view)), ({ conversations }) =>
-          conversations.map(({ id }) => id),
-        ),
-        () => [],
-      );
-      const refetch = refetches(event, listed, open);
+      const open = get.registry.get(route).conversation;
+      const refetch = refetches(event, open);
       if (refetch.status) get.registry.refresh(statusSnapshot);
       yield* Reactivity.invalidate([
         ...(refetch.counts ? ["counts"] : []),

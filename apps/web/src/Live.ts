@@ -8,11 +8,7 @@ export type Refetch = {
   readonly conversation: boolean;
 };
 
-export const refetches = (
-  event: Event,
-  listed: ReadonlyArray<number>,
-  open: Option.Option<number>,
-): Refetch => {
+export const refetches = (event: Event, open: Option.Option<number>): Refetch => {
   switch (event.type) {
     case "ready":
       return { status: true, counts: true, list: true, conversation: Option.isSome(open) };
@@ -20,7 +16,7 @@ export const refetches = (
       return {
         status: false,
         counts: true,
-        list: event.ids.some((id) => listed.includes(id)),
+        list: true,
         conversation: Option.exists(open, (id) => event.ids.includes(id)),
       };
     case "digest":

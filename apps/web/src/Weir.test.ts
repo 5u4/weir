@@ -136,9 +136,12 @@ it("each event refetches only what it changes, and a dropped stream reconnects",
   expect(daemon.Source.opened.map(({ url }) => url.href)).toEqual(["http://weir.test/events"]);
 
   await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
-  await refetched({ type: "state", ids: [9] }, ["GET /counts"]);
-  await refetched({ type: "state", ids: [1] }, ["GET /conversations", "GET /counts"]);
-  await refetched({ type: "state", ids: [5] }, ["GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "state", ids: [9] }, ["GET /conversations", "GET /counts"]);
+  await refetched({ type: "state", ids: [5] }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+  ]);
 
   vi.useFakeTimers({ toFake: ["setTimeout"] });
   const first = daemon.Source.opened[0];
