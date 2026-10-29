@@ -47,6 +47,7 @@ const detail = (
   first_at: items[0]?.occurred_at ?? "",
   last_at: items.at(-1)?.occurred_at ?? "",
   tags: [],
+  open: null,
   state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "unread" },
   items,
   digests,
