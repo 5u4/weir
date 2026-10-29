@@ -1,6 +1,7 @@
 import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daemon/Api";
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Option from "effect/Option";
@@ -225,6 +226,25 @@ export const runDigest = Weir.runtime
   )
   .pipe(Atom.keepAlive);
 
+const turns = new Map<number, Deferred.Deferred<void>>();
+
+export const inTurn =
+  (id: number) =>
+  <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.suspend(() => {
+      const ahead = turns.get(id);
+      const turn = Deferred.makeUnsafe<void>();
+      turns.set(id, turn);
+      return (ahead === undefined ? write : Effect.andThen(Deferred.await(ahead), write)).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            Deferred.doneUnsafe(turn, Effect.void);
+            if (turns.get(id) === turn) turns.delete(id);
+          }),
+        ),
+      );
+    });
+
 export const intents = Atom.make<Intents>(new Map()).pipe(Atom.keepAlive);
 
 const changed = <A>(map: ReadonlyMap<number, A>, id: number, value: A | undefined) => {
@@ -275,10 +295,12 @@ export const dismiss = Weir.runtime
             : act === "Mute"
               ? client.mute({ params })
               : client.restore({ params });
-        yield* request.pipe(
+        yield* inTurn(target.id)(request).pipe(
           Effect.onError(() =>
             Effect.sync(() =>
-              get.registry.update(intents, (map) => changed(map, target.id, before)),
+              get.registry.update(intents, (map) =>
+                map.get(target.id) === intent ? changed(map, target.id, before) : map,
+              ),
             ),
           ),
         );

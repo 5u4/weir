@@ -10,7 +10,7 @@ import { type DockAction, dockActions } from "./Dock.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
 import type { Target } from "./Rows.ts";
-import { conversation, intents, Weir } from "./Weir.ts";
+import { conversation, inTurn, intents, Weir } from "./Weir.ts";
 
 const debounce = 300;
 
@@ -23,7 +23,7 @@ export const markRead = Weir.runtime
     ({ id, seq, settled }) =>
       Effect.gen(function* () {
         const client = yield* Weir;
-        yield* client.read({ params: { id }, payload: { seq } });
+        yield* inTurn(id)(client.read({ params: { id }, payload: { seq } }));
       }).pipe(Effect.onExit((exit) => Effect.sync(() => settled(Exit.isSuccess(exit))))),
     { concurrent: true },
   )
@@ -38,7 +38,9 @@ export const markUnread = Weir.runtime
     ({ id, from, failed }) =>
       Effect.gen(function* () {
         const client = yield* Weir;
-        yield* client.unread({ params: { id }, payload: from === null ? {} : { seq: from } });
+        yield* inTurn(id)(
+          client.unread({ params: { id }, payload: from === null ? {} : { seq: from } }),
+        );
         yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [id] });
       }).pipe(Effect.onError(() => Effect.sync(failed))),
