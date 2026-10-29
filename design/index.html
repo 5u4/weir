@@ -182,7 +182,7 @@ sequenceDiagram
 <li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>work</code> 视图，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时阅读区里，上一份 digest 之后的三封邮件还是原文气泡。</li>
 <li><strong>算待 digest 的字数。</strong>conversation 带 <code>ai = true</code> 的 tag，所以走自动 digest。起点是上一份 digest 之后、<code>occurred_at</code> 不早于 <code>ai_since</code> 的第一条 item。从起点到最后一条，<code>body_new</code> 一共 1500 字符，过了 1000 的阈值。没有安静期，也没有定时器，条件一成立就排进 digest 队列。</li>
 <li><strong>AI 写一份 digest。</strong>输入是这三封邮件，加上它们前面约 6000 字符的上下文。上下文里已经被 digest 覆盖的部分用 digest 代替。AI 输出一句 headline 和几个 topic，每个 topic 列出它涉及的 seq。core 校验后插入一行 <code>digest</code>，范围从 9154 到 9311。</li>
-<li><strong>你打开它。</strong>上次读过的 digest 各收成一行。这份新 digest 是一张卡片，有 headline 和 topic。topic 下的「N originals」能把原文展开在原处。阅读区只有这一种视图，原文要么在 topic 下展开，要么是还没 digest 的原文气泡。打开就算已读，<code>seen_seq</code> 前进到 <code>last_seq</code>。</li>
+<li><strong>你打开它。</strong>上次读过的 digest 各收成一行。这份新 digest 是一张卡片，有 headline 和 topic。topic 下的「N originals」能把原文展开在原处。阅读区只有这一种视图，原文要么在 topic 下展开，要么是还没 digest 的原文气泡。打开本身不算已读。消息滚进视口才算读过，<code>seen_seq</code> 前进到看过的最大 seq，读到底时等于 <code>last_seq</code>。</li>
 <li><strong>你点「完成」。</strong><code>cleared_seq</code> 前进到 <code>last_seq</code>，conversation 离开列表，下一条自动打开。灵动岛里的计数跟着变，没有别的提示，也没有撤销。点错了就去「已清理」里点「恢复」。</li>
 </ol>
 
@@ -333,7 +333,7 @@ flowchart TD
 </div>
 
 <p>每条 item 都带 <code>thread_id</code> 和 <code>container_id</code> 两个字段，两者含义固定。<code>thread_id</code> 可以为空，Teams 群聊里的大部分消息就没有。</p>
-<p>kind 在 MVP 里只有 <code>message</code>。日历以后作为 <code>event</code> kind 加入，那时用一次 migration 加上 <code>event_detail</code> 表。</p>
+<p>kind 在 MVP 里只有 <code>message</code>。日历以后作为 <code>event</code> kind 加入，那时加一张 <code>event_detail</code> 表。</p>
 
 <h2 id="store"><span class="n">05</span>存储按生命周期分层，只有用户层不能丢</h2>
 <p>所有数据都在 <code>~/.weir/weir.db</code> 一个文件里。表按生命周期分成五层。判断某张表能不能删，只要看它属于哪一层。</p>
@@ -379,11 +379,12 @@ erDiagram
 </details>
 <p><strong>数据库松，Schema 严。</strong>SQL 列不带 CHECK、枚举或外键约束。校验只在 store 的边界做：写入前用 Effect Schema encode，读出后用 Effect Schema decode。app 用到的字段（标题、正文等）仍然各占一列，见上表。</p>
 
-<h3 id="where">daemon 或 agent 需要知道的放 SQLite，其他放 localStorage</h3>
+<h3 id="where">daemon 或 agent 需要知道的放 SQLite，导航放 URL，其他放 localStorage</h3>
 <p>判断标准只有一个：daemon 或 agent 需不需要知道这件事。</p>
 <ul>
 <li>放 SQLite：已读、完成、静音，以及 <code>tag_state</code>。axi 首页要显示未读数，自动 digest 要知道 <code>ai_since</code>，所以它们必须在 daemon 那边。</li>
-<li>放 localStorage：主题、上次停在哪个视图、阅读区的展开状态。这些只跟浏览器有关。主题在状态视图的 Appearance 里选，见<a href="#no-settings">第 09 节</a>。</li>
+<li>放 URL：当前视图、搜索词和 chip、打开的 conversation。刷新、前进和后退都能还原它们。页面不从 localStorage 恢复视图。</li>
+<li>放 localStorage：主题。它只跟浏览器有关，在状态视图的 Appearance 里选，见<a href="#no-settings">第 09 节</a>。</li>
 </ul>
 <p>localStorage 按 origin 存储，origin 包含端口。端口一变，偏好就丢了。所以端口固定为 <code>9347</code>，也就是 weir 四个字母在九宫格键盘上的位置。</p>
 
@@ -602,11 +603,11 @@ flowchart TD
 </ul>
 
 <h3 id="visibility">已读、完成、静音由三个字段推算</h3>
-<p>已读按 conversation 算，打开就算已读。「离开视线」用的是原型里的 D1 方案，也就是手动完成。</p>
+<p>已读记在 conversation 上，<code>seen_seq</code> 表示读到哪一条。已读跟着视口走：一条消息滚进视口才算读过，<code>seen_seq</code> 前进到看过的最大 seq。打开 conversation 本身不标记任何消息。「离开视线」用的是原型里的 D1 方案，也就是手动完成。</p>
 <div class="diagram"><pre class="mermaid">
 stateDiagram-v2
   [*] --> Unread
-  Unread --> Read: open
+  Unread --> Read: scrolled to last item
   Read --> Unread: mark unread or new item
   Read --> Done: 完成
   Unread --> Done: 全部清掉
@@ -803,7 +804,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li>整体宽度上限 1360px，居中。宽屏两侧的背景始终不变。</li>
 <li>左栏是平的，直接铺在背景上，列出当前视图的 conversation。一次只看一个视图，一个 tag 或者 Untagged。source 没有视图。右栏是一块浮起的阅读岛。</li>
 <li>打开、切换、关闭 conversation 时，两栏的位置和大小都不变，只有阅读岛里的内容在换。原型第 4 轮实测，在 2560 宽的屏幕上打开一条 conversation，阅读区以外只有 1.16% 的像素变化，就是被选中的那一行。之后灵动岛改矮了，这个数没有重测。</li>
-<li>阅读区空着时，也就是没打开 conversation 时，显示一份紧凑的状态摘要。每个 source 一行，写上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，出错时写 <code>Sync failed</code> 和错误原文。Digests 一行写 <code>4 conversations waiting</code> 或者 <code>Caught up</code>。config 加载失败时多一句提示。有错误时下面有 <code>Open Status</code> 按钮，打开完整的状态视图。页面加载时不自动打开 conversation，因为打开就算已读。</li>
+<li>阅读区空着时，也就是没打开 conversation 时，显示一份紧凑的状态摘要。每个 source 一行，写上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，出错时写 <code>Sync failed</code> 和错误原文。Digests 一行写 <code>4 conversations waiting</code> 或者 <code>Caught up</code>。config 加载失败时多一句提示。有错误时下面有 <code>Open Status</code> 按钮，打开完整的状态视图。打开的 conversation 记在 URL 里，页面加载时按 URL 打开它，URL 里没有就保持空着，不自动挑一条。按 URL 打开不标记已读，已读只跟着视口走，见<a href="#visibility">已读规则</a>。</li>
 <li>原型第 12 轮试过在空阅读区放一份 AI 写的分组简报。引用只靠头像，PR 那一行下面是 12 个一样的 GitHub 图标，分不清对话。另一行还把一条不相关的防诈骗提醒混进了 PR 那一组。所以否决了，以后也不做。</li>
 </ul>
 
@@ -850,7 +851,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li><strong>进入。</strong>点灵动岛上的搜索按钮，或者按 <code>/</code>，灵动岛变成输入框。两栏的位置和大小都不变。</li>
 <li><strong>结果那句话。</strong>边输入边更新。灵动岛那句话变成结果句，按视图分组计数，比如 <code>“freeze” appears in 1 Work and 2 Untagged.</code>。分组只有 tag 和 Untagged。有已完成或静音的结果时，句子里多一个「已清理」小部件。点一个小部件，结果只剩那一组。没有结果时显示 <code>Nothing matches “q”.</code>。</li>
 <li><strong>结果列表。</strong>左栏变成结果列表。一条结果是一个 conversation，最多 3 行命中，命中的词都有标记。先列命中的消息，每条消息一行，按 digest topic、原文正文、发件人、来源的顺序取第一个命中的字段。topic 命中显示 topic 标题和正文。正文命中显示一段约 120 字符的原文摘录。发件人和来源命中显示完整的发件人或来源名。不满 3 行时再补 conversation 自己的命中，目前只有 digest headline，显示一段较短的摘录。标题命中不单独成行。每行标出命中的是哪个字段。结果按最新一条命中消息的时间排序。</li>
-<li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开时照常算已读。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
+<li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开的 conversation 照常按视口记已读。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
 <li><strong>阅读区。</strong>搜索时没打开 conversation，阅读岛只显示一句空状态 <code>Pick a result to read it.</code>，不再列一遍结果。第 10 轮的灵动岛方案在这里放过一份结果简报，和左栏重复，所以删掉了。</li>
 <li><strong>打开结果。</strong>阅读区落在第一处命中。命中在 digest 里时落在那张卡片上。命中在被 digest 覆盖的原文里时，那个 topic 的原文自动展开。气泡里命中的词有标记。灵动岛收成药丸，显示查询、计数 <code>1/4</code>，以及上一处、下一处、关闭三个按钮。</li>
 <li><strong>离开搜索。</strong>按 Esc、清空输入框或点关闭，都回到搜索前的视图、搜索前打开的 conversation，以及左栏原来的滚动位置。</li>
@@ -915,7 +916,7 @@ help[2]:
 <li>digest 的输出必须通过 Schema 校验。字段以外的内容一律丢弃。</li>
 <li>daemon 只监听 <code>127.0.0.1</code>。</li>
 <li>daemon 把 <code>Host</code> 拆成主机名和端口再比较。主机名必须是 <code>127.0.0.1</code> 或 <code>localhost</code>，不分大小写。端口必须等于 daemon 监听的端口，省略时按 80 算，所以监听 80 时 <code>127.0.0.1</code> 和 <code>127.0.0.1:80</code> 都合格。请求带 <code>Origin</code> 时，它必须是 <code>http://</code> 加上一个按同样规则合格的主机部分。带用户名、路径或前导零端口的值不合格，<code>Origin: null</code> 也不合格。不符合的请求一律回 403，正文为空。这挡住 DNS rebinding 和其他网页的跨站请求。<code>weir-axi</code> 不带 <code>Origin</code>。</li>
-<li>已知限制：HTTP API 没有按调用方区分的凭证，所以同一台机器上的其他系统账号能通过 loopback 读到邮件。weir 跑在多用户机器上时，或者任何改动邮件的写操作上线之前，这条必须解决。可选的做法是每个 daemon 一个只有本人能读的凭证，或者改用只有本人能访问的 Unix socket。选哪个是产品决定，因为 Web UI 和 API 从同一个 origin 提供。</li>
+<li>weir 假定运行在单用户机器上，所以 HTTP API 不做身份验证，同一台机器上的其他系统账号能通过 loopback 读到邮件。要支持多用户机器，得先给 API 加按调用方区分的凭证，比如每个 daemon 一个只有本人能读的凭证，或者改用只有本人能访问的 Unix socket。</li>
 <li>凭证不进 weir。gws 把 OAuth token 存在它自己的 keyring 里。</li>
 <li>正文按 markdown 渲染时，夹带的 HTML 按文字显示，不执行，也不加载外部图片。</li>
 </ul>
@@ -1045,7 +1046,7 @@ help[2]:
 <li><code>packages/fixtures/expected-tags.json</code> 以 <code>expectedTags</code> 导出，记录每个 tag 命中的 conversation 数和 item 数，以及 Untagged 的 conversation 数和其中的 item 数。conversation 按 <code>threadId</code> 分组，一个 conversation 里任意一条 item 命中就算这个 conversation 命中。当前的数是 Me 2/4、On-call 0/0、GitHub 4/9、Promos 2/2、Untagged 6/6（conversation/item）。</li>
 <li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。<code>--check</code> 还会让 <code>plugins/gws</code> 对默认的 fake-gws 做一次冷启动，用它返回的 RawItem 再算一遍计数，和这个文件不一致也失败。这一遍的 <code>fromMe</code> 按 stream 的 <code>me</code> 判断，conversation 按 <code>threadId</code> 分组。</li>
 </ul>
-<p><code>bun run demo</code> 每次用 <code>mkdtemp</code> 在系统临时目录新建一个 home，把路径打印到 stderr，结束后删掉。它忽略环境里的 <code>WEIR_HOME</code>，所以不会写进已有的目录。PR 里的界面截图和录屏只来自 <code>bun run demo</code> 的合成数据，不用真实邮箱。</p>
+<p><code>bun run demo</code> 每次用 <code>mkdtemp</code> 在系统临时目录新建一个 home，把路径打印到 stderr，结束后删掉。它忽略环境里的 <code>WEIR_HOME</code>，所以不会写进已有的目录。加 <code>--serve</code> 时，断言通过后 daemon 继续运行并打印它的 URL，按 Ctrl-C 才退出并删掉 home。PR 里的界面截图和录屏只来自 <code>bun run demo --serve</code> 的合成数据，不用真实邮箱。</p>
 </main>
 </div>
 

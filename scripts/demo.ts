@@ -1,12 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import { decode } from "@toon-format/toon";
 import { Api } from "@weir/daemon/Api";
 import { plugins } from "@weir/daemon/Daemon";
 import * as Home from "@weir/daemon/Home";
 import * as Http from "@weir/daemon/Http";
 import { configToml, expectedTags, FIXTURE_NOW } from "@weir/fixtures";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -36,6 +38,8 @@ const searches: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
     ],
   ],
 ];
+
+const { values: flags } = parseArgs({ options: { serve: { type: "boolean", default: false } } });
 
 const home = Home.make(mkdtempSync(join(tmpdir(), "weir-demo-")));
 console.error(`weir demo: WEIR_HOME=${home.root}`);
@@ -148,6 +152,10 @@ const demo = Effect.gen(function* () {
   if (problems.length > 0) return yield* Effect.fail(problems.join("\n"));
   lines.push("ok: search and tag test match the fixtures");
   console.log(lines.join("\n"));
+  if (flags.serve) {
+    console.log(`weir demo: serving http://127.0.0.1:${port}/ until Ctrl-C`);
+    return yield* Effect.never;
+  }
 }).pipe(
   Effect.scoped,
   Effect.provide(FetchHttpClient.layer),
@@ -155,9 +163,13 @@ const demo = Effect.gen(function* () {
   Effect.provide(Logger.layer([Logger.withConsoleError(Logger.formatLogFmt)])),
 );
 
-const exit = await Effect.runPromiseExit(demo);
+const interrupt = new AbortController();
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => interrupt.abort());
+
+const exit = await Effect.runPromiseExit(demo, { signal: interrupt.signal });
 rmSync(home.root, { recursive: true, force: true });
 if (exit._tag === "Failure") {
+  if (Cause.hasInterruptsOnly(exit.cause)) process.exit(130);
   console.error(`weir demo failed:\n${String(exit.cause)}`);
   process.exit(1);
 }
