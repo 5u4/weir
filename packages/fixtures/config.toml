@@ -1,3 +1,14 @@
+[ai.fake-ai]
+command = ["fake-ai"]
+timeout = "30s"
+concurrency = 1
+
+[digest]
+ai = "fake-ai"
+threshold = 1000
+max_input = 24000
+context = 6000
+
 [[source]]
 id = "gmail"
 plugin = "gws"
@@ -9,6 +20,7 @@ backfill = "newer_than:30d"
 
 [[tag]]
 name = "Me"
+ai = true
 match = { type = "or", rules = [
   { type = "and", rules = [
     { type = "eq", target = "/fromMe", is = true },
@@ -37,6 +49,7 @@ match = { type = "or", rules = [
 
 [[tag]]
 name = "On-call"
+ai = true
 match = { type = "regex", target = "/containerName", regex = "oncall|war-room" }
 
 [[tag]]

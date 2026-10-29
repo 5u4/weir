@@ -1,3 +1,4 @@
+import expectedDigestsJson from "../expected-digests.json" with { type: "json" };
 import expected from "../expected-tags.json" with { type: "json" };
 import {
   deliverNext,
@@ -22,11 +23,33 @@ export type ExpectedTags = {
 };
 export const expectedTags: ExpectedTags = expected;
 
+export type ExpectedDigest = {
+  conversation: string;
+  first_occurred_at: string;
+  last_occurred_at: string;
+  items: number;
+  trigger: "auto" | "manual";
+  ai_profile: string;
+};
+export const expectedDigests: { ai_since: string; digests: ExpectedDigest[] } =
+  expectedDigestsJson as { ai_since: string; digests: ExpectedDigest[] };
+
 const tomlString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 
 export const configToml = (mailboxDir?: string): string => {
   const command = ["fake-gws", ...(mailboxDir === undefined ? [] : ["--mailbox", mailboxDir])];
-  return String.raw`[[source]]
+  return String.raw`[ai.fake-ai]
+command = ["fake-ai"]
+timeout = "30s"
+concurrency = 1
+
+[digest]
+ai = "fake-ai"
+threshold = 1000
+max_input = 24000
+context = 6000
+
+[[source]]
 id = "gmail"
 plugin = "gws"
 sync_every = "5m"
@@ -37,6 +60,7 @@ backfill = "newer_than:30d"
 
 [[tag]]
 name = "Me"
+ai = true
 match = { type = "or", rules = [
   { type = "and", rules = [
     { type = "eq", target = "/fromMe", is = true },
@@ -65,6 +89,7 @@ match = { type = "or", rules = [
 
 [[tag]]
 name = "On-call"
+ai = true
 match = { type = "regex", target = "/containerName", regex = "oncall|war-room" }
 
 [[tag]]

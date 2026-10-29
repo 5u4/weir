@@ -1,0 +1,21 @@
+{
+  "ai_since": "2026-10-20T00:00:00-07:00",
+  "digests": [
+    {
+      "conversation": "Northwind migration: cutover plan and UAT sign-off",
+      "first_occurred_at": "2026-10-20T18:05:00.000Z",
+      "last_occurred_at": "2026-10-23T15:05:00.000Z",
+      "items": 4,
+      "trigger": "auto",
+      "ai_profile": "fake-ai"
+    },
+    {
+      "conversation": "Mom's 60th: plan, dates and money",
+      "first_occurred_at": "2026-10-24T03:15:00.000Z",
+      "last_occurred_at": "2026-10-24T03:15:00.000Z",
+      "items": 1,
+      "trigger": "auto",
+      "ai_profile": "fake-ai"
+    }
+  ]
+}
