@@ -28,5 +28,9 @@ export const refetches = (event: Event, open: Option.Option<number>): Refetch =>
       };
     case "sync":
       return { status: true, counts: true, list: true, conversation: false };
+    case "reload":
+      return event.status === "ok"
+        ? { status: true, counts: true, list: true, conversation: Option.isSome(open) }
+        : { status: true, counts: false, list: false, conversation: false };
   }
 };

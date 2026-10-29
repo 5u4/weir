@@ -83,4 +83,24 @@ describe("refetches per event", () => {
       conversation: false,
     });
   });
+
+  it("a successful reload refetches everything, since tags may have changed", () => {
+    const ok = { type: "reload", status: "ok", at: "2026-10-28T09:00:00.000Z" } satisfies Event;
+    expect(refetches(ok, Option.some(3))).toEqual({
+      status: true,
+      counts: true,
+      list: true,
+      conversation: true,
+    });
+  });
+
+  it("a failed reload refetches only status, to show the config problem", () => {
+    const failed = {
+      type: "reload",
+      status: "failed",
+      error: { file: "config.toml", message: "bad", issues: [] },
+      at: "2026-10-28T09:00:00.000Z",
+    } satisfies Event;
+    expect(refetches(failed, Option.some(3))).toEqual({ ...nothing, status: true });
+  });
 });
