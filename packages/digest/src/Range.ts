@@ -1,0 +1,137 @@
+import type { DigestId, Seq } from "@weir/store/Rows";
+import * as DateTime from "effect/DateTime";
+import * as Result from "effect/Result";
+
+export interface ItemLite {
+  readonly seq: Seq;
+  readonly occurredAt: DateTime.Utc;
+  readonly chars: number;
+}
+
+export interface Span {
+  readonly id: DigestId;
+  readonly fromSeq: Seq;
+  readonly toSeq: Seq;
+}
+
+export interface Range {
+  readonly fromSeq: Seq;
+  readonly toSeq: Seq;
+}
+
+export type Request =
+  | { readonly _tag: "Now" }
+  | { readonly _tag: "From"; readonly seq: Seq }
+  | { readonly _tag: "UpTo"; readonly seq: Seq }
+  | { readonly _tag: "Redo"; readonly id: DigestId };
+
+export interface Backlog {
+  readonly chars: number;
+  readonly range: Range | null;
+}
+
+const floorOf = (spans: ReadonlyArray<Pick<Span, "toSeq">>) =>
+  Math.max(0, ...spans.map(({ toSeq }) => toSeq));
+
+export const backlog = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  since: DateTime.Utc,
+): Backlog => {
+  const floor = floorOf(spans);
+  const start = items.findIndex(
+    (item) => item.seq > floor && DateTime.isGreaterThanOrEqualTo(item.occurredAt, since),
+  );
+  const last = items.at(-1);
+  if (start === -1 || last === undefined) return { chars: 0, range: null };
+  const tail = items.slice(start);
+  return {
+    chars: tail.reduce((sum, item) => sum + item.chars, 0),
+    range: { fromSeq: tail[0]?.seq ?? last.seq, toSeq: last.seq },
+  };
+};
+
+export const autoRange = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  since: DateTime.Utc,
+  threshold: number,
+): Range | null => {
+  const { chars, range } = backlog(items, spans, since);
+  return chars >= threshold ? range : null;
+};
+
+export const manualRange = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  request: Request,
+  maxInput: number,
+): Result.Result<Range, string> => {
+  const first = items[0];
+  const last = items.at(-1);
+  if (first === undefined || last === undefined)
+    return Result.fail("the conversation has no items");
+  if (request._tag === "Redo") {
+    const span = spans.find(({ id }) => id === request.id);
+    return span === undefined
+      ? Result.fail(`no digest ${request.id} in this conversation`)
+      : Result.succeed({ fromSeq: span.fromSeq, toSeq: span.toSeq });
+  }
+  if (request._tag === "Now") {
+    const floor = floorOf(spans);
+    const start = items.find(({ seq }) => seq > floor);
+    return start === undefined
+      ? Result.fail("nothing after the last digest")
+      : Result.succeed({ fromSeq: start.seq, toSeq: last.seq });
+  }
+  const at = items.findIndex(({ seq }) => seq === request.seq);
+  if (at === -1) {
+    return Result.fail(
+      request.seq < first.seq || request.seq > last.seq
+        ? `#${request.seq} is outside #${first.seq}-#${last.seq}`
+        : `#${request.seq} is not a message in this conversation`,
+    );
+  }
+  if (spans.some(({ fromSeq, toSeq }) => fromSeq <= request.seq && request.seq <= toSeq)) {
+    return Result.fail(`#${request.seq} is already in a digest`);
+  }
+  if (request._tag === "From") {
+    const next = Math.min(
+      Number.POSITIVE_INFINITY,
+      ...spans.filter(({ fromSeq }) => fromSeq > request.seq).map(({ fromSeq }) => fromSeq),
+    );
+    const before = items.filter(({ seq }) => seq < next).at(-1) ?? last;
+    return Result.succeed({ fromSeq: request.seq, toSeq: before.seq });
+  }
+  const floor = floorOf(spans.filter(({ toSeq }) => toSeq < request.seq));
+  let from = at;
+  let chars = items[at]?.chars ?? 0;
+  for (let index = at - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item === undefined || item.seq <= floor || chars + item.chars > maxInput) break;
+    chars += item.chars;
+    from = index;
+  }
+  return Result.succeed({ fromSeq: items[from]?.seq ?? request.seq, toSeq: request.seq });
+};
+
+export const chunks = (
+  items: ReadonlyArray<ItemLite>,
+  range: Range,
+  maxInput: number,
+): Array<Range> => {
+  const result: Array<Range> = [];
+  let chars = 0;
+  for (const item of items) {
+    if (item.seq < range.fromSeq || item.seq > range.toSeq) continue;
+    const last = result.at(-1);
+    if (last === undefined || chars + item.chars > maxInput) {
+      result.push({ fromSeq: item.seq, toSeq: item.seq });
+      chars = item.chars;
+    } else {
+      result[result.length - 1] = { fromSeq: last.fromSeq, toSeq: item.seq };
+      chars += item.chars;
+    }
+  }
+  return result;
+};
