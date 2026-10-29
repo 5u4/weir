@@ -1455,6 +1455,20 @@ button {
   color: var(--ink);
   font-weight: 700;
 }
+.day {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 6px;
+}
+.day span {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--hover);
+  font-variant-numeric: tabular-nums;
+}
 .sg {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);

@@ -1,5 +1,7 @@
 import type { Conversation } from "@weir/daemon/Api";
+import * as DateTime from "effect/DateTime";
 import { type Here, heres, type Range, type Run, within } from "./Digest.ts";
+import { calendarDay } from "./Health.ts";
 
 export type Detail = typeof Conversation.Type;
 export type ItemSummary = Detail["items"][number];
@@ -43,11 +45,13 @@ export type Bubbles = {
   readonly heres: ReadonlyArray<Here> | null;
 };
 
+export type Day = { readonly _tag: "Day"; readonly at: string };
+
 export type Fold<Key> = {
   readonly key: Key;
   readonly open: boolean;
   readonly items: ReadonlyArray<ItemSummary>;
-  readonly groups: ReadonlyArray<Bubbles>;
+  readonly groups: ReadonlyArray<Bubbles | Day>;
 };
 
 export type TopicView = Fold<TopicKey> & { readonly topic: Topic };
@@ -87,6 +91,7 @@ export type Block =
       readonly backlog: Detail["digest"]["backlog"];
     }
   | { readonly _tag: "Skeleton"; readonly items: number }
+  | Day
   | Bubbles;
 
 const pause = 5 * 60 * 1000;
@@ -117,10 +122,21 @@ const group = (
   breakBefore: (item: ItemSummary) => boolean,
   here: ReadonlyArray<Here> | null,
 ) =>
-  items.reduce<Array<Bubbles>>((groups, item, index) => {
+  items.reduce<Array<Bubbles | Day>>((groups, item, index) => {
     const current = groups.at(-1);
+    const previous = items[index - 1];
     const at = here?.[index];
-    if (current === undefined || breakBefore(item) || startsGroup(current.items.at(-1), item)) {
+    const nextDay =
+      previous !== undefined &&
+      calendarDay(DateTime.makeUnsafe(previous.occurred_at)) !==
+        calendarDay(DateTime.makeUnsafe(item.occurred_at));
+    if (nextDay) groups.push({ _tag: "Day", at: item.occurred_at });
+    if (
+      current?._tag !== "Bubbles" ||
+      nextDay ||
+      breakBefore(item) ||
+      startsGroup(previous, item)
+    ) {
       groups.push({
         _tag: "Bubbles",
         me: item.from_me,
@@ -198,7 +214,7 @@ export const reader = (
     const firstNew = marked ? undefined : items.find(({ seq }) => seq > frozenSeen);
     const here = digestible ? heres(items) : null;
     for (const run of group(items, (item) => item === firstNew, here)) {
-      mark(run.items[0] === firstNew);
+      if (run._tag === "Bubbles") mark(run.items[0] === firstNew);
       blocks.push(run);
     }
   };

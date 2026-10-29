@@ -43,7 +43,7 @@ import {
   within,
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
-import { clockTime, dayAndTime, plural } from "./Health.ts";
+import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
@@ -219,6 +219,14 @@ const hitProps = (found: Found, key: string) =>
 
 function End({ seq, watch }: { seq: number; watch: Watch }) {
   return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
+}
+
+function DayLine({ at }: { at: string }) {
+  return (
+    <div className="day" role="separator">
+      <span>{dayLabel(DateTime.makeUnsafe(at), useAtomValue(now))}</span>
+    </div>
+  );
 }
 
 function Long({
@@ -481,9 +489,13 @@ function Originals({
       </button>
       {fold.open && (
         <div className="unf">
-          {fold.groups.map((group) => (
-            <Group key={group.items[0]?.seq} id={id} group={group} mark={mark} found={found} />
-          ))}
+          {fold.groups.map((group) =>
+            group._tag === "Day" ? (
+              <DayLine key={blockKey(group)} at={group.at} />
+            ) : (
+              <Group key={blockKey(group)} id={id} group={group} mark={mark} found={found} />
+            ),
+          )}
         </div>
       )}
     </>
@@ -793,6 +805,8 @@ export function BlockView({
     }
     case "Skeleton":
       return <Skeleton items={block.items} />;
+    case "Day":
+      return <DayLine at={block.at} />;
     case "Bubbles":
       return (
         <Group id={id} group={block} watch={watch} mark={mark} found={found} controls={controls} />
@@ -813,6 +827,8 @@ const blockKey = (block: Block) => {
       return `d-${block.digest.id}`;
     case "GapBar":
       return `gap-${block.first}`;
+    case "Day":
+      return `day-${block.at}`;
     case "Bubbles":
       return `g-${block.items[0]?.seq}`;
   }
