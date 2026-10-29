@@ -2,6 +2,7 @@ import { termPattern } from "@weir/daemon/Match";
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
 import {
   closedUi,
   type Detail,
@@ -255,6 +256,76 @@ describe("landing on a hit", () => {
     const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
     expect(counted.length).toBeGreaterThan(0);
     expect(landedOn(of, query)).toEqual(counted);
+  });
+});
+
+const newsletterBody =
+  scenarios.threads.find(({ id }) => id === "newsletter-trailhead")?.messages[0]?.text ?? "";
+const newsletter = detail([
+  item(1, { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example" }, newsletterBody),
+]);
+
+describe("newsletter body", () => {
+  it.each([
+    ["link text", "Lamport"],
+    ["alt of a linked image", "Quiltwork"],
+    ["alt of an image", "thousand"],
+    ["heading", "months"],
+    ["inline code", "mergeClocks"],
+    ["HTML shown as text", "<b>raw"],
+    ["list item", "tombstones"],
+  ])("a query on the %s is a body hit marked in the rendered body", (_, query) => {
+    expect(hits(newsletter, termPattern(query))).toEqual([{ _tag: "Item", seq: 1, field: "body" }]);
+    expect(landedOn(newsletter, query)).toEqual(["i:1 marked"]);
+  });
+
+  it.each([
+    ["a link target", "lamport-primer"],
+    ["the hidden part of a long URL", "utm_campaign"],
+    ["an image source", "banner.png"],
+    ["an empty-alt image source", "robin.gif"],
+    ["an image host", "cdn.trailhead"],
+  ])("a query only on %s is no hit", (_, query) => {
+    expect(newsletterBody).toContain(query);
+    expect(hits(newsletter, termPattern(query))).toEqual([]);
+  });
+
+  it("renders without images, unsafe links, empty links or live HTML", () => {
+    const unsafe = detail([
+      item(
+        1,
+        newsletter.items[0]?.from ?? daniel,
+        `${newsletterBody}\n\n[run](javascript:alert(1))`,
+      ),
+    ]);
+    const markup = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        reader(unsafe, lastSeq(unsafe), closedUi, null).map((block, at) =>
+          createElement(BlockView, {
+            key: at,
+            id: ConversationId.make(unsafe.id),
+            block,
+            watch: () => () => {},
+            mark: { seen: lastSeq(unsafe), unread: () => {} },
+            found: { pattern: null, hits: new Map(), current: null },
+            controls: null,
+          }),
+        ),
+      ),
+    );
+    expect(markup).toContain('class="body"');
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("src=");
+    expect(markup).not.toContain("javascript:");
+    expect(markup).toContain("<p>run</p>");
+    const links = [...markup.matchAll(/<a\b[^>]*>(.*?)<\/a>/g)];
+    expect(links.length).toBeGreaterThan(0);
+    for (const [, text] of links) expect(text?.replace(/<[^>]+>/g, "").trim()).not.toBe("");
+    expect(markup).toContain("&lt;b&gt;raw tags&lt;/b&gt;");
+    expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
+    expect(markup).toContain('class="b-img"');
   });
 });
 

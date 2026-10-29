@@ -1,4 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
+import { visible } from "@weir/daemon/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -26,6 +27,7 @@ import {
   type TopicView,
   type UncitedKey,
 } from "./Blocks.ts";
+import { Body } from "./Body.tsx";
 import {
   type Action,
   earlierLabel,
@@ -232,6 +234,7 @@ function Bubble({
   found: Found;
 }) {
   const key = hitKey({ _tag: "Item", seq: item.seq });
+  const tree = visible(item.body_new);
   const hit = found.hits.get(key);
   const [shown, setPreview] = useAtom(preview);
   const run = controls?.run;
@@ -259,12 +262,10 @@ function Bubble({
         }}
       >
         <div className="bb">
-          {item.body_new.trim() === "" ? (
+          {tree.length === 0 ? (
             <p className="body b-none">(no text)</p>
           ) : (
-            <p className="body">
-              <Highlighted text={item.body_new} pattern={found.pattern} />
-            </p>
+            <Body tree={tree} pattern={found.pattern} />
           )}
         </div>
         {hit?._tag === "Item" && hit.field === "from" && (
