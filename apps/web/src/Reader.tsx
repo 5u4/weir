@@ -56,6 +56,7 @@ import {
   reading,
   searchHits,
 } from "./Reading.ts";
+import { fieldLabels } from "./Results.ts";
 import { type ConversationId, route } from "./Route.ts";
 import { homeTag, tagHue } from "./Rows.ts";
 import { conversation, digestRun, dismiss, runDigest, searchPattern, tagOrder } from "./Weir.ts";
@@ -268,9 +269,9 @@ function Bubble({
             <Body tree={tree} pattern={found.pattern} />
           )}
         </div>
-        {hit?._tag === "Item" && hit.field === "from" && (
-          <span className="bh" title="Matched in Sender">
-            Sender
+        {hit?._tag === "Item" && hit.field !== "body" && (
+          <span className="bh" title={`Matched in ${fieldLabels[hit.field]}`}>
+            {fieldLabels[hit.field]}
           </span>
         )}
         {(digestible || item.seq <= mark.seen) && (
@@ -861,7 +862,9 @@ function Conversation({
             {day(detail.first_at)} – {day(detail.last_at)}
           </span>
         </p>
-        <h2 className="r-title">{detail.title}</h2>
+        <h2 className="r-title">
+          <Highlighted text={detail.title} pattern={pattern} />
+        </h2>
       </header>
       {reader(detail, frozen, revealing(ui, run), run._tag === "Running" ? run.range : null).map(
         (block) => (

@@ -7,7 +7,7 @@ import * as Reactivity from "effect/reactivity/Reactivity";
 import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./Blocks.ts";
 import type { Range } from "./Digest.ts";
 import { type DockAction, dockActions } from "./Dock.ts";
-import { type Hit, hitKey, hits, reveal } from "./Hits.ts";
+import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
 import type { Target } from "./Rows.ts";
@@ -218,6 +218,15 @@ export const searchHits = Atom.family((id: ConversationId) =>
     const detail = get(conversation(id));
     return AsyncResult.isSuccess(detail)
       ? Option.some(hits(detail.value, get(searchPattern)))
+      : Option.none();
+  }),
+);
+
+export const searchMatchedIn = Atom.family((id: ConversationId) =>
+  Atom.make((get): Option.Option<string> => {
+    const detail = get(conversation(id));
+    return AsyncResult.isSuccess(detail)
+      ? Option.some(matchedIn(detail.value, get(searchPattern)))
       : Option.none();
   }),
 );

@@ -12,7 +12,7 @@ import {
   reader,
   topicKey,
 } from "./Blocks.ts";
-import { type Hit, hitKey, hits, reveal } from "./Hits.ts";
+import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import { BlockView } from "./Reader.tsx";
 import { ConversationId } from "./Route.ts";
 
@@ -146,7 +146,7 @@ const outer = (markup: string, key: string) => {
   return null;
 };
 
-const landedOn = (of: Detail, query: string) => {
+const revealed = (of: Detail, query: string) => {
   const pattern = termPattern(query);
   const all = hits(of, pattern);
   const keyed = new Map(all.map((hit) => [hitKey(hit), hit]));
@@ -170,12 +170,15 @@ const landedOn = (of: Detail, query: string) => {
         ),
       ),
     );
-    const target = outer(markup, key);
-    const state =
-      target === null ? "missing" : /<mark>|class="bh"/.test(target) ? "marked" : "unmarked";
-    return `${key} ${state}`;
+    return { key, target: outer(markup, key) };
   });
 };
+
+const landedOn = (of: Detail, query: string) =>
+  revealed(of, query).map(
+    ({ key, target }) =>
+      `${key} ${target === null ? "missing" : /<mark>|class="bh"/.test(target) ? "marked" : "unmarked"}`,
+  );
 
 describe("hits", () => {
   it.each([
@@ -224,14 +227,41 @@ describe("hits", () => {
     expect(found(northwind, "duplicate").map(describeHit)).toEqual(["headline 7", "topic 7:1"]);
   });
 
-  it("does not count a match only in the source or the title", () => {
-    expect(found(northwind, "gmail")).toEqual([]);
+  it("counts a match in the source as an item hit, after the body and the sender", () => {
+    expect(found(northwind, "robin.ellis").map(describeHit)).toEqual([
+      "item 1 source",
+      "item 2 source",
+      "item 4 source",
+      "item 10 source",
+      "item 18 source",
+      "item 25 source",
+      "item 21 source",
+      "item 30 source",
+    ]);
+    expect(found(northwind, "example.com").map(describeHit)).toEqual([
+      "item 1 source",
+      "item 2 from",
+      "item 4 source",
+      "item 10 from",
+      "item 18 source",
+      "item 25 source",
+      "item 21 from",
+      "item 30 from",
+    ]);
+    expect(found(northwind, "Robin").map(describeHit)).toContain("item 10 body");
+  });
+
+  it("does not count a match only in the title, and says the title matched", () => {
     expect(found(northwind, "sign-off")).toEqual([
       { _tag: "Topic", key: topicKey(northwind.digests[0] as Digest, 0) },
     ]);
     expect(found(northwind, "cutover plan")).toEqual([
       { _tag: "Topic", key: topicKey(northwind.digests[0] as Digest, 0) },
     ]);
+    expect(found(momsBirthday, "cutover")).toEqual([]);
+    expect(matchedIn(momsBirthday, termPattern("cutover"))).toBe("Matched in Title");
+    expect(matchedIn(momsBirthday, termPattern("gmail"))).toBe("Matched the conversation");
+    expect(matchedIn(momsBirthday, null)).toBe("Matched in filters");
   });
 
   it("finds nothing without a text term", () => {
@@ -244,6 +274,7 @@ describe("landing on a hit", () => {
   it.each([
     ["migrat", northwind],
     ["northwind", northwind],
+    ["robin.ellis", northwind],
     ["lisa", northwind],
     ["signed", northwind],
     ["duplicate", northwind],
@@ -257,6 +288,24 @@ describe("landing on a hit", () => {
     const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
     expect(counted.length).toBeGreaterThan(0);
     expect(landedOn(of, query)).toEqual(counted);
+  });
+
+  it("tags a bubble with the field that matched when it is not the body", () => {
+    const tags = (query: string) =>
+      revealed(northwind, query).map(
+        ({ key, target }) =>
+          `${key} ${
+            /<span class="bh" title="([^"]*)">([^<]*)<\/span>/
+              .exec(target ?? "")
+              ?.slice(1)
+              .join(" / ") ?? "no tag"
+          }`,
+      );
+    expect(tags("example.com").slice(0, 2)).toEqual([
+      "i:1 Matched in Source / Source",
+      "i:2 Matched in Sender / Sender",
+    ]);
+    expect(tags("migrat")[0]).toBe("i:2 no tag");
   });
 });
 
