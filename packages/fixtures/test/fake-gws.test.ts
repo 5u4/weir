@@ -8,6 +8,8 @@ import {
   relabel,
   remove,
   seedMailbox,
+  seedThreads,
+  setDelay,
   setNow,
 } from "@weir/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
@@ -218,5 +220,39 @@ describe("fake-gws --mailbox", () => {
     });
     expect(run.exitCode).toBe(1);
     expect(JSON.parse(run.stdout).error).toMatchObject({ code: 404, reason: "notFound" });
+  });
+
+  it("sleeps before answering only the commands named in delay", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    setDelay(dir, { "messages list": 1500 });
+    const timed = (command: string) => {
+      const start = performance.now();
+      const answer = gmail(command, { userId: "me" }, dir);
+      return { answer, ms: performance.now() - start };
+    };
+    const list = timed("messages list");
+    const profile = timed("getProfile");
+    expect(list.ms).toBeGreaterThanOrEqual(1500);
+    expect(list.answer.messages).toHaveLength(10);
+    expect(profile.ms).toBeLessThan(1500);
+    expect(profile.answer.messagesTotal).toBe(31);
+  });
+
+  it("seeds given threads as delivered mail with the given page size", () => {
+    const dir = tempMailbox();
+    const threads = Array.from({ length: 3 }, (_, i) => ({
+      id: `bulk-${i}`,
+      subject: `Bulk ${i}`,
+      labels: ["INBOX"],
+      messages: [
+        { at: `2026-10-2${i}T09:00:00-07:00`, from: "priya", to: ["me"], text: "Question" },
+        { at: `2026-10-2${i}T10:00:00-07:00`, from: "me", to: ["priya"], text: "Answer" },
+      ],
+    }));
+    expect(seedThreads(dir, threads, { now: FIXTURE_NOW, pageSize: 4 })).toEqual({ delivered: 6 });
+    const { messages, pages } = listAllIds("", dir);
+    expect(pages).toBe(2);
+    expect(new Set(messages.map((m) => m.threadId)).size).toBe(3);
   });
 });

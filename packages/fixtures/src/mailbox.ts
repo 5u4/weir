@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type GeneratedMessage, gmailMessages, type Message } from "./gmail.ts";
-import { scenarios } from "./scenarios.ts";
+import { scenarios, type Thread } from "./scenarios.ts";
 
 export type HistoryMessage = { id: string; threadId: string; labelIds?: string[] };
 export type HistoryLabelChange = { message: HistoryMessage; labelIds: string[] };
@@ -42,6 +42,7 @@ export type Mailbox = {
   messages: Record<string, Message>;
   pending: string[];
   history: History[];
+  delay?: Record<string, number>;
 };
 
 const INITIAL_HISTORY_ID = 100_000;
@@ -75,22 +76,20 @@ const record = (mailbox: Mailbox, entry: Omit<History, "id">): string => {
 
 const ref = (m: Message): HistoryMessage => ({ id: m.id, threadId: m.threadId });
 
-const deliverOne = (mailbox: Mailbox, id: string) => {
-  const draft = generated.get(id);
-  if (!draft) throw new Error(`no generated message ${id}`);
+const deliverOne = (mailbox: Mailbox, draft: GeneratedMessage) => {
   const message: Message = { ...draft, labelIds: [...draft.labelIds], historyId: "" };
   message.historyId = record(mailbox, {
     messages: [ref(message)],
     messagesAdded: [{ message: { ...ref(message), labelIds: [...message.labelIds] } }],
   });
-  mailbox.messages[id] = message;
+  mailbox.messages[message.id] = message;
 };
 
-export const seed = (now: string): Mailbox => {
-  const cutoff = parseClock(now).epochMs;
+const empty = (now: string): Mailbox => {
+  parseClock(now);
   const me = scenarios.people[scenarios.me];
   if (!me) throw new Error(`scenarios.me names unknown person ${scenarios.me}`);
-  const mailbox: Mailbox = {
+  return {
     now,
     historyFloor: String(INITIAL_HISTORY_ID),
     historyId: String(INITIAL_HISTORY_ID),
@@ -109,21 +108,38 @@ export const seed = (now: string): Mailbox => {
       },
     ],
     messages: {},
-    pending: [...generated.values()]
-      .filter((m) => Number(m.internalDate) > cutoff)
-      .map((m) => m.id),
+    pending: [],
     history: [],
   };
+};
+
+export const seed = (now: string): Mailbox => {
+  const cutoff = parseClock(now).epochMs;
+  const mailbox = empty(now);
   for (const m of generated.values()) {
-    if (Number(m.internalDate) <= cutoff) deliverOne(mailbox, m.id);
+    if (Number(m.internalDate) <= cutoff) deliverOne(mailbox, m);
+    else mailbox.pending.push(m.id);
   }
+  return mailbox;
+};
+
+export const seedWith = (now: string, threads: ReadonlyArray<Thread>): Mailbox => {
+  const mailbox = empty(now);
+  const messages = gmailMessages({ ...scenarios, threads: [...threads] }).sort(
+    (a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id),
+  );
+  for (const m of messages) deliverOne(mailbox, m);
   return mailbox;
 };
 
 export const deliverNext = (mailbox: Mailbox, n: number): string[] => {
   const ids = mailbox.pending.splice(0, n);
   if (ids.length < n) throw new Error(`asked to deliver ${n}, only ${ids.length} pending`);
-  for (const id of ids) deliverOne(mailbox, id);
+  for (const id of ids) {
+    const draft = generated.get(id);
+    if (!draft) throw new Error(`no generated message ${id}`);
+    deliverOne(mailbox, draft);
+  }
   return ids;
 };
 
