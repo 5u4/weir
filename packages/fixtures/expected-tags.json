@@ -1,7 +1,7 @@
 {
   "source": "gmail",
-  "conversations": 14,
-  "items": 31,
+  "conversations": 15,
+  "items": 32,
   "tags": {
     "Me": {
       "conversations": 2,
@@ -21,7 +21,7 @@
     }
   },
   "untagged": {
-    "conversations": 6,
-    "items": 6
+    "conversations": 7,
+    "items": 7
   }
 }

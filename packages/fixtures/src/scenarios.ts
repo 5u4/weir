@@ -1,7 +1,14 @@
 import data from "../scenarios.json" with { type: "json" };
 
 export type Person = { name: string; addr: string; bot?: boolean; signature?: string };
-export type ThreadMessage = { at: string; from: string; to: string[]; cc?: string[]; text: string };
+export type ThreadMessage = {
+  at: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  text: string;
+  html?: string;
+};
 export type Thread = {
   id: string;
   subject: string;

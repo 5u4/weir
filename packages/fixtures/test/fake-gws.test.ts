@@ -44,10 +44,10 @@ describe("fake-gws default mailbox", () => {
   it("pages every Gmail scenario message within newer_than:30d at FIXTURE_NOW", () => {
     const { messages, pages } = listAllIds("newer_than:30d");
     expect(messages).toHaveLength(scenarioMessages.length);
-    expect(messages).toHaveLength(31);
-    expect(new Set(messages.map((m) => m.id)).size).toBe(31);
+    expect(messages).toHaveLength(32);
+    expect(new Set(messages.map((m) => m.id)).size).toBe(32);
     expect(new Set(messages.map((m) => m.threadId)).size).toBe(scenarios.threads.length);
-    expect(new Set(messages.map((m) => m.threadId)).size).toBe(14);
+    expect(new Set(messages.map((m) => m.threadId)).size).toBe(15);
     expect(pages).toBeGreaterThan(1);
   });
 
@@ -80,8 +80,8 @@ describe("fake-gws default mailbox", () => {
   it("reports the profile and the single send-as identity", () => {
     expect(gmail("getProfile", { userId: "me" })).toMatchObject({
       emailAddress: "robin.ellis@example.com",
-      messagesTotal: 31,
-      threadsTotal: 14,
+      messagesTotal: 32,
+      threadsTotal: 15,
     });
     const { sendAs } = gmail("settings sendAs list", { userId: "me" });
     expect(sendAs).toHaveLength(1);
@@ -133,9 +133,9 @@ describe("fake-gws --mailbox", () => {
     const boundary = "2026-10-21T10:04:00-07:00";
     setNow(dir, "2026-11-20T10:04:00-07:00");
     const expected = scenarioMessages.filter((m) => at(m.at) > at(boundary)).length;
-    expect(expected).toBeLessThan(31);
+    expect(expected).toBeLessThan(32);
     expect(listAllIds("newer_than:30d", dir).messages).toHaveLength(expected);
-    expect(listAllIds("", dir).messages).toHaveLength(31);
+    expect(listAllIds("", dir).messages).toHaveLength(32);
   });
 
   it("rejects impossible clocks before writing the mailbox", () => {
@@ -157,7 +157,7 @@ describe("fake-gws --mailbox", () => {
     const until = "2026-10-24T12:00:00-07:00";
     const pendingCount = scenarioMessages.filter((m) => at(m.at) > at(until)).length;
     expect(seedMailbox(dir, { until })).toMatchObject({
-      delivered: 31 - pendingCount,
+      delivered: 32 - pendingCount,
       pending: pendingCount,
     });
     const start = gmail("getProfile", { userId: "me" }, dir).historyId;
@@ -192,7 +192,7 @@ describe("fake-gws --mailbox", () => {
     const visible = listAllIds("", dir).messages.map((m) => m.id);
     expect(visible).not.toContain(trashed.id);
     expect(visible).not.toContain(added);
-    expect(gmail("getProfile", { userId: "me" }, dir).messagesTotal).toBe(31 - pendingCount);
+    expect(gmail("getProfile", { userId: "me" }, dir).messagesTotal).toBe(32 - pendingCount);
   });
 
   it("answers 404 for a history id older than the floor after expireHistory", () => {

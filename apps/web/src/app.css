@@ -1539,6 +1539,106 @@ button {
 }
 .body {
   margin: 0;
+  white-space: pre-line;
+}
+.body > :first-child {
+  margin-top: 0;
+}
+.body > :last-child {
+  margin-bottom: 0;
+}
+.body p {
+  margin: 0 0 0.7em;
+}
+.body a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+.body a:hover {
+  text-decoration-color: currentColor;
+}
+.body a.url {
+  font-size: 0.9em;
+}
+.body h3,
+.body h4,
+.body h5,
+.body h6 {
+  margin: 1em 0 0.4em;
+  font-size: 1em;
+  line-height: 1.4;
+}
+.body table {
+  display: block;
+  max-width: 100%;
+  margin: 0.6em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.87em;
+}
+.body td,
+.body th {
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  text-align: left;
+  vertical-align: top;
+}
+.body pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklch, currentColor 7%, transparent);
+  font:
+    12.5px / 1.55 ui-monospace,
+    monospace;
+  white-space: pre;
+}
+.body code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in oklch, currentColor 7%, transparent);
+  font:
+    0.88em ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+}
+.body :where(pre) code {
+  padding: 0;
+  background: none;
+  font: inherit;
+  white-space: inherit;
+}
+.body blockquote {
+  margin: 0.6em 0;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in oklch, currentColor 25%, transparent);
+  color: color-mix(in oklch, currentColor 72%, transparent);
+}
+.body hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+}
+.body ul,
+.body ol {
+  margin: 0.4em 0 0.7em;
+  padding-left: 1.4em;
+}
+.body :where(li) > p {
+  margin: 0;
+}
+.b-img {
+  padding: 0 5px;
+  border: 1px dashed color-mix(in oklch, currentColor 30%, transparent);
+  border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  font-size: 0.87em;
+  color: color-mix(in oklch, currentColor 62%, transparent);
+}
+.b-html {
   white-space: pre-wrap;
 }
 .b-none {

@@ -81,8 +81,8 @@ describe("gws plugin against fake-gws", () => {
     const { pages, items, cursor } = await syncAll(sourceFor(seeded()), null);
     expect(pages.length).toBeGreaterThan(1);
     expect(pages.slice(0, -1).every((p) => p.more)).toBe(true);
-    expect(items.size).toBe(31);
-    expect(new Set([...items.values()].map((i) => i.threadId)).size).toBe(14);
+    expect(items.size).toBe(32);
+    expect(new Set([...items.values()].map((i) => i.threadId)).size).toBe(15);
     expect(pages.flatMap((p) => p.deletions)).toEqual([]);
     expect(JSON.parse(cursor ?? "")).toMatchObject({ phase: "incremental", pageToken: null });
     const item = [...items.values()][0];
@@ -100,7 +100,7 @@ describe("gws plugin against fake-gws", () => {
         t.messages.map((m) => [`${Date.parse(m.at)} ${people[m.from]?.addr}`, m.text.trim()]),
       ),
     );
-    expect(expected.size).toBe(31);
+    expect(expected.size).toBe(32);
     const { items } = await syncAll(sourceFor(seeded()), null);
     for (const item of items.values()) {
       const key = `${Date.parse(item.occurredAt)} ${item.from.address}`;
@@ -187,7 +187,7 @@ describe("gws plugin against fake-gws", () => {
     const cold = await syncAll(source, null);
     expireHistory(dir);
     const recovered = await syncAll(source, cold.cursor);
-    expect(recovered.items.size).toBe(31);
+    expect(recovered.items.size).toBe(32);
     expect(JSON.parse(recovered.cursor ?? "")).toMatchObject({ phase: "incremental" });
     const [id] = recovered.items.keys();
     relabel(dir, id ?? "", { add: ["STARRED"] });

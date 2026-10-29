@@ -52,6 +52,7 @@ import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
+import { plainText } from "./Markdown.ts";
 import { segments, senderLabel, termPattern } from "./Match.ts";
 import * as Web from "./Web.ts";
 
@@ -321,31 +322,36 @@ const hitLines = (
         };
       }),
   );
-  const itemLines = items.flatMap((item): Array<Line> => {
-    if (coveredByTopic.has(item.seq)) return [];
+  const itemLines: Array<Line> = [];
+  for (const item of items.toSorted((left, right) => right.seq - left.seq)) {
+    if (itemLines.length === hitLinesPerConversation) break;
+    if (coveredByTopic.has(item.seq)) continue;
     const fields = [
-      ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
+      [
+        "body",
+        item.bodyNew.search(pattern) === -1
+          ? ""
+          : plainText(item.bodyNew).replace(/\s+/gu, " ").trim(),
+      ],
       ["from", senderLabel(item.fromName, item.fromAddress)],
       ["source", item.streamName],
     ] as const;
     for (const [field, text] of fields) {
       const matchAt = text.search(pattern);
       if (matchAt === -1) continue;
-      return [
-        {
-          field,
-          seq: item.seq,
-          digest_id: null,
-          title: null,
-          text: segments(
-            field === "body" ? snippet(text, matchAt, bodySnippetLength) : text,
-            pattern,
-          ),
-        },
-      ];
+      itemLines.push({
+        field,
+        seq: item.seq,
+        digest_id: null,
+        title: null,
+        text: segments(
+          field === "body" ? snippet(text, matchAt, bodySnippetLength) : text,
+          pattern,
+        ),
+      });
+      break;
     }
-    return [];
-  });
+  }
   const headlineLines = digests.toReversed().flatMap((digest): Array<Line> => {
     const matchAt = digest.headline.search(pattern);
     if (matchAt === -1) return [];

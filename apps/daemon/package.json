@@ -10,6 +10,7 @@
     "./Home": "./src/Home.ts",
     "./Http": "./src/Http.ts",
     "./Loopback": "./src/Loopback.ts",
+    "./Markdown": "./src/Markdown.ts",
     "./Match": "./src/Match.ts"
   },
   "bin": {
@@ -22,10 +23,14 @@
     "@weir/plugin-gws": "workspace:*",
     "@weir/store": "workspace:*",
     "@weir/sync": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "mdast-util-from-markdown": "2.1.0",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/mdast": "4.0.4",
     "@weir/fixtures": "workspace:*"
   }
 }

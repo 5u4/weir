@@ -92,6 +92,8 @@ const textHtml = (text: string) =>
     })
     .join("");
 
+const messageHtml = (m: ThreadMessage) => m.html ?? `<div dir="ltr">${textHtml(m.text)}</div>`;
+
 const signatureHtml = (signature: string) =>
   `<div class="gmail_signature">${escapeHtml(signature).replaceAll("\n", "<br>")}</div>`;
 
@@ -211,16 +213,13 @@ const threadMessages = (
     const prevSender = prev ? person(prev.from) : undefined;
 
     const plainParts = [signed(m.text, from)];
-    const htmlParts = [
-      `<div dir="ltr">${textHtml(m.text)}</div>`,
-      from.signature ? signatureHtml(from.signature) : "",
-    ];
+    const htmlParts = [messageHtml(m), from.signature ? signatureHtml(from.signature) : ""];
     if (prev && prevSender) {
       const attr = attribution(wallClock(prev.at), prevSender);
       const quoted = signed(prev.text, prevSender).replace(/^/gm, "> ").replace(/^> $/gm, ">");
       plainParts.push(`${attr}\n${quoted}`);
       htmlParts.push(
-        `<div class="gmail_quote"><div class="gmail_attr">${escapeHtml(attr)}</div><blockquote class="gmail_quote"><div dir="ltr">${textHtml(prev.text)}</div>${prevSender.signature ? signatureHtml(prevSender.signature) : ""}</blockquote></div>`,
+        `<div class="gmail_quote"><div class="gmail_attr">${escapeHtml(attr)}</div><blockquote class="gmail_quote">${messageHtml(prev)}${prevSender.signature ? signatureHtml(prevSender.signature) : ""}</blockquote></div>`,
       );
     }
     const plain = plainParts.join("\n\n");

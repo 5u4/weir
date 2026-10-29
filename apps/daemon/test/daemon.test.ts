@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
 import * as Http from "../src/Http.ts";
 import {
   adjustableClock,
@@ -433,6 +434,58 @@ describe("reads", () => {
       ] as const) {
         const { conversations } = yield* client.search({ query: { q: "", tag } });
         expect(conversations.map(({ title }) => title)).toEqual(expected);
+      }
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("search body lines show the rendered newsletter text and skip URL-only matches", () =>
+    Effect.gen(function* () {
+      const newsletter =
+        scenarios.threads.find(({ id }) => id === "newsletter-trailhead")?.messages[0]?.text ?? "";
+      const item = rawItem("n1", {
+        threadId: "n",
+        title: "Trailhead Weekly #48",
+        body: newsletter,
+        bodyNew: newsletter,
+      });
+      const { home, port } = makeHome(sourceConfig("1h"));
+      yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource([item])) }));
+      const client = yield* apiClient(port);
+      yield* eventually(client.status(), synced);
+      const bodyLines = (q: string) =>
+        client
+          .search({ query: { q } })
+          .pipe(
+            Effect.map(({ conversations }) =>
+              conversations.flatMap(({ hits }) => hits.filter(({ field }) => field === "body")),
+            ),
+          );
+      for (const q of [
+        "Lamport",
+        "Quiltwork",
+        "thousand",
+        "months",
+        "mergeClocks",
+        "<b>raw",
+        "tombstones",
+      ]) {
+        const [line, ...rest] = yield* bodyLines(q);
+        expect(rest, q).toEqual([]);
+        expect(
+          line?.text.filter(({ mark }) => mark).map(({ text }) => text),
+          q,
+        ).toEqual([q]);
+        expect(line?.text.map(({ text }) => text).join(""), q).not.toMatch(/\]\(|!\[|https?:\/\//);
+      }
+      for (const q of [
+        "lamport-primer",
+        "utm_campaign",
+        "banner.png",
+        "robin.gif",
+        "cdn.trailhead",
+      ]) {
+        expect(newsletter, q).toContain(q);
+        expect(yield* bodyLines(q), q).toEqual([]);
       }
     }).pipe(Effect.scoped),
   );
