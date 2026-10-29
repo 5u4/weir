@@ -147,14 +147,20 @@ const fetchPage = async (
   return { upserts, deletions, rest: threadIds.slice(next) };
 };
 
-const emit = (changes: Changes, next: Cursor, kind: SyncPage["kind"]): SyncPage => ({
+const emit = (
+  changes: Changes,
+  next: Cursor,
+  kind: SyncPage["kind"],
+  historyDue = false,
+): SyncPage => ({
   ...changes,
   cursor: encodeCursor(next),
   more:
     kind === "backfill" ||
     next.phase !== "incremental" ||
     next.live.pageToken !== null ||
-    next.live.pending.length > 0,
+    next.live.pending.length > 0 ||
+    historyDue,
   kind,
   backfill: next.phase === "incremental" ? "done" : "running",
 });
@@ -188,7 +194,7 @@ export const createSource = (
     if (live.pending.length > 0) {
       const page = await fetchPage(cli, pass.emailAddress, labels, live.pending, pass.signal);
       const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
-      return { changes, live: { ...live, pending: page.rest } };
+      return { changes, live: { ...live, pending: page.rest }, historyDue: true };
     }
     const startedAt = Effect.runSync(Clock.currentTimeMillis);
     let history: HistoryList;
@@ -221,7 +227,7 @@ export const createSource = (
             pending: page.rest,
           }
         : { ...live, pageToken: history.nextPageToken, pending: page.rest };
-    return { changes, live: next };
+    return { changes, live: next, historyDue: false };
   };
 
   const step = async (pass: Pass, position: Cursor): Promise<SyncPage> => {
@@ -249,9 +255,11 @@ export const createSource = (
         const [label, ...later] = position.listing;
         const { changes, next, done } = await listingPage(pass, labels, label, backfill, position);
         const recent = position.live.watermark - HOLD_BACK_MS;
-        const pending = new Set(position.live.pending);
+        const queued = new Set(position.live.pending);
+        const pending = new Set(queued);
         const upserts = changes.upserts.filter((item) => {
-          if (item.threadId === null || Date.parse(item.occurredAt) < recent) return true;
+          if (item.threadId === null) return true;
+          if (!queued.has(item.threadId) && Date.parse(item.occurredAt) < recent) return true;
           pending.add(item.threadId);
           return false;
         });
@@ -290,7 +298,12 @@ export const createSource = (
       case "incremental": {
         const live = await livePage(pass, labels, position.live);
         if (live === null) return step(pass, gap(position.live));
-        return emit(live.changes, { phase: "incremental", labels, live: live.live }, "live");
+        return emit(
+          live.changes,
+          { phase: "incremental", labels, live: live.live },
+          "live",
+          live.historyDue,
+        );
       }
     }
   };

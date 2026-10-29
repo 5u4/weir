@@ -142,12 +142,16 @@ describe("gws background backfill", () => {
   );
 
   it.live(
-    "INBOX mail delivered while the last SENT listing page runs lands unread in the same pass",
+    "INBOX mail delivered while the last SENT listing page holds back a recent thread lands unread in the same pass",
     () =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const seeded = 5;
         const { home, port, mailbox } = gmailHome(seeded, now, ["INBOX", "SENT"]);
+        const sent = { at: gmailTime(now), from: "me", to: ["priya"], text: "Sent just now" };
+        deliverThreads(mailbox, [
+          { id: "sent-recent", subject: "Note sent-recent", labels: ["SENT"], messages: [sent] },
+        ]);
         setDelay(mailbox, { "threads list": 500 });
         const { stream, states } = yield* connect(home, port);
         const events = yield* openEvents(port);
@@ -168,8 +172,10 @@ describe("gws background backfill", () => {
             event.type === "sync" && event.status !== "started",
         );
         expect(outcome.status).toBe("done");
-        expect(yield* stream).toMatchObject({ backfill: "done", items: seeded + 1 });
-        expect((yield* states)["Note last-page"]).toBe("unread");
+        expect(yield* stream).toMatchObject({ backfill: "done", items: seeded + 2 });
+        const final = yield* states;
+        expect(final["Note last-page"]).toBe("unread");
+        expect(final["Note sent-recent"]).toBeDefined();
       }).pipe(Effect.scoped),
   );
 

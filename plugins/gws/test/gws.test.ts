@@ -285,7 +285,10 @@ describe("gws plugin against fake-gws", () => {
 
     const restarted = sourceFor(dir, ["INBOX"]);
     const rest = await syncAll(restarted, first.cursor);
-    expect(rest.pages.map(({ kind, more }) => [kind, more])).toEqual([["live", false]]);
+    expect(rest.pages.map(({ kind, more }) => [kind, more])).toEqual([
+      ["live", true],
+      ["live", false],
+    ]);
     expect(rest.pages[0]?.upserts).toHaveLength(2 * 13);
     const stored = new Set([...first.upserts, ...rest.items.values()].map((i) => i.externalId));
     expect(stored.size).toBe(delivered);
@@ -320,6 +323,32 @@ describe("gws plugin against fake-gws", () => {
     expect(new Set(drained?.upserts.map((i) => i.externalId))).toEqual(queued);
     const stored = new Set([...first.upserts, ...widened.items.values()].map((i) => i.externalId));
     expect(stored.size).toBe(delivered);
+  });
+
+  it("keeps threads queued by a label change's history page out of backfill pages until their live turn", async () => {
+    const subjects = Array.from({ length: 10 }, (_, i) => `Starred ${i}`);
+    const { dir, delivered } = seedSized(
+      subjects.map((subject) => ({ subject, size: 13, labels: ["STARRED"] })),
+    );
+    const starred = await syncAll(sourceFor(dir, ["STARRED"]), null);
+    const cold = await syncAll(sourceFor(dir, ["INBOX"]), null);
+    for (const subject of [...subjects].reverse()) {
+      relabel(dir, idsWithSubject(starred.items, subject)[0] ?? "", { add: ["INBOX"] });
+    }
+
+    const widened = await syncAll(sourceFor(dir, ["INBOX", "SENT"]), cold.cursor);
+    const [history] = widened.pages;
+    expect(history).toMatchObject({ kind: "live", backfill: "running", more: true });
+    expect(history?.upserts).toHaveLength(8 * 13);
+    const queued = [...starred.items.keys()].filter(
+      (id) => !history?.upserts.some((i) => i.externalId === id),
+    );
+    expect(queued).toHaveLength(2 * 13);
+    const firstKinds = queued.map(
+      (id) => widened.pages.find((page) => page.upserts.some((i) => i.externalId === id))?.kind,
+    );
+    expect(new Set(firstKinds)).toEqual(new Set(["live"]));
+    expect(widened.items.size).toBe(delivered);
   });
 
   it("follows history only for threads that carry a configured label", async () => {
