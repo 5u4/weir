@@ -3,18 +3,36 @@ import TurndownService from "turndown";
 const QUOTED = ["gmail_signature", "gmail_quote", "gmail_attr"];
 
 const STRONG = { tags: ["strong", "b"], open: "\uE000", close: "\uE001", delimiter: "**" } as const;
-const EM = { tags: ["em", "i"], open: "\uE002", close: "\uE003", delimiter: "_" } as const;
-const SENTINELS = /[\uE000-\uE003]/g;
-const EDGES = /^([\s\u200b\u200c\u2060\ufeff]*)([\s\S]*?)([\s\u200b\u200c\u2060\ufeff]*)$/;
-const LINK_SYNTAX = /!\[[^\]]*\]\([^)]*\)|\]\([^)]*\)|[[\]\s\u200b\u200c\u2060\ufeff]/g;
+const EM = { tags: ["em", "i"], open: "\uE002", close: "\uE003", delimiter: "*" } as const;
+const MARKS = [STRONG, EM];
+const SENTINELS = /[\uE000-\uE003]|&#(?:x0*e00[0-3](?![\da-f])|0*5734[4-7](?!\d));?/gi;
+const INVISIBLE = /[\s\u200b\u200c\u2060\ufeff]/;
+const INVISIBLES = /[\s\u200b\u200c\u2060\ufeff]/g;
 const PARAGRAPH_BREAK = /\n\s*\n/;
+const BLOCK_LINE = /\n[ \t]*(?:#{1,6}(?:[ \t]|$)|[-+*][ \t]|\d{1,9}[.)][ \t]|>|```|~~~)/;
+const BLOCKS = "h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr";
+// CommonMark cannot open or close emphasis between a word character and punctuation, so that punctuation moves outside the delimiters.
+const OPENING_PUNCTUATION =
+  /(?<=[^\s\p{P}\p{S}\uE000-\uE003])([\uE000\uE002]+)((?:(?![`<>\\*_[\]])[\p{P}\p{S}])+)(?=[^\s\p{P}\p{S}\uE000-\uE003])/gu;
+const CLOSING_PUNCTUATION =
+  /(?<=[^\s\p{P}\p{S}\uE000-\uE003])((?:(?![`<>\\*_()[\]])[\p{P}\p{S}])+)([\uE001\uE003]+)(?=[^\s\p{P}\p{S}\uE000-\uE003])/gu;
 
 const emphasis =
   ({ open, close }: typeof STRONG | typeof EM) =>
-  (content: string) => {
-    const [, lead, inner, trail] = EDGES.exec(content) ?? ["", "", content, ""];
-    if (inner.replace(LINK_SYNTAX, "") === "" || PARAGRAPH_BREAK.test(inner)) return content;
-    return `${lead}${open}${inner}${close}${trail}`;
+  (content: string, node: TurndownService.Node) => {
+    let start = 0;
+    while (start < content.length && INVISIBLE.test(content.charAt(start))) start++;
+    let end = content.length;
+    while (end > start && INVISIBLE.test(content.charAt(end - 1))) end--;
+    const inner = content.slice(start, end);
+    const plain =
+      inner === "" ||
+      (node.textContent ?? "").replace(INVISIBLES, "") === "" ||
+      PARAGRAPH_BREAK.test(inner) ||
+      BLOCK_LINE.test(inner) ||
+      node.querySelectorAll(BLOCKS).length > 0;
+    if (plain) return content;
+    return `${content.slice(0, start)}${open}${inner}${close}${content.slice(end)}`;
   };
 
 const turndown = (dropQuoted: boolean) => {
@@ -38,15 +56,20 @@ const turndown = (dropQuoted: boolean) => {
       replacement: () => "",
     });
   }
-  return (html: string) =>
-    [STRONG, EM].reduce(
-      (markdown, { open, close, delimiter }) =>
-        markdown
-          .replaceAll(close + open, "")
-          .replaceAll(open, delimiter)
-          .replaceAll(close, delimiter),
-      service.turndown(html.replace(SENTINELS, "")),
+  return (html: string) => {
+    const merged = MARKS.reduce(
+      (markdown, { open, close }) => markdown.replaceAll(close + open, ""),
+      service.turndown(html.replace(SENTINELS, "\uFFFD")),
     );
+    const flanked = merged
+      .replace(OPENING_PUNCTUATION, "$2$1")
+      .replace(CLOSING_PUNCTUATION, "$2$1");
+    return MARKS.reduce(
+      (markdown, { open, close, delimiter }) =>
+        markdown.replaceAll(open, delimiter).replaceAll(close, delimiter),
+      flanked,
+    );
+  };
 };
 
 export const htmlBody = turndown(false);

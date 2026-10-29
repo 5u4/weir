@@ -124,6 +124,36 @@ describe("html emphasis", () => {
     ["a bold paragraph", "<b><p>Title</p></b><p>body</p>", ["Title"], ["body"]],
     ["adjacent italics", "<p><i>re</i><i>ad</i> me</p>", ["read"], ["me"]],
     ["an italic line break", "<p><i><br>It</i> x</p>", ["It"], ["x"]],
+    [
+      "a bold image with parentheses in its URL",
+      '<p><b><img src="https://cdn.example/a(1).png" alt="Logo"></b>next</p>',
+      [],
+      ["next"],
+    ],
+    [
+      "bold wrapping italic and trailing text",
+      "<p><b><i>Ship it today</i>x!</b> next</p>",
+      ["Ship it todayx!", "Ship it today"],
+      ["next"],
+    ],
+    [
+      "bold italic right after a word",
+      "<p>Note<b><i>Read me (twice please)</i></b> after</p>",
+      ["Read me (twice please)"],
+      ["Note", "after"],
+    ],
+    [
+      "bold italic opening with punctuation after a word",
+      "<p>Go<b><i>-fast and far</i></b> end</p>",
+      ["fast and far"],
+      ["Go-", "end"],
+    ],
+    [
+      "bold italic opening with punctuation in a quote",
+      "<blockquote>Go<b><i>-fast and far</i></b> end</blockquote>",
+      ["fast and far"],
+      ["Go-", "end"],
+    ],
   ])("renders %s without stray delimiters", (_, html, emphasized, words) => {
     const item = itemOf(text("text/html", html));
     for (const markdown of [item.body, item.bodyNew ?? ""]) {
@@ -132,6 +162,51 @@ describe("html emphasis", () => {
       expect(view.emphasized).toEqual(emphasized);
       for (const word of words) expect(view.text).toContain(word);
     }
+  });
+
+  it.each([
+    ["a heading", "<b><h1>Title</h1></b>", "heading"],
+    ["a list", "<b><ul><li>One</li><li>Two</li></ul></b>", "list"],
+    ["a quote", "<b><blockquote>Quoted</blockquote></b>", "blockquote"],
+  ] as const)("keeps %s inside bold as a block", (_, html, type) => {
+    const item = itemOf(text("text/html", html));
+    for (const markdown of [item.body, item.bodyNew ?? ""]) {
+      expect(fromMarkdown(markdown).children.map((node) => node.type)).toEqual([type]);
+      expect(rendered(markdown).text).not.toMatch(/[*_]/);
+    }
+  });
+
+  it.each([
+    [
+      "numeric references",
+      "<p>&#xE000;one&#xE001; &#57346;two&#57347 &#X0e000;three&#xe001;</p>",
+      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD \uFFFDthree\uFFFD",
+    ],
+    [
+      "literal characters",
+      "<p>\uE000one\uE001 \uE002two\uE003</p>",
+      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD",
+    ],
+    [
+      "references rebuilt around a removed one",
+      "<p>&#&#xE000;xE000;one&#&#xE001;xE001;</p>",
+      "&#\uFFFDxE000;one&#\uFFFDxE001;",
+    ],
+    [
+      "an image alt",
+      '<p><img alt="&#xE002;Logo&#xE003;" src="https://cdn.example/a.png"> next</p>',
+      "![\uFFFDLogo\uFFFD](https://cdn.example/a.png) next",
+    ],
+    ["neighbouring code points", "<p>&#xE0001;&#xE004;&#57348;</p>", "\u{E0001}\uE004\uE004"],
+  ])("replaces emphasis sentinel code points in %s", (_, html, body) => {
+    expect(itemOf(text("text/html", html)).body).toBe(body);
+  });
+
+  it("converts bold around a long zero-width run in linear time", () => {
+    const html = `<p><b>a${"\u200c".repeat(100_000)}b</b> c</p>`;
+    const started = performance.now();
+    itemOf(text("text/html", html));
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });
 
