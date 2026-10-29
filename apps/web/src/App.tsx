@@ -69,7 +69,7 @@ export function App() {
                     open ? (
                       <StatusView status={value} health={health} />
                     ) : (
-                      <EmptyReader health={health} />
+                      <EmptyReader health={health} digest={value.digest} />
                     ),
                 })
               )}

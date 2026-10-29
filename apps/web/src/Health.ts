@@ -16,6 +16,7 @@ export type SourceHealth = {
   readonly plugin: string;
   readonly state: SourceState;
   readonly streams: number;
+  readonly items: number;
   readonly backfilling: boolean;
 };
 
@@ -58,6 +59,7 @@ export const health = (status: Status): Health => {
       plugin: source.plugin,
       state: sourceState(source),
       streams: source.streams.length,
+      items: source.streams.reduce((sum, { items }) => sum + items, 0),
       backfilling: source.streams.some(({ backfill }) => backfill === "running"),
     }),
   );

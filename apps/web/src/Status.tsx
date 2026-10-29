@@ -14,6 +14,7 @@ import {
   type Verdict,
 } from "./Health.ts";
 import { statusOpen } from "./Route.ts";
+import { digestRows, waitingLine } from "./StatusRows.ts";
 import { ThemePreference, themePreference } from "./Theme.ts";
 import { reload } from "./Weir.ts";
 
@@ -70,9 +71,10 @@ const verdictText = (verdict: Verdict, current: DateTime.Utc) => {
   }
 };
 
-export function EmptyReader({ health }: { health: Health }) {
+export function EmptyReader({ health, digest }: { health: Health; digest: Status["digest"] }) {
   const current = useAtomValue(now);
   const [, setOpen] = useAtom(statusOpen);
+  const waiting = waitingLine(digest, health.stopped);
   return (
     <div className={`calm es${health.alert ? " warn" : ""}`}>
       {health.stopped && (
@@ -95,6 +97,13 @@ export function EmptyReader({ health }: { health: Health }) {
             </li>
           );
         })}
+        {waiting !== null && (
+          <li className={`es-row${health.stopped ? " held" : ""}`}>
+            <span className="sv-led es-led" aria-hidden="true" />
+            <b>Digests</b>
+            <span className="es-st">{waiting}</span>
+          </li>
+        )}
       </ul>
       {health.alert && (
         <button type="button" className="es-open" onClick={() => setOpen(true)}>
@@ -113,6 +122,7 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
       ? `Last good sync ${ago(state.lastGood, current)}`
       : null,
     plural(source.streams, "stream"),
+    plural(source.items, "item"),
     source.backfilling ? "backfill running" : null,
   ].filter((part) => part !== null);
   return (
@@ -332,6 +342,36 @@ export function StatusView({ status: value, health }: { status: Status; health: 
               )}
             </dd>
           </div>
+          {digestRows(value.digest).map((row) => (
+            <div key={row.label} className="sv-row">
+              <dt>{row.label}</dt>
+              <dd>
+                {row.label === "Queue" ? (
+                  row.jobs.length === 0 ? (
+                    "Empty"
+                  ) : (
+                    <ul className="sv-tags">
+                      {row.jobs.map((job) => (
+                        <li key={job.key}>
+                          <b>{job.title}</b>
+                          <span className="sv-dim">{job.state}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : row.label === "Last run" ? (
+                  <>
+                    <time dateTime={DateTime.formatIso(row.at)}>{dayAndTime(row.at)}</time>
+                    <span className="sv-dim">{row.detail}</span>
+                  </>
+                ) : row.label === "Threshold" ? (
+                  row.text
+                ) : (
+                  <code>{row.profile}</code>
+                )}
+              </dd>
+            </div>
+          ))}
         </dl>
       </section>
       <ConfigSection config={value.config} />
