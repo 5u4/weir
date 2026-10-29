@@ -33,6 +33,7 @@
       },
       "devDependencies": {
         "@effect/vitest": "catalog:",
+        "@weir/fixtures": "workspace:*",
       },
     },
     "apps/daemon": {
