@@ -2,11 +2,10 @@
 
 ## Stage
 
-Pre-dogfood: no daemon has run against a real `~/.weir/weir.db` yet. Until one does, change the
-schema by editing the first migration (`0001`) in place. After that the schema is frozen: anything
-persisted changes only through a new migration that converts existing data, and a migration is
-never edited once it has run against a real database. APIs and in-memory types change in place:
-migrate every caller and delete the old path in the same change, with no compatibility shims.
+Single user: the operator is the only one running weir, so no database needs to survive a schema
+change. Change the schema by editing the first migration (`0001`) in place; the operator deletes
+`~/.weir` when a change needs it. APIs and in-memory types change in place too: migrate every caller
+and delete the old path in the same change, with no compatibility shims.
 
 ## Layout
 
@@ -47,5 +46,6 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 - State the problem in a sentence or two, then how it was fixed.
 - Rebase onto the latest main before opening.
 - UI changes need before/after images; motion or timing needs a short video.
-- UI images and videos come only from `bun run demo` (synthetic data), never from a real mailbox.
+- UI images and videos come only from `bun run demo --serve` (synthetic data), never from a real
+  mailbox.
 - Use squash merge and delete the source branch.
