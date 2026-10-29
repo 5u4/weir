@@ -64,11 +64,19 @@ const fadeStrip = (strip: HTMLElement) => {
   resized.observe(strip);
   observeChips();
   mutated.observe(strip, { childList: true });
+  const turn = (event: WheelEvent) => {
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    strip.scrollLeft += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+  };
   strip.addEventListener("scroll", fade, { passive: true });
+  strip.addEventListener("wheel", turn, { passive: false });
   return () => {
     resized.disconnect();
     mutated.disconnect();
     strip.removeEventListener("scroll", fade);
+    strip.removeEventListener("wheel", turn);
   };
 };
 
