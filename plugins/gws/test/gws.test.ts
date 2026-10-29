@@ -76,6 +76,7 @@ const threadGets = (dir: string, since = 0) =>
     .filter(({ command }) => command === "threads get")
     .map(({ params }) => params.id);
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -114,15 +115,14 @@ const passKinds = (pages: SyncPage[]) =>
           ? ["backfill", "running"]
           : ["live", "running"],
   );
+const gmailTime = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, "+00:00");
 const freshThread = (id: string, agoMs = 0): Thread => ({
   id,
   subject: `Fresh ${id}`,
   labels: ["INBOX"],
   messages: [
     {
-      at: new Date(Effect.runSync(Clock.currentTimeMillis) - agoMs)
-        .toISOString()
-        .replace(/\.\d+Z$/, "+00:00"),
+      at: gmailTime(Effect.runSync(Clock.currentTimeMillis) - agoMs),
       from: "priya",
       to: ["me"],
       text: `Fresh note ${id}`,
@@ -530,6 +530,40 @@ describe("gws plugin against fake-gws", () => {
       [undefined, undefined],
       [undefined, pageToken],
     ]);
+  });
+
+  it("emits a held reply as the first live page of the next pass, before a history 404 relists its thread", async () => {
+    const dir = seeded();
+    const source = sourceFor(dir, ["INBOX"]);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = Effect.runSync(Clock.currentTimeMillis);
+    const [, reply] = deliverThreads(dir, [
+      {
+        id: "held-reply",
+        subject: "Held reply",
+        labels: ["INBOX"],
+        messages: [
+          { at: gmailTime(startedAt - 2 * 3_600_000), from: "priya", to: ["me"], text: "Done?" },
+          { at: gmailTime(startedAt - 4 * 60_000), from: "me", to: ["priya"], text: "Yes" },
+        ],
+      },
+    ]);
+    const interrupted = await syncPage(source, null);
+    expect(interrupted).toMatchObject({ kind: "backfill", more: true });
+    expect(interrupted.upserts.map((i) => i.externalId)).not.toContain(reply);
+    vi.setSystemTime(startedAt + 10 * 60_000);
+    expireHistory(dir);
+    const since = readCalls(dir).length;
+
+    const resumed = await syncAll(source, interrupted.cursor);
+    expect(resumed.pages[0]).toMatchObject({ kind: "live", backfill: "running" });
+    expect(resumed.pages[0]?.upserts.map((i) => i.externalId)).toContain(reply);
+    const calls = readCalls(dir).slice(since);
+    expect(calls.findIndex((c) => c.command === "threads get")).toBeLessThan(
+      calls.findIndex((c) => c.command === "threads list"),
+    );
+    expect(calls.some((c) => String(c.params.q).startsWith("after:"))).toBe(true);
+    expect(JSON.parse(resumed.cursor ?? "")).toMatchObject({ phase: "incremental" });
   });
 
   it("stores raw without body data or transport headers", async () => {
