@@ -1,5 +1,12 @@
 import { senderLabel } from "@weir/daemon/Match";
-import { type Detail, type Digest, type ReaderUi, type TopicKey, topicKey } from "./Blocks.ts";
+import {
+  type Detail,
+  type Digest,
+  type ReaderUi,
+  type TopicKey,
+  topicKey,
+  uncitedKey,
+} from "./Blocks.ts";
 
 export type Hit =
   | { readonly _tag: "Item"; readonly seq: number; readonly field: "body" | "from" }
@@ -76,11 +83,14 @@ const holding = (detail: Detail, hit: Hit): Digest | undefined => {
 export const reveal = (ui: ReaderUi, detail: Detail, hit: Hit): ReaderUi => {
   const digest = holding(detail, hit);
   if (digest === undefined) return ui;
-  const topic =
-    hit._tag === "Item" ? digest.topics.findIndex(({ seqs }) => seqs.includes(hit.seq)) : -1;
+  const shapes = new Map(ui.shapes).set(digest.id, "card");
+  if (hit._tag !== "Item") return { ...ui, shapes };
+  const topic = digest.topics.findIndex(({ seqs }) => seqs.includes(hit.seq));
   return {
     ...ui,
-    shapes: new Map(ui.shapes).set(digest.id, "card"),
-    originals: topic === -1 ? ui.originals : new Set(ui.originals).add(topicKey(digest, topic)),
+    shapes,
+    originals: new Set(ui.originals).add(
+      topic === -1 ? uncitedKey(digest) : topicKey(digest, topic),
+    ),
   };
 };

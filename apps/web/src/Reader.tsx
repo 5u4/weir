@@ -9,13 +9,16 @@ import {
   type Bubbles,
   type Detail,
   type Digest,
+  type Fold,
   type ItemSummary,
   participants,
+  type ReaderUi,
   reader,
   revealing,
   span,
   type TopicKey,
   type TopicView,
+  type UncitedKey,
 } from "./Blocks.ts";
 import {
   type Action,
@@ -357,6 +360,62 @@ function Pin({ id, unfold, view }: { id: ConversationId; unfold: () => void; vie
   );
 }
 
+type AnyFold = Fold<TopicKey | UncitedKey>;
+
+const flipped =
+  ({ key, open }: AnyFold) =>
+  (ui: ReaderUi): ReaderUi => {
+    const originals = new Set(ui.originals);
+    if (open) originals.delete(key);
+    else originals.add(key);
+    return { ...ui, originals };
+  };
+
+function Originals({
+  fold,
+  noun,
+  toggle,
+  mark,
+  found,
+}: {
+  fold: AnyFold;
+  noun: string;
+  toggle: () => void;
+  mark: Mark;
+  found: Found;
+}) {
+  const who = [...new Map(fold.items.map((item) => [item.from_me || item.from.address, item]))];
+  return (
+    <>
+      <button
+        type="button"
+        className={`tp-o${fold.open ? " on" : ""}`}
+        aria-expanded={fold.open}
+        onClick={toggle}
+      >
+        <span className="tp-av" aria-hidden="true">
+          {who.slice(0, 3).map(([key, item]) => (
+            <Avatar
+              key={String(key)}
+              address={item.from.address}
+              mark={item.from_me ? "Me" : monogram(item.from)}
+            />
+          ))}
+        </span>
+        {plural(fold.items.length, noun)}
+        <Chevron />
+      </button>
+      {fold.open && (
+        <div className="unf">
+          {fold.groups.map((group) => (
+            <Group key={group.items[0]?.seq} group={group} mark={mark} found={found} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Topic({
   id,
   view,
@@ -371,14 +430,7 @@ function Topic({
   found: Found;
 }) {
   const [, setUi] = useAtom(readerUi(id));
-  const toggle = () =>
-    setUi((ui) => {
-      const originals = new Set(ui.originals);
-      if (view.open) originals.delete(view.key);
-      else originals.add(view.key);
-      return { ...ui, originals };
-    });
-  const who = [...new Map(view.items.map((item) => [item.from_me || item.from.address, item]))];
+  const toggle = () => setUi(flipped(view));
   return (
     <section
       className={`tp${view.open ? " open" : ""}${solo ? " solo" : ""}`}
@@ -403,31 +455,7 @@ function Topic({
       <p className="tp-b">
         <Highlighted text={view.topic.body} pattern={found.pattern} />
       </p>
-      <button
-        type="button"
-        className={`tp-o${view.open ? " on" : ""}`}
-        aria-expanded={view.open}
-        onClick={toggle}
-      >
-        <span className="tp-av" aria-hidden="true">
-          {who.slice(0, 3).map(([key, item]) => (
-            <Avatar
-              key={String(key)}
-              address={item.from.address}
-              mark={item.from_me ? "Me" : monogram(item.from)}
-            />
-          ))}
-        </span>
-        {plural(view.items.length, "original")}
-        <Chevron />
-      </button>
-      {view.open && (
-        <div className="unf">
-          {view.groups.map((group) => (
-            <Group key={group.items[0]?.seq} group={group} mark={mark} found={found} />
-          ))}
-        </div>
-      )}
+      <Originals fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
     </section>
   );
 }
@@ -454,7 +482,7 @@ function DigestCard({
   controls: Controls | null;
 }) {
   const [, setUi] = useAtom(readerUi(id));
-  const { digest, items, topics } = block;
+  const { digest, items, topics, uncited } = block;
   const solo = topics.length === 1;
   const only = topics[0];
   const pinned = solo && only?.open === true;
@@ -525,6 +553,17 @@ function DigestCard({
         {topics.map((view) => (
           <Topic key={view.key} id={id} view={view} solo={solo} mark={mark} found={found} />
         ))}
+        {uncited !== null && (
+          <section className={`tp uncited${solo ? " solo" : ""}`}>
+            <Originals
+              fold={uncited}
+              noun="other original"
+              toggle={() => setUi(flipped(uncited))}
+              mark={mark}
+              found={found}
+            />
+          </section>
+        )}
       </div>
       <End seq={digest.to_seq} watch={watch} />
     </section>
@@ -893,7 +932,9 @@ export function Reader({ id }: { id: ConversationId }) {
     const next = new Map<TopicKey, number>();
     for (const head of event.currentTarget.querySelectorAll<HTMLElement>(".pin")) {
       const bottom = head.getBoundingClientRect().bottom;
-      const originals = [...(head.closest(".tp, .dc")?.querySelectorAll(".unf .bl") ?? [])];
+      const originals = [
+        ...(head.closest(".tp, .dc")?.querySelectorAll(".tp:not(.uncited) > .unf .bl") ?? []),
+      ];
       const at = originals.findIndex((bl) => bl.getBoundingClientRect().bottom > bottom + 8);
       next.set(head.dataset.key as TopicKey, at < 0 ? originals.length : at + 1);
     }

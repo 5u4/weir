@@ -100,6 +100,19 @@ const ledger = detail([
   item(26, ben, "Unrelated follow-up."),
 ]);
 
+const runbook = detail(
+  [
+    item(1, rachel, "Cutover runbook is in the shared drive."),
+    item(2, ben, "Thanks, reading it tonight."),
+    item(3, lisa, "Snapshot restore took 40 minutes on staging."),
+  ],
+  [
+    digest(4, 1, 3, "Cutover runbook shared", [
+      { title: "Runbook", body: "Rachel shared the cutover runbook; Ben reads it.", seqs: [1, 2] },
+    ]),
+  ],
+);
+
 const venue = detail(
   [item(29, daniel, "Booked the place by the river for Dec 7.")],
   [
@@ -235,6 +248,8 @@ describe("landing on a hit", () => {
     ["60", momsBirthday],
     ["dan.ellis", momsBirthday],
     ["idempotency backfill", ledger],
+    ["snapshot", runbook],
+    ["runbook", runbook],
     ["venue", venue],
   ] as const)("%s: every counted hit shows a marked target once revealed", (query, of) => {
     const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
