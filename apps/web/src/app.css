@@ -797,6 +797,10 @@ button {
     right: var(--edge);
     max-width: calc(100vw - 2 * var(--edge) - 2 * var(--inset));
   }
+  .reading + .cap.compact {
+    right: calc(var(--edge) + var(--pill) + var(--inset));
+    max-width: calc(100vw - 2 * var(--edge) - 3 * var(--inset) - var(--pill));
+  }
   .cap-div {
     margin: 0 6px 0 8px;
   }
