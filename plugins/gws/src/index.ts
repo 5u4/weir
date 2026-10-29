@@ -90,6 +90,7 @@ const listingStart = (labels: LabelIds): Listing => ({
 });
 
 const GAP_SLACK_SECONDS = 3600;
+const HOLD_BACK_MS = 5 * 60_000;
 
 const LIST_SIZE = 100;
 const PAGE_MESSAGES = 100;
@@ -246,11 +247,19 @@ export const createSource = (
           return emit(live.changes, { ...position, live: live.live, turn: "backfill" }, "live");
         }
         const { changes, next } = await listingPage(pass, labels, backfill, position);
+        const recent = position.live.watermark - HOLD_BACK_MS;
+        const pending = new Set(position.live.pending);
+        const upserts = changes.upserts.filter((item) => {
+          if (item.threadId === null || Date.parse(item.occurredAt) < recent) return true;
+          pending.add(item.threadId);
+          return false;
+        });
+        const live = { ...position.live, pending: [...pending] };
         return emit(
-          changes,
+          { upserts, deletions: changes.deletions },
           next === null
-            ? { phase: "incremental", labels, live: position.live }
-            : { ...position, ...next, turn: "live" },
+            ? { phase: "incremental", labels, live }
+            : { ...position, ...next, live, turn: "live" },
           "backfill",
         );
       }

@@ -117,6 +117,66 @@ describe("gws background backfill", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("mail delivered between the cold-start snapshot and the listing lands unread", () =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const seeded = 5;
+      const { home, port, mailbox } = gmailHome(seeded, now);
+      setDelay(mailbox, { getProfile: 400 });
+      const { stream, states } = yield* connect(home, port);
+
+      yield* eventually(
+        Effect.sync(() => readCalls(mailbox)),
+        (calls) => calls.filter(({ command }) => command === "getProfile").length >= 2,
+        400,
+      );
+      expect(readCalls(mailbox).some(({ command }) => command === "threads list")).toBe(false);
+      deliverThreads(mailbox, [note("snapshot", now)]);
+
+      const done = yield* eventually(stream, (s) => s?.backfill === "done", 800);
+      expect(done).toMatchObject({ last_error: null, items: seeded + 1 });
+      const final = yield* states;
+      expect(final["Note snapshot"]).toBe("unread");
+      expect(seedTitles(seeded).filter((title) => final[title] !== "read")).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a reply delivered between listing and fetching its thread lands unread", () =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const seeded = 5;
+      const { home, port, mailbox } = gmailHome(seeded, now);
+      const question = { at: gmailTime(now - 90 * 60_000), from: "priya", to: ["me"], text: "Q" };
+      const late = { id: "late", subject: "Note late", labels: ["INBOX"] };
+      deliverThreads(mailbox, [{ ...late, messages: [question] }]);
+      setDelay(mailbox, { "threads list": 500 });
+      const { stream, states } = yield* connect(home, port);
+
+      yield* eventually(
+        Effect.sync(() => readCalls(mailbox)),
+        (calls) => calls.some(({ command }) => command === "threads list"),
+        400,
+      );
+      expect(readCalls(mailbox).some(({ command }) => command === "threads get")).toBe(false);
+      const [reply] = deliverThreads(mailbox, [
+        {
+          ...late,
+          messages: [
+            question,
+            { at: gmailTime(now), from: "priya", to: ["me"], text: "Any news?" },
+          ],
+        },
+      ]);
+      expect(reply).toBeDefined();
+
+      const done = yield* eventually(stream, (s) => s?.backfill === "done", 800);
+      expect(done).toMatchObject({ last_error: null, items: seeded + 2 });
+      const final = yield* states;
+      expect(final["Note late"]).toBe("unread");
+      expect(seedTitles(seeded).filter((title) => final[title] !== "read")).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live(
     "a history 404 lists recent mail as live pages and re-backfills without losing read state",
     () =>
