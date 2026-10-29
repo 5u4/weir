@@ -141,6 +141,10 @@
     "ledgerletter": {
       "name": "The Pragmatic Ledger",
       "addr": "newsletter@pragmaticledger.example"
+    },
+    "trailhead": {
+      "name": "Trailhead Weekly",
+      "addr": "issues@trailhead-weekly.example"
     }
   },
   "chats": [
@@ -2763,6 +2767,25 @@
           "from": "me",
           "to": ["me"],
           "text": "Outline for the Acme summary (draft to Priya by Thu EOD):\n\n1. What happened: 37 duplicate invoices for October, Oct 14 to Oct 22\n2. Root cause: idempotency check ran after the insert committed, retries in 4.11.2 made the race likely\n3. Fix: unique (tenant_id, idempotency_key), dedupe of 212 pairs, hotfix 4.11.3 on Oct 22 07:30\n4. Customer impact: duplicates voided Oct 21 with notifications suppressed\n5. What we changed so it doesn't recur\n\nAsk Jenna whether Acme wants the invoice numbers in the doc."
+        }
+      ]
+    },
+    {
+      "id": "newsletter-trailhead",
+      "subject": "Trailhead Weekly #48: offline sync, three months in",
+      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "headers": {
+        "List-Unsubscribe": "<https://trailhead-weekly.example/unsubscribe/robin>",
+        "List-ID": "Trailhead Weekly <issues.trailhead-weekly.example>",
+        "Precedence": "list"
+      },
+      "messages": [
+        {
+          "at": "2026-10-24T07:30:00-07:00",
+          "from": "trailhead",
+          "to": ["me"],
+          "text": "[![](https://cdn.trailhead-weekly.example/i/48/banner.png)](https://trailhead-weekly.example/issues/48)\n\n# Offline sync, three months in\n\n![Chart: merge conflicts per thousand edits, falling from 41 to 6](https://cdn.trailhead-weekly.example/i/48/conflicts.png)\n\nThree teams wrote in about the same failure: two phones edit the same note offline and the last writer silently wins. This issue walks through [a primer on Lamport clocks](https://trailhead-weekly.example/r/48/lamport-primer) and what finally worked for us.\n\n## In this issue\n\n-   Vector clocks without the pain, with `mergeClocks()` in 30 lines\n-   Why tombstones need an expiry\n-   Reader mailbag: merging rich text\n\nA note on formatting: our template still prints <b>raw tags</b> in a few places. A fix ships next week.\n\nFull write-up with code samples: https://trailhead-weekly.example/issues/48/offline-sync-three-months-in?utm_source=newsletter&utm_medium=email&utm_campaign=issue48\n\n[![Sponsored by Quiltwork, the shared notebook for field teams](https://cdn.trailhead-weekly.example/i/48/sponsor.png)](https://trailhead-weekly.example/sponsor/48)\n\n[Unsubscribe](https://trailhead-weekly.example/unsubscribe/robin) · [Email preferences](https://trailhead-weekly.example/preferences/robin)\n\n![](https://cdn.trailhead-weekly.example/o/48/robin.gif)",
+          "html": "<div style=\"max-width:600px;margin:0 auto\"><a href=\"https://trailhead-weekly.example/issues/48\"><img src=\"https://cdn.trailhead-weekly.example/i/48/banner.png\" alt=\"\" width=\"600\" height=\"180\"></a><h1>Offline sync, three months in</h1><p><img src=\"https://cdn.trailhead-weekly.example/i/48/conflicts.png\" alt=\"Chart: merge conflicts per thousand edits, falling from 41 to 6\" width=\"560\"></p><p>Three teams wrote in about the same failure: two phones edit the same note offline and the last writer silently wins. This issue walks through <a href=\"https://trailhead-weekly.example/r/48/lamport-primer\">a primer on Lamport clocks</a> and what finally worked for us.</p><h2>In this issue</h2><ul><li>Vector clocks without the pain, with <code>mergeClocks()</code> in 30 lines</li><li>Why tombstones need an expiry</li><li>Reader mailbag: merging rich text</li></ul><p>A note on formatting: our template still prints &lt;b&gt;raw tags&lt;/b&gt; in a few places. A fix ships next week.</p><p>Full write-up with code samples: https://trailhead-weekly.example/issues/48/offline-sync-three-months-in?utm_source=newsletter&amp;utm_medium=email&amp;utm_campaign=issue48</p><p><a href=\"https://trailhead-weekly.example/sponsor/48\"><img src=\"https://cdn.trailhead-weekly.example/i/48/sponsor.png\" alt=\"Sponsored by Quiltwork, the shared notebook for field teams\"></a></p><p><a href=\"https://trailhead-weekly.example/unsubscribe/robin\">Unsubscribe</a> · <a href=\"https://trailhead-weekly.example/preferences/robin\">Email preferences</a></p><img src=\"https://cdn.trailhead-weekly.example/o/48/robin.gif\" alt=\"\" width=\"1\" height=\"1\"></div>"
         }
       ]
     }
