@@ -4,7 +4,7 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, vi } from "vitest";
 import { closedUi } from "./Blocks.ts";
 import { hitKey } from "./Hits.ts";
-import { hitAt, jumpTo, landing, readerUi, searchHits } from "./Reading.ts";
+import { hitAt, jumpTo, landing, readerUi, searchHits, stepHit } from "./Reading.ts";
 import { ConversationId } from "./Route.ts";
 import { conversation } from "./Weir.ts";
 
@@ -106,6 +106,28 @@ const selected = (registry: AtomRegistry.AtomRegistry) => {
   const hit = hits[at];
   return `${at + 1} / ${hits.length} ${hit === undefined ? "none" : hitKey(hit)}`;
 };
+
+it("Next and Previous step one hit at a time and stop at the ends", async () => {
+  const registry = await opened([
+    [1, "UAT starts Monday."],
+    [2, "UAT data loaded."],
+    [3, "UAT passed."],
+  ]);
+  const visited = [selected(registry)];
+  for (const by of [-1, 1, 1, 1, -1] as const) {
+    registry.set(stepHit, { id, by });
+    visited.push(selected(registry));
+  }
+  expect(visited).toEqual([
+    "1 / 3 i:1",
+    "1 / 3 i:1",
+    "2 / 3 i:2",
+    "3 / 3 i:3",
+    "3 / 3 i:3",
+    "2 / 3 i:2",
+  ]);
+  registry.dispose();
+});
 
 it("keeps the selected hit when hits before it disappear", async () => {
   const registry = await opened([

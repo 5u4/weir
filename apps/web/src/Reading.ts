@@ -282,6 +282,12 @@ export const jumpTo = Atom.writable(
   },
 );
 
+export const stepHit = Atom.writable(
+  () => undefined,
+  (ctx, { id, by }: { readonly id: ConversationId; readonly by: 1 | -1 }) =>
+    ctx.set(jumpTo, { id, at: ctx.get(hitAt(id)) + by, smooth: true }),
+);
+
 export const landing = Atom.family((id: ConversationId) =>
   Atom.make((get) => {
     let landed = false;

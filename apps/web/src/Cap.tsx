@@ -15,7 +15,7 @@ import {
   widgetDescription,
 } from "./Notch.ts";
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
-import { hitAt, jumpTo, searchHits } from "./Reading.ts";
+import { hitAt, searchHits, stepHit } from "./Reading.ts";
 import { groups, type ResultGroup } from "./Results.ts";
 import {
   type ConversationId,
@@ -200,12 +200,25 @@ const keepFocus = (event: MouseEvent) => {
   if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
 };
 
-function QueryField() {
+type EnterKey = Pick<
+  KeyboardEvent,
+  "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey" | "isComposing" | "keyCode"
+>;
+
+export const hitStep = (event: EnterKey): 1 | -1 | null => {
+  if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) return null;
+  // Safari sends the Enter that commits an IME composition with isComposing false but keyCode 229.
+  if (event.isComposing || event.keyCode === 229) return null;
+  return event.shiftKey ? -1 : 1;
+};
+
+function QueryField({ stepping }: { stepping: ConversationId | null }) {
   const [current, navigate] = useAtom(route);
   const tags = useAtomValue(tagOrder);
   const opened = useAtomValue(searchOpen);
   const setGroup = useAtomSet(searchGroup);
   const [tops, setTops] = useAtom(listTops);
+  const step = useAtomSet(stepHit);
   const field = fieldOf(current.query, tags);
   const write = (next: Field) => {
     const query = queryOf(next);
@@ -251,6 +264,12 @@ function QueryField() {
           if (next.chips !== field.chips) write(next);
         }}
         onKeyDown={(event) => {
+          const by = hitStep(event.nativeEvent);
+          if (stepping !== null && by !== null) {
+            event.preventDefault();
+            step({ id: stepping, by });
+            return;
+          }
           if (event.key !== "Backspace" || field.rest !== "" || field.chips.length === 0) return;
           event.preventDefault();
           write({ ...field, chips: field.chips.slice(0, -1) });
@@ -343,7 +362,7 @@ function SearchSentence() {
 function HitStepper({ id }: { id: ConversationId }) {
   const hits = useAtomValue(searchHits(id));
   const at = useAtomValue(hitAt(id));
-  const jump = useAtomSet(jumpTo);
+  const step = useAtomSet(stepHit);
   if (Option.isNone(hits)) return null;
   const total = hits.value.length;
   if (total === 0) {
@@ -368,7 +387,7 @@ function HitStepper({ id }: { id: ConversationId }) {
           aria-label={direction === -1 ? "Previous match" : "Next match"}
           title={direction === -1 ? "Previous match" : "Next match"}
           disabled={direction === -1 ? at === 0 : at === total - 1}
-          onClick={() => jump({ id, at: at + direction, smooth: true })}
+          onClick={() => step({ id, by: direction })}
         >
           <Chevron direction={direction} />
         </button>
@@ -404,7 +423,9 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
           onMouseDown={keepFocus}
         >
           {form !== "compact" && <SearchIcon />}
-          <QueryField />
+          <QueryField
+            stepping={form === "result" ? Option.getOrNull(current.conversation) : null}
+          />
           {form === "result" && Option.isSome(current.conversation) && (
             <HitStepper id={current.conversation.value} />
           )}
