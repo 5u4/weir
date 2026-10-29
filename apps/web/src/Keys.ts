@@ -4,7 +4,7 @@ import { shortcut } from "./Dock.ts";
 import { dock } from "./Reading.ts";
 import { ConversationId, route, statusOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
-import { dismiss, listedRows, searchOpen } from "./Weir.ts";
+import { dismiss, leaveSearch, listedRows, searchOpen } from "./Weir.ts";
 
 export const keys = Atom.make((get) => {
   const onKey = (event: KeyboardEvent) => {
@@ -31,7 +31,8 @@ export const keys = Atom.make((get) => {
         get.registry.set(statusOpen, false);
         return;
       case "Close":
-        if (Option.isSome(open)) {
+        if (current.query !== "") get.registry.set(leaveSearch, undefined);
+        else if (Option.isSome(open)) {
           get.registry.set(route, { _tag: "Go", to: { ...current, conversation: Option.none() } });
         }
         return;

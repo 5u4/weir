@@ -2,10 +2,11 @@ import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { type CSSProperties, Fragment } from "react";
+import type { CSSProperties } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
+import { Marked } from "./Marked.tsx";
 import { queryText } from "./Query.ts";
 import { cleared, fieldLabels, type Result } from "./Results.ts";
 import { ConversationId, route, viewLabel } from "./Route.ts";
@@ -19,20 +20,6 @@ import {
   searchRows,
   tagOrder,
 } from "./Weir.ts";
-
-type Segments = Result["hits"][number]["text"];
-
-function Marked({ segments }: { segments: Segments }) {
-  return segments.map(({ text, mark }, at) =>
-    mark ? (
-      // biome-ignore lint/suspicious/noArrayIndexKey: segments are a fixed split of one string
-      <mark key={at}>{text}</mark>
-    ) : (
-      // biome-ignore lint/suspicious/noArrayIndexKey: segments are a fixed split of one string
-      <Fragment key={at}>{text}</Fragment>
-    ),
-  );
-}
 
 function Hit({ hit }: { hit: Result["hits"][number] }) {
   return (

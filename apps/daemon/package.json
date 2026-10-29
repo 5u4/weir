@@ -9,7 +9,8 @@
     "./Daemon": "./src/Daemon.ts",
     "./Home": "./src/Home.ts",
     "./Http": "./src/Http.ts",
-    "./Loopback": "./src/Loopback.ts"
+    "./Loopback": "./src/Loopback.ts",
+    "./Match": "./src/Match.ts"
   },
   "bin": {
     "weir-daemon": "./src/main.ts"

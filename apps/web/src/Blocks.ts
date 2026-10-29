@@ -10,12 +10,15 @@ export type EarlierGap = NonNullable<Detail["digest"]["earlier"]>[number];
 export type TopicKey = `${number}:${number}`;
 export const topicKey = (digest: Digest, index: number): TopicKey => `${digest.id}:${index}`;
 
+export type UncitedKey = `${number}:uncited`;
+export const uncitedKey = (digest: Digest): UncitedKey => `${digest.id}:uncited`;
+
 export type Shape = "card" | "row";
 
 export type ReaderUi = {
   readonly shapes: ReadonlyMap<number, Shape>;
   readonly earlier: boolean;
-  readonly originals: ReadonlySet<TopicKey>;
+  readonly originals: ReadonlySet<TopicKey | UncitedKey>;
 };
 
 export const closedUi: ReaderUi = { shapes: new Map(), earlier: false, originals: new Set() };
@@ -34,13 +37,14 @@ export type Bubbles = {
   readonly heres: ReadonlyArray<Here> | null;
 };
 
-export type TopicView = {
-  readonly key: TopicKey;
-  readonly topic: Topic;
+export type Fold<Key> = {
+  readonly key: Key;
   readonly open: boolean;
   readonly items: ReadonlyArray<ItemSummary>;
   readonly groups: ReadonlyArray<Bubbles>;
 };
+
+export type TopicView = Fold<TopicKey> & { readonly topic: Topic };
 
 export type MarkerKind = "last-read" | "all-new";
 
@@ -61,6 +65,7 @@ export type Block =
       readonly digest: Digest;
       readonly items: ReadonlyArray<ItemSummary>;
       readonly topics: ReadonlyArray<TopicView>;
+      readonly uncited: Fold<UncitedKey> | null;
     }
   | {
       readonly _tag: "GapBar";
@@ -244,22 +249,32 @@ export const reader = (
           break;
         }
         const bySeq = new Map(items.map((item) => [item.seq, item]));
+        const fold = <Key extends TopicKey | UncitedKey>(
+          key: Key,
+          covered: ReadonlyArray<ItemSummary>,
+        ): Fold<Key> => {
+          const open = ui.originals.has(key);
+          return {
+            key,
+            open,
+            items: covered,
+            groups: open ? group(covered, () => false, null) : [],
+          };
+        };
+        const cited = new Set(digest.topics.flatMap(({ seqs }) => seqs));
+        const uncited = items.filter(({ seq }) => !cited.has(seq));
         blocks.push({
           _tag: "DigestCard",
           digest,
           items,
-          topics: digest.topics.map((topic, index) => {
-            const key = topicKey(digest, index);
-            const covered = topic.seqs.flatMap((seq) => bySeq.get(seq) ?? []);
-            const open = ui.originals.has(key);
-            return {
-              key,
-              topic,
-              open,
-              items: covered,
-              groups: open ? group(covered, () => false, null) : [],
-            };
-          }),
+          topics: digest.topics.map((topic, index) => ({
+            ...fold(
+              topicKey(digest, index),
+              topic.seqs.flatMap((seq) => bySeq.get(seq) ?? []),
+            ),
+            topic,
+          })),
+          uncited: uncited.length === 0 ? null : fold(uncitedKey(digest), uncited),
         });
         break;
       }

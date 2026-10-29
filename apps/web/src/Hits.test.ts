@@ -1,0 +1,290 @@
+import { termPattern } from "@weir/daemon/Match";
+import { createElement, Fragment } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import {
+  closedUi,
+  type Detail,
+  type Digest,
+  type ItemSummary,
+  lastSeq,
+  reader,
+  topicKey,
+} from "./Blocks.ts";
+import { type Hit, hitKey, hits, reveal } from "./Hits.ts";
+import { BlockView } from "./Reader.tsx";
+import { ConversationId } from "./Route.ts";
+
+vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
+
+const rachel = { name: "Rachel Gomez", address: "rachel.gomez@northwind.example" };
+const ben = { name: "Ben Foster", address: "ben.foster@example.com" };
+const lisa = { name: "Lisa Chen", address: "lisa.chen@northwind.example" };
+const daniel = { name: "", address: "dan.ellis@mail.example" };
+
+const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSummary => ({
+  seq,
+  occurred_at: `2026-10-20T09:${String(seq).padStart(2, "0")}:00.000Z`,
+  from,
+  from_me: false,
+  title: null,
+  body_new,
+});
+
+const digest = (
+  id: number,
+  from_seq: number,
+  to_seq: number,
+  headline: string,
+  topics: ReadonlyArray<{ title: string; body: string; seqs: ReadonlyArray<number> }>,
+): Digest => ({
+  id,
+  conversation_id: 1,
+  from_seq,
+  to_seq,
+  headline,
+  topics: topics.map((topic) => ({ ...topic, state: "open" })),
+  trigger: "auto",
+  ai_profile: "fake-ai",
+  created_at: "2026-10-25T16:00:00.000Z",
+});
+
+const detail = (
+  items: ReadonlyArray<ItemSummary>,
+  digests: ReadonlyArray<Digest> = [],
+): Detail => ({
+  id: 1,
+  source: "gmail",
+  title: "Northwind migration: cutover plan and UAT sign-off",
+  first_at: items[0]?.occurred_at ?? "",
+  last_at: items.at(-1)?.occurred_at ?? "",
+  tags: [],
+  open: null,
+  state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "unread" },
+  items,
+  digests,
+  digest: { backlog: null, earlier: null, now: null, last_failure: null },
+});
+
+const northwind = detail(
+  [
+    item(1, rachel, "Change order CO-0147 attached. Lisa signed it this morning."),
+    item(2, ben, "Approved, $1,800 from the migration budget line."),
+    item(4, rachel, "I ran the test migration on your Oct 10 snapshot."),
+    item(10, ben, "Robin here, nothing to add."),
+    item(18, rachel, "Re-ran the migration on the Oct 20 snapshot."),
+    item(21, ben, "Lisa wants the dedupe rule decided by Oct 23."),
+    item(25, lisa, "Signed."),
+    item(30, ben, "Go-live is Monday."),
+  ],
+  [
+    digest(7, 10, 25, "CO-0147 signed; 37 duplicate records need a decision", [
+      {
+        title: "UAT and cutover",
+        body: "Lisa signed CO-0147. UAT sign-off still Oct 24.",
+        seqs: [10, 18, 25],
+      },
+      { title: "Duplicates", body: "Merge or relax the unique rule.", seqs: [21] },
+    ]),
+  ],
+);
+
+const momsBirthday = detail([
+  item(29, daniel, "Hey Robin,\n\nI finally worked out Mom's 60th: lunch on Dec 7."),
+]);
+
+const trailPacks = detail([item(24, ben, "# 30% off trail packs, this weekend only")]);
+
+const ledger = detail([
+  item(23, ben, "Idempotency keys are not enough. The backfill (PR #4818) taught us that."),
+  item(26, ben, "Unrelated follow-up."),
+]);
+
+const runbook = detail(
+  [
+    item(1, rachel, "Cutover runbook is in the shared drive."),
+    item(2, ben, "Thanks, reading it tonight."),
+    item(3, lisa, "Snapshot restore took 40 minutes on staging."),
+  ],
+  [
+    digest(4, 1, 3, "Cutover runbook shared", [
+      { title: "Runbook", body: "Rachel shared the cutover runbook; Ben reads it.", seqs: [1, 2] },
+    ]),
+  ],
+);
+
+const venue = detail(
+  [item(29, daniel, "Booked the place by the river for Dec 7.")],
+  [
+    digest(5, 29, 29, "Mom's 60th lunch is set", [
+      { title: "Venue booked", body: "Daniel booked a riverside place for Dec 7.", seqs: [29] },
+    ]),
+  ],
+);
+
+const found = (of: Detail, query: string) => hits(of, termPattern(query));
+
+const describeHit = (hit: Hit) =>
+  hit._tag === "Item"
+    ? `item ${hit.seq} ${hit.field}`
+    : hit._tag === "Topic"
+      ? `topic ${hit.key}`
+      : `headline ${hit.digest}`;
+
+const outer = (markup: string, key: string) => {
+  const at = markup.indexOf(`data-hit="${key}"`);
+  if (at === -1) return null;
+  const rest = markup.slice(markup.lastIndexOf("<", at));
+  const tag = /^<(\w+)/.exec(rest)?.[1] ?? "";
+  let depth = 0;
+  for (const match of rest.matchAll(new RegExp(`<(/?)${tag}\\b[^>]*>`, "g"))) {
+    depth += match[1] === "/" ? -1 : 1;
+    if (depth === 0) return rest.slice(0, match.index + match[0].length);
+  }
+  return null;
+};
+
+const landedOn = (of: Detail, query: string) => {
+  const pattern = termPattern(query);
+  const all = hits(of, pattern);
+  const keyed = new Map(all.map((hit) => [hitKey(hit), hit]));
+  return all.map((hit) => {
+    const key = hitKey(hit);
+    const blocks = reader(of, lastSeq(of), reveal(closedUi, of, hit), null);
+    const markup = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        blocks.map((block, at) =>
+          createElement(BlockView, {
+            key: at,
+            id: ConversationId.make(of.id),
+            block,
+            watch: () => () => {},
+            mark: { seen: lastSeq(of), unread: () => {} },
+            found: { pattern, hits: keyed, current: key },
+            controls: null,
+          }),
+        ),
+      ),
+    );
+    const target = outer(markup, key);
+    const state =
+      target === null ? "missing" : /<mark>|class="bh"/.test(target) ? "marked" : "unmarked";
+    return `${key} ${state}`;
+  });
+};
+
+describe("hits", () => {
+  it.each([
+    ["migrat", northwind, ["item 2 body", "item 4 body", "item 18 body"]],
+    ["MIGRAT", northwind, ["item 2 body", "item 4 body", "item 18 body"]],
+    ["northwind", northwind, ["item 1 from", "item 4 from", "item 18 from", "item 25 from"]],
+    ["lisa", northwind, ["item 1 body", "topic 7:0", "item 25 from", "item 21 body"]],
+    ["60", momsBirthday, ["item 29 body"]],
+    ["60", trailPacks, []],
+    ["idempotency backfill", ledger, ["item 23 body"]],
+    ["(PR", ledger, ["item 23 body"]],
+    ["dan.ellis", momsBirthday, ["item 29 from"]],
+  ] as const)("%s finds its targets in document order", (query, of, expected) => {
+    expect(found(of, query).map(describeHit)).toEqual(expected);
+  });
+
+  it("counts a two-character term like any other", () => {
+    expect(found(momsBirthday, "60")).toHaveLength(1);
+    expect(found(trailPacks, "30")).toEqual([{ _tag: "Item", seq: 24, field: "body" }]);
+  });
+
+  it("a digest topic that matches is its own hit, before the originals it covers", () => {
+    expect(found(northwind, "UAT").map(describeHit)).toEqual(["topic 7:0"]);
+    expect(found(northwind, "signed").map(describeHit)).toEqual([
+      "item 1 body",
+      "headline 7",
+      "topic 7:0",
+      "item 25 body",
+    ]);
+  });
+
+  it("matches the sender as name <address>, the text the daemon searches", () => {
+    expect(found(northwind, "Gomez").map(describeHit)).toEqual([
+      "item 1 from",
+      "item 4 from",
+      "item 18 from",
+    ]);
+    expect(found(northwind, "<rachel.gomez@").map(describeHit)).toEqual([
+      "item 1 from",
+      "item 4 from",
+      "item 18 from",
+    ]);
+  });
+
+  it("a matching headline is one hit for its card", () => {
+    expect(found(northwind, "duplicate").map(describeHit)).toEqual(["headline 7", "topic 7:1"]);
+  });
+
+  it("does not count a match only in the source or the title", () => {
+    expect(found(northwind, "gmail")).toEqual([]);
+    expect(found(northwind, "sign-off")).toEqual([
+      { _tag: "Topic", key: topicKey(northwind.digests[0] as Digest, 0) },
+    ]);
+    expect(found(northwind, "cutover plan")).toEqual([
+      { _tag: "Topic", key: topicKey(northwind.digests[0] as Digest, 0) },
+    ]);
+  });
+
+  it("finds nothing without a text term", () => {
+    expect(hits(northwind, termPattern(""))).toEqual([]);
+    expect(hits(northwind, null)).toEqual([]);
+  });
+});
+
+describe("landing on a hit", () => {
+  it.each([
+    ["migrat", northwind],
+    ["northwind", northwind],
+    ["lisa", northwind],
+    ["signed", northwind],
+    ["duplicate", northwind],
+    ["60", momsBirthday],
+    ["dan.ellis", momsBirthday],
+    ["idempotency backfill", ledger],
+    ["snapshot", runbook],
+    ["runbook", runbook],
+    ["venue", venue],
+  ] as const)("%s: every counted hit shows a marked target once revealed", (query, of) => {
+    const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
+    expect(counted.length).toBeGreaterThan(0);
+    expect(landedOn(of, query)).toEqual(counted);
+  });
+});
+
+describe("reveal", () => {
+  const [first] = northwind.digests as [Digest];
+
+  it("opens the card and only the topic that cites a covered original", () => {
+    const shown = reveal(closedUi, northwind, { _tag: "Item", seq: 21, field: "body" });
+    expect(shown.shapes.get(first.id)).toBe("card");
+    expect([...shown.originals]).toEqual([topicKey(first, 1)]);
+  });
+
+  it("keeps originals the reader already opened", () => {
+    const opened = { ...closedUi, originals: new Set([topicKey(first, 0)]) };
+    const shown = reveal(opened, northwind, { _tag: "Item", seq: 21, field: "body" });
+    expect([...shown.originals]).toEqual([topicKey(first, 0), topicKey(first, 1)]);
+  });
+
+  it("opens the card for a topic or headline hit without unfolding originals", () => {
+    for (const hit of [
+      { _tag: "Topic", key: topicKey(first, 0) },
+      { _tag: "Headline", digest: first.id },
+    ] as const) {
+      const shown = reveal({ ...closedUi, shapes: new Map([[first.id, "row"]]) }, northwind, hit);
+      expect(shown.shapes.get(first.id)).toBe("card");
+      expect(shown.originals.size).toBe(0);
+    }
+  });
+
+  it("leaves the reader as it is for an original outside any digest", () => {
+    expect(reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "body" })).toBe(closedUi);
+  });
+});

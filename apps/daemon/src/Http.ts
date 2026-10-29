@@ -52,6 +52,7 @@ import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
+import { segments, senderLabel, termPattern } from "./Match.ts";
 import * as Web from "./Web.ts";
 
 const tagTestBatch = 200;
@@ -287,30 +288,6 @@ const hitLinesPerConversation = 3;
 const bodySnippetLength = 120;
 const headlineSnippetLength = 60;
 
-const termPattern = (query: string) => {
-  const terms = query
-    .split(/\s+/u)
-    .filter((term) => term.length > 0)
-    .toSorted((left, right) => right.length - left.length);
-  if (terms.length === 0) return null;
-  return new RegExp(
-    terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
-    "giu",
-  );
-};
-
-const segments = (text: string, pattern: RegExp) => {
-  const result: Array<{ text: string; mark: boolean }> = [];
-  let at = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > at) result.push({ text: text.slice(at, match.index), mark: false });
-    result.push({ text: match[0], mark: true });
-    at = match.index + match[0].length;
-  }
-  if (at < text.length) result.push({ text: text.slice(at), mark: false });
-  return result;
-};
-
 const snippet = (text: string, matchAt: number, length: number) => {
   if (text.length <= length) return text;
   const start = Math.max(0, Math.min(matchAt - length / 3, text.length - length));
@@ -343,7 +320,7 @@ const hitLines = (
     if (coveredByTopic.has(item.seq)) return [];
     const fields = [
       ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
-      ["from", item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`],
+      ["from", senderLabel(item.fromName, item.fromAddress)],
       ["source", item.streamName],
     ] as const;
     for (const [field, text] of fields) {

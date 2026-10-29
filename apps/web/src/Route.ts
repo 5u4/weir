@@ -104,6 +104,8 @@ const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
 
 export const statusOpen = Atom.make(false);
 
+export const listTops = Atom.make<ReadonlyMap<string, number>>(new Map()).pipe(Atom.keepAlive);
+
 export const route = Atom.writable(
   (get) => {
     const sync = () => get.setSelf(parse(location.search));
