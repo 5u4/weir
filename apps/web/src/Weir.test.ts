@@ -24,6 +24,7 @@ const daemon = vi.hoisted(() => {
   const replies: Array<Response | TypeError> = [];
   const details = new Map<number, Record<string, unknown>>();
   const running: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
+  const queued: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -72,7 +73,7 @@ const daemon = vi.hoisted(() => {
           ai: "fake-ai",
           threshold: 1000,
           running: running.map((job) => ({ ...job, trigger: "manual" })),
-          queued: [],
+          queued: queued.map((job) => ({ ...job, trigger: "auto" })),
           last_run: null,
         },
       });
@@ -122,7 +123,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  return { rows, requests, digests, replies, details, running, Source, location };
+  return { rows, requests, digests, replies, details, running, queued, Source, location };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -156,6 +157,7 @@ afterEach(() => {
   daemon.digests.length = 0;
   daemon.details.clear();
   daemon.running.length = 0;
+  daemon.queued.length = 0;
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
@@ -434,5 +436,41 @@ it("ready picks up a run the daemon is already running, as a fresh tab or after 
   daemon.running.length = 0;
   daemon.Source.opened.at(-1)?.send({ type: "ready" });
   await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  registry.dispose();
+});
+
+it("a fresh tab shows a running and a queued digest without a click, until each lands", async () => {
+  const running = ConversationId.make(5);
+  const queued = ConversationId.make(6);
+  daemon.running.push({ conversation_id: 5, from_seq: 3, to_seq: 6 });
+  daemon.queued.push({ conversation_id: 6, from_seq: 1, to_seq: 4 });
+  const registry = AtomRegistry.make();
+  for (const id of [running, queued]) {
+    registry.mount(conversation(id));
+    registry.mount(digestRun(id));
+  }
+  registry.mount(live);
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() =>
+    expect([registry.get(digestRun(running)), registry.get(digestRun(queued))]).toEqual([
+      { _tag: "Running", range: { from: 3, to: 6 }, origin: { _tag: "Remote" } },
+      { _tag: "Running", range: { from: 1, to: 4 }, origin: { _tag: "Remote" } },
+    ]),
+  );
+
+  const done = (conversation_id: number, from_seq: number, to_seq: number) =>
+    daemon.Source.opened.at(-1)?.send({
+      type: "digest",
+      conversation_id,
+      from_seq,
+      to_seq,
+      trigger: "auto",
+      status: "done",
+    });
+  done(5, 3, 6);
+  await vi.waitFor(() => expect(registry.get(digestRun(running))._tag).toBe("Idle"));
+  expect(registry.get(digestRun(queued))._tag).toBe("Running");
+  done(6, 1, 4);
+  await vi.waitFor(() => expect(registry.get(digestRun(queued))._tag).toBe("Idle"));
   registry.dispose();
 });
