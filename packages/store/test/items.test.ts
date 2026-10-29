@@ -43,8 +43,17 @@ describe("store items", () => {
       const [second] = yield* writeItems(stream, [rawItem("m1", { body: "final" })]);
       if (first === undefined || second === undefined) return expect.unreachable();
 
-      expect(first.previousConversationId).toBeNull();
-      expect(second).toEqual({ ...first, previousConversationId: first.conversationId });
+      expect(first).toMatchObject({
+        previousConversationId: null,
+        inserted: true,
+        conversationWasRead: true,
+      });
+      expect(second).toEqual({
+        ...first,
+        previousConversationId: first.conversationId,
+        inserted: false,
+        conversationWasRead: false,
+      });
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{ seq: number; body: string }>`SELECT seq, body FROM item`;
       expect(rows).toEqual([{ seq: first.seq, body: "final" }]);

@@ -34,6 +34,8 @@ export const page = (overrides: Partial<SyncPage> & Pick<SyncPage, "cursor">): S
   upserts: [],
   deletions: [],
   more: false,
+  kind: "live",
+  backfill: "done",
   ...overrides,
 });
 

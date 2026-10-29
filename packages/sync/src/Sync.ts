@@ -42,12 +42,7 @@ const callSource = <A>(sourceId: string, call: () => Promise<A>) =>
 export const errorMessage = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
 
-const writePage = Effect.fnUntraced(function* (
-  stream: StreamRow,
-  page: SyncPage,
-  tags: Tags,
-  backfilling: boolean,
-) {
+const writePage = Effect.fnUntraced(function* (stream: StreamRow, page: SyncPage, tags: Tags) {
   const written = yield* Write.writeItems(
     stream,
     page.upserts.map((item) => ({ ...item, bodyNew: item.bodyNew ?? stripQuoted(item.body) })),
@@ -70,8 +65,12 @@ const writePage = Effect.fnUntraced(function* (
       )
       .map(({ seq }) => seq),
   );
-  if (backfilling) yield* Write.advanceSeenSeq(written);
-  yield* Write.saveCursor(stream.id, page.cursor, { backfilled: backfilling && !page.more });
+  if (page.kind === "backfill") {
+    yield* Write.advanceSeenSeq(
+      written.filter(({ inserted, conversationWasRead }) => inserted && conversationWasRead),
+    );
+  }
+  yield* Write.saveCursor(stream.id, page.cursor, page.backfill);
   return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });
 
@@ -97,19 +96,17 @@ export const syncStream = Effect.fnUntraced(function* (
     if (fromMeChanged.length > 0) yield* onWritten(fromMeChanged);
     streamId = stream.id;
     let cursor = stream.cursor;
-    let backfilling = stream.backfilledAt === null;
     let more = true;
     while (more) {
       const page = yield* callSource(sourceId, () => source.sync(descriptor.id, cursor)).pipe(
         Effect.flatMap(decodePage),
       );
-      yield* onWritten(yield* sql.withTransaction(writePage(stream, page, tags, backfilling)));
+      yield* onWritten(yield* sql.withTransaction(writePage(stream, page, tags)));
       counts = {
         upserts: counts.upserts + page.upserts.length,
         deletions: counts.deletions + page.deletions.length,
       };
       cursor = page.cursor;
-      backfilling = backfilling && page.more;
       more = page.more;
     }
     return counts;

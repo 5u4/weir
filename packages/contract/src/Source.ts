@@ -59,6 +59,8 @@ export const SyncPage = Schema.Struct({
   deletions: Schema.Array(Schema.String),
   cursor: Schema.String,
   more: Schema.Boolean,
+  kind: Schema.Literals(["live", "backfill"]),
+  backfill: Schema.Literals(["running", "done"]),
 });
 export type SyncPage = typeof SyncPage.Type;
 

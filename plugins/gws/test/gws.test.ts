@@ -81,6 +81,10 @@ describe("gws plugin against fake-gws", () => {
     const { pages, items, cursor } = await syncAll(sourceFor(seeded()), null);
     expect(pages.length).toBeGreaterThan(1);
     expect(pages.slice(0, -1).every((p) => p.more)).toBe(true);
+    expect(pages.map(({ kind, backfill }) => [kind, backfill])).toEqual([
+      ...pages.slice(0, -1).map(() => ["backfill", "running"]),
+      ["backfill", "done"],
+    ]);
     expect(items.size).toBe(32);
     expect(new Set([...items.values()].map((i) => i.threadId)).size).toBe(15);
     expect(pages.flatMap((p) => p.deletions)).toEqual([]);
@@ -127,6 +131,7 @@ describe("gws plugin against fake-gws", () => {
     const [delivered] = deliver(dir);
     let page = await syncPage(source, cold.cursor);
     expect(page.upserts.map((i) => i.externalId)).toEqual([delivered]);
+    expect(page).toMatchObject({ kind: "live", backfill: "done" });
     expect(page.deletions).toEqual([]);
 
     remove(dir, first);
@@ -156,7 +161,14 @@ describe("gws plugin against fake-gws", () => {
     ]);
 
     const idle = await syncPage(source, page.cursor);
-    expect(idle).toEqual({ upserts: [], deletions: [], cursor: page.cursor, more: false });
+    expect(idle).toEqual({
+      upserts: [],
+      deletions: [],
+      cursor: page.cursor,
+      more: false,
+      kind: "live",
+      backfill: "done",
+    });
   });
 
   it("pages incremental history", async () => {
@@ -188,6 +200,10 @@ describe("gws plugin against fake-gws", () => {
     expireHistory(dir);
     const recovered = await syncAll(source, cold.cursor);
     expect(recovered.items.size).toBe(32);
+    expect(recovered.pages.map(({ kind, backfill }) => [kind, backfill])).toEqual([
+      ...recovered.pages.slice(0, -1).map(() => ["backfill", "running"]),
+      ["backfill", "done"],
+    ]);
     expect(JSON.parse(recovered.cursor ?? "")).toMatchObject({ phase: "incremental" });
     const [id] = recovered.items.keys();
     relabel(dir, id ?? "", { add: ["STARRED"] });
