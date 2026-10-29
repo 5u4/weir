@@ -230,7 +230,7 @@ const blocks = (nodes: ReadonlyArray<Mdast.RootContent>, definitions: Definition
   nodes.flatMap((node) => block(node, definitions));
 
 const collectDefinitions = (node: Mdast.Nodes, into: Map<string, string>) => {
-  if (node.type === "definition") into.set(node.identifier, node.url);
+  if (node.type === "definition" && !into.has(node.identifier)) into.set(node.identifier, node.url);
   if ("children" in node) for (const child of node.children) collectDefinitions(child, into);
   return into;
 };

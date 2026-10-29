@@ -166,6 +166,23 @@ describe("visible", () => {
         },
       ],
     ],
+    [
+      "a repeated reference definition keeps the first destination",
+      "[docs][d]\n\n[d]: https://first.example/docs\n[d]: https://second.example/docs",
+      [
+        {
+          _tag: "Paragraph",
+          children: [
+            {
+              _tag: "Link",
+              href: "https://first.example/docs",
+              title: null,
+              children: [{ _tag: "Text", text: "docs" }],
+            },
+          ],
+        },
+      ],
+    ],
   ])("%s", (_, markdown, expected) => {
     expect(visible(markdown)).toEqual(expected);
   });

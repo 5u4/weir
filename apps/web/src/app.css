@@ -1602,11 +1602,13 @@ button {
   font:
     0.88em ui-monospace,
     monospace;
+  white-space: pre-wrap;
 }
 .body :where(pre) code {
   padding: 0;
   background: none;
   font: inherit;
+  white-space: inherit;
 }
 .body blockquote {
   margin: 0.6em 0;
