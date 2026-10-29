@@ -179,7 +179,7 @@ export interface Capture {
   readonly hasError: boolean;
 }
 
-export const fakeAi = ["bun", join(import.meta.dirname, "fake-ai.ts")];
+export const fakeAi = [join(import.meta.dirname, "../node_modules/.bin/fake-ai")];
 
 export interface DigestOptions {
   readonly capture: string;

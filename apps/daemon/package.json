@@ -24,6 +24,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:"
+    "@effect/vitest": "catalog:",
+    "@weir/fixtures": "workspace:*"
   }
 }
