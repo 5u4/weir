@@ -150,13 +150,10 @@ export const seed = (now: string): Mailbox => {
 };
 
 export const deliverWith = (mailbox: Mailbox, threads: ReadonlyArray<Thread>): string[] => {
-  const messages = gmailMessages({ ...scenarios, threads: [...threads] }).sort(
-    (a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id),
-  );
-  for (const m of messages) {
-    if (mailbox.messages[m.id]) throw new Error(`message ${m.id} is already delivered`);
-    deliverOne(mailbox, m);
-  }
+  const messages = gmailMessages({ ...scenarios, threads: [...threads] })
+    .filter((m) => !mailbox.messages[m.id])
+    .sort((a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id));
+  for (const m of messages) deliverOne(mailbox, m);
   return messages.map((m) => m.id);
 };
 

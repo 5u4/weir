@@ -486,4 +486,29 @@ describe("fake-gws deliverThreads", () => {
     );
     expect(listAll({}, dir).threads).toHaveLength(16);
   });
+
+  it("delivers only the new reply when a thread is passed again", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    const question = {
+      at: "2026-10-25T08:00:00-07:00",
+      from: "priya",
+      to: ["me"],
+      text: "Question",
+    };
+    const thread = { id: "follow-up", subject: "Follow up", labels: ["INBOX"] };
+    const [first] = deliverThreads(dir, [{ ...thread, messages: [question] }]);
+    const reply = deliverThreads(dir, [
+      {
+        ...thread,
+        messages: [
+          question,
+          { at: "2026-10-25T08:30:00-07:00", from: "priya", to: ["me"], text: "Any news?" },
+        ],
+      },
+    ]);
+    expect(reply).toHaveLength(1);
+    const { messages } = gmail("threads get", { userId: "me", id: first }, dir);
+    expect(messages.map((m: { id: string }) => m.id)).toEqual([first, ...reply]);
+  });
 });
