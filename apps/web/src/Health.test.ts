@@ -154,7 +154,7 @@ describe("relative time", () => {
 });
 
 describe("day label", () => {
-  const at = DateTime.makeUnsafe("2026-10-15T12:00:00.000Z");
+  const at = DateTime.makeUnsafe(new Date(2026, 9, 15, 12));
   it.each([
     [0, "Today"],
     [1, "Yesterday"],
