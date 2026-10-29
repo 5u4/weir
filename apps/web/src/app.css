@@ -255,6 +255,8 @@ button {
   position: relative;
   display: flex;
   min-width: 0;
+  flex-shrink: 100;
+  overflow: hidden;
 }
 .cws-a {
   position: absolute;
@@ -2038,17 +2040,35 @@ mark {
 }
 .q-field {
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
   align-items: center;
-  gap: 6px;
   min-width: 0;
 }
 .cap.compact .q-field {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: auto;
+}
+.cap.search .q-field {
+  grid-template-columns: minmax(0, max-content) 1fr;
+}
+.q-chips {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin: -4px 2px -4px -4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.q-chips::-webkit-scrollbar {
+  display: none;
+}
+.q-field > .cap-in {
+  grid-column: 2;
 }
 .cap.search .cap-in {
-  flex: 1;
-  width: auto;
+  width: 100%;
   min-width: 6em;
 }
 .q-chip {

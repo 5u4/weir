@@ -197,23 +197,27 @@ function QueryField() {
   };
   return (
     <span className="q-field">
-      {field.chips.map((chip, at) => (
-        <span key={chip.key} className="q-chip">
-          <span className="qc-k">{chip.key}:</span>
-          <span className="qc-v">{chip.value}</span>
-          <button
-            type="button"
-            className="qc-x"
-            aria-label={`Remove ${chipText(chip)}`}
-            title="Remove"
-            onClick={() =>
-              write({ ...field, chips: field.chips.filter((_, index) => index !== at) })
-            }
-          >
-            <CloseIcon />
-          </button>
+      {field.chips.length > 0 && (
+        <span className="q-chips">
+          {field.chips.map((chip, at) => (
+            <span key={chip.key} className="q-chip">
+              <span className="qc-k">{chip.key}:</span>
+              <span className="qc-v">{chip.value}</span>
+              <button
+                type="button"
+                className="qc-x"
+                aria-label={`Remove ${chipText(chip)}`}
+                title="Remove"
+                onClick={() =>
+                  write({ ...field, chips: field.chips.filter((_, index) => index !== at) })
+                }
+              >
+                <CloseIcon />
+              </button>
+            </span>
+          ))}
         </span>
-      ))}
+      )}
       <input
         className="cap-in"
         type="search"
