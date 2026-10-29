@@ -22,12 +22,21 @@ const fadeStrip = (strip: HTMLElement) => {
     strip.classList.toggle("fl", strip.scrollLeft > 1);
     strip.classList.toggle("fr", strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
   };
-  const observer = new ResizeObserver(fade);
-  observer.observe(strip);
-  for (const child of strip.children) observer.observe(child);
+  const resized = new ResizeObserver(fade);
+  const observeChips = () => {
+    for (const chip of strip.children) resized.observe(chip);
+  };
+  const mutated = new MutationObserver(() => {
+    observeChips();
+    fade();
+  });
+  resized.observe(strip);
+  observeChips();
+  mutated.observe(strip, { childList: true });
   strip.addEventListener("scroll", fade, { passive: true });
   return () => {
-    observer.disconnect();
+    resized.disconnect();
+    mutated.disconnect();
     strip.removeEventListener("scroll", fade);
   };
 };
