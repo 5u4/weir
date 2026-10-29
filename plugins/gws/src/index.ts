@@ -9,7 +9,6 @@ import {
   GwsError,
   getProfile,
   getThread,
-  type HistoryList,
   listHistory,
   listLabels,
   listSendAs,
@@ -35,22 +34,20 @@ const Backfill = Schema.Struct({
   startHistoryId: Schema.String,
   listing: LabelIds,
   pageToken: Schema.NullOr(Schema.String),
-  offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   fetched: Schema.Array(Schema.String),
 });
 type Backfill = typeof Backfill.Type;
 
-const Cursor = Schema.fromJsonString(
-  Schema.Union([
-    Backfill,
-    Schema.Struct({
-      phase: Schema.Literal("incremental"),
-      labels: LabelIds,
-      historyId: Schema.String,
-      pageToken: Schema.NullOr(Schema.String),
-    }),
-  ]),
-);
+const Incremental = Schema.Struct({
+  phase: Schema.Literal("incremental"),
+  labels: LabelIds,
+  historyId: Schema.String,
+  pageToken: Schema.NullOr(Schema.String),
+  pending: Schema.Array(Schema.String),
+});
+type Incremental = typeof Incremental.Type;
+
+const Cursor = Schema.fromJsonString(Schema.Union([Backfill, Incremental]));
 type Cursor = typeof Cursor.Type;
 const encodeCursor = Schema.encodeSync(Cursor);
 const decodeCursor = Schema.decodeUnknownSync(Cursor);
@@ -62,7 +59,6 @@ const newPass = (labels: LabelIds, startHistoryId: string): Backfill => ({
   startHistoryId,
   listing: labels,
   pageToken: null,
-  offset: 0,
   fetched: [],
 });
 
@@ -90,25 +86,27 @@ const resolveLabels = async (
   return Arr.sort(Arr.dedupe(ids), Order.String);
 };
 
-const fetchThreads = async (
+const fetchPage = async (
   command: Command,
   emailAddress: string,
   labels: LabelIds,
-  threadIds: Iterable<string>,
+  threadIds: ReadonlyArray<string>,
   signal: AbortSignal,
 ) => {
-  const ids = [...threadIds];
   const upserts: RawItem[] = [];
   const deletions: string[] = [];
-  for (let i = 0; i < ids.length; i += CONCURRENCY) {
+  let next = 0;
+  while (next < threadIds.length && upserts.length + deletions.length < PAGE_MESSAGES) {
+    const width = Math.min(CONCURRENCY, PAGE_MESSAGES - upserts.length - deletions.length);
     const threads = await Promise.all(
-      ids.slice(i, i + CONCURRENCY).map((id) =>
+      threadIds.slice(next, next + width).map((id) =>
         getThread(command, id, signal).catch((error: unknown) => {
           if (isNotFound(error)) return { messages: [] };
           throw error;
         }),
       ),
     );
+    next += width;
     for (const { messages = [] } of threads) {
       if (!messages.some((m) => m.labelIds?.some((label) => labels.includes(label)))) continue;
       for (const message of messages) {
@@ -120,7 +118,13 @@ const fetchThreads = async (
       }
     }
   }
-  return { upserts, deletions };
+  return { upserts, deletions, rest: threadIds.slice(next) };
+};
+
+type Named = {
+  readonly deleted: ReadonlySet<string>;
+  readonly threads: ReadonlyArray<string>;
+  readonly after: Incremental;
 };
 
 const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
@@ -132,79 +136,81 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
     const { labels, startHistoryId, listing, pageToken } = position;
     const [label, ...rest] = listing;
     const list = await listThreads(command, label, backfill, pageToken, LIST_SIZE, signal);
-    const listed = (list.threads ?? []).map((t) => t.id);
     const fetched = new Set(position.fetched);
-    const upserts: RawItem[] = [];
-    const deletions: string[] = [];
-    let offset = position.offset;
-    while (offset < listed.length && upserts.length + deletions.length < PAGE_MESSAGES) {
-      const width = Math.min(CONCURRENCY, PAGE_MESSAGES - upserts.length - deletions.length);
-      const batch: string[] = [];
-      for (; offset < listed.length && batch.length < width; offset++) {
-        const id = listed[offset];
-        if (id !== undefined && !fetched.has(id)) batch.push(id);
-      }
-      const page = await fetchThreads(command, emailAddress, labels, batch, signal);
-      upserts.push(...page.upserts);
-      deletions.push(...page.deletions);
-      for (const id of batch) fetched.add(id);
-    }
-    const carried = { labels, startHistoryId, fetched: [...fetched] };
+    const unfetched = (list.threads ?? []).map((t) => t.id).filter((id) => !fetched.has(id));
+    const page = await fetchPage(command, emailAddress, labels, unfetched, signal);
+    for (const id of unfetched.slice(0, unfetched.length - page.rest.length)) fetched.add(id);
+    const carried = { phase: "backfill", labels, startHistoryId, fetched: [...fetched] } as const;
     const next: Cursor =
-      offset < listed.length
-        ? { phase: "backfill", ...carried, listing, pageToken, offset }
+      page.rest.length > 0
+        ? { ...carried, listing, pageToken }
         : list.nextPageToken !== undefined
-          ? { phase: "backfill", ...carried, listing, pageToken: list.nextPageToken, offset: 0 }
+          ? { ...carried, listing, pageToken: list.nextPageToken }
           : Arr.isReadonlyArrayNonEmpty(rest)
-            ? { phase: "backfill", ...carried, listing: rest, pageToken: null, offset: 0 }
-            : { phase: "incremental", labels, historyId: startHistoryId, pageToken: null };
-    const more = next.phase === "backfill";
+            ? { ...carried, listing: rest, pageToken: null }
+            : {
+                phase: "incremental",
+                labels,
+                historyId: startHistoryId,
+                pageToken: null,
+                pending: [],
+              };
     return {
-      upserts,
-      deletions,
+      upserts: page.upserts,
+      deletions: page.deletions,
       cursor: encodeCursor(next),
-      more,
+      more: true,
       kind: "backfill",
-      backfill: more ? "running" : "done",
+      backfill: next.phase === "backfill" ? "running" : "done",
     };
   };
 
-  const incrementalPage = async (
-    emailAddress: string,
-    labels: LabelIds,
-    restartHistoryId: string,
-    historyId: string,
-    pageToken: string | null,
-    signal: AbortSignal,
-  ): Promise<SyncPage> => {
-    let history: HistoryList;
-    try {
-      history = await listHistory(command, historyId, pageToken, signal);
-    } catch (error) {
-      if (isNotFound(error)) {
-        return backfillPage(emailAddress, newPass(labels, restartHistoryId), signal);
-      }
-      throw error;
+  const readHistory = async (position: Incremental, signal: AbortSignal): Promise<Named> => {
+    if (position.pending.length > 0) {
+      return { deleted: new Set(), threads: position.pending, after: position };
     }
+    const history = await listHistory(command, position.historyId, position.pageToken, signal);
     const deleted = new Set<string>();
     const threads = new Set<string>();
     for (const record of history.history ?? []) {
       for (const { message } of record.messagesDeleted ?? []) deleted.add(message.id);
       for (const { message } of record.messagesAdded ?? []) threads.add(message.threadId);
       for (const { message, labelIds } of record.labelsAdded ?? []) {
-        if (labelIds.some((label) => labels.includes(label))) threads.add(message.threadId);
+        if (labelIds.some((label) => position.labels.includes(label))) {
+          threads.add(message.threadId);
+        }
       }
     }
-    const page = await fetchThreads(command, emailAddress, labels, threads, signal);
-    const next: Cursor =
+    const after: Incremental =
       history.nextPageToken === undefined
-        ? { phase: "incremental", labels, historyId: history.historyId, pageToken: null }
-        : { phase: "incremental", labels, historyId, pageToken: history.nextPageToken };
+        ? { ...position, historyId: history.historyId, pageToken: null }
+        : { ...position, pageToken: history.nextPageToken };
+    return { deleted, threads: [...threads], after };
+  };
+
+  const incrementalPage = async (
+    emailAddress: string,
+    restartHistoryId: string,
+    position: Incremental,
+    signal: AbortSignal,
+  ): Promise<SyncPage> => {
+    let named: Named;
+    try {
+      named = await readHistory(position, signal);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return backfillPage(emailAddress, newPass(position.labels, restartHistoryId), signal);
+      }
+      throw error;
+    }
+    const { deleted, threads, after } = named;
+    const page = await fetchPage(command, emailAddress, position.labels, threads, signal);
+    const next: Incremental = { ...after, pending: page.rest };
     return {
       upserts: page.upserts.filter((item) => !deleted.has(item.externalId)),
       deletions: [...new Set([...deleted, ...page.deletions])],
       cursor: encodeCursor(next),
-      more: next.pageToken !== null,
+      more: next.pending.length > 0 || next.pageToken !== null,
       kind: "live",
       backfill: "done",
     };
@@ -253,14 +259,7 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
         case "backfill":
           return backfillPage(profile.emailAddress, position, signal);
         case "incremental":
-          return incrementalPage(
-            profile.emailAddress,
-            labels,
-            profile.historyId,
-            position.historyId,
-            position.pageToken,
-            signal,
-          );
+          return incrementalPage(profile.emailAddress, profile.historyId, position, signal);
       }
     },
   };

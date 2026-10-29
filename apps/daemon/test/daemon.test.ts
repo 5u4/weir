@@ -491,7 +491,7 @@ describe("gws labels", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("a label change replays history from the last checkpoint, so a deletion lands", () =>
+  it.live("a label change replays history from the last checkpoint in the same sync pass", () =>
     Effect.gen(function* () {
       const { home, port, writeConfig } = makeHome("");
       const mailbox = join(home.root, "mailbox");
@@ -501,7 +501,7 @@ describe("gws labels", () => {
       const client = yield* apiClient(port);
       const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
 
-      yield* eventually(stream, (s) => s?.backfill === "done");
+      const before = yield* eventually(stream, (s) => s?.last_sync_at != null);
       const thread = yield* client.search({ query: { q: "cutover plan" } });
       const detail = yield* client.conversation({
         params: { id: thread.conversations[0]?.id ?? 0 },
@@ -511,14 +511,14 @@ describe("gws labels", () => {
       expect(stored.deleted_at).toBeNull();
       removeMail(mailbox, stored.link?.split("#all/")[1] ?? "");
 
-      writeConfig(gwsSource(mailbox, ["INBOX", "CATEGORY_PROMOTIONS"]));
+      writeConfig(gwsSource(mailbox, ["INBOX", "CATEGORY_PROMOTIONS"], "1h"));
       yield* client.reload();
       const after = yield* eventually(
-        client.item({ params: { seq } }),
-        ({ deleted_at }) => deleted_at !== null,
+        stream,
+        (s) => s?.last_sync_at != null && s.last_sync_at !== before?.last_sync_at,
       );
-      expect(after.deleted_at).not.toBeNull();
-      expect(yield* stream).toMatchObject({ backfill: "done", last_error: null });
+      expect(after).toMatchObject({ backfill: "done", last_error: null });
+      expect((yield* client.item({ params: { seq } })).deleted_at).not.toBeNull();
     }).pipe(Effect.scoped),
   );
 

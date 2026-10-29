@@ -40,6 +40,36 @@ const seeded = (until?: string) => {
   seedMailbox(dir, until === undefined ? {} : { until });
   return dir;
 };
+const seedSized = (
+  threads: ReadonlyArray<{ subject: string; size: number; labels?: string[] }>,
+) => {
+  const dir = mkdtempSync(join(tmpdir(), "weir-gws-"));
+  dirs.push(dir);
+  const newest = Date.parse(FIXTURE_NOW);
+  const { delivered } = seedThreads(
+    dir,
+    threads.map(({ subject, size, labels = ["INBOX"] }, slot) => ({
+      id: subject,
+      subject,
+      labels,
+      messages: Array.from({ length: size }, (_, k) => ({
+        at: new Date(newest - (slot + 1) * 86_400_000 - (size - 1 - k) * 60_000)
+          .toISOString()
+          .replace(/\.\d+Z$/, "+00:00"),
+        from: "priya",
+        to: ["me"],
+        text: `${subject} note ${k}`,
+      })),
+    })),
+    { now: FIXTURE_NOW, pageSize: 100 },
+  );
+  return { dir, delivered };
+};
+const threadGets = (dir: string, since = 0) =>
+  readCalls(dir)
+    .slice(since)
+    .filter(({ command }) => command === "threads get")
+    .map(({ params }) => params.id);
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -69,9 +99,10 @@ const syncAll = async (source: Source, cursor: string | null) => {
 const subjectOf = (item: RawItem) => item.title?.replace(/^Re: /, "");
 const idsWithSubject = (items: Map<string, RawItem>, subject: string) =>
   [...items.values()].filter((i) => subjectOf(i) === subject).map((i) => i.externalId);
-const backfillKinds = (pages: SyncPage[]) => [
-  ...pages.slice(0, -1).map(() => ["backfill", "running"]),
+const passKinds = (pages: SyncPage[]) => [
+  ...pages.slice(0, -2).map(() => ["backfill", "running"]),
   ["backfill", "done"],
+  ["live", "done"],
 ];
 
 const rawMessage = (dir: string, item: RawItem) => {
@@ -111,7 +142,7 @@ describe("gws plugin against fake-gws", () => {
     const { pages, items, cursor } = await syncAll(sourceFor(seeded()), null);
     expect(pages.length).toBeGreaterThan(1);
     expect(pages.slice(0, -1).every((p) => p.more)).toBe(true);
-    expect(pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(backfillKinds(pages));
+    expect(pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(passKinds(pages));
     expect(items.size).toBe(32);
     expect(new Set([...items.values()].map((i) => i.threadId)).size).toBe(15);
     expect(pages.flatMap((p) => p.deletions)).toEqual([]);
@@ -166,42 +197,77 @@ describe("gws plugin against fake-gws", () => {
   });
 
   it("ends a backfill page at the first batch reaching 100 messages and lands a long thread whole", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "weir-gws-"));
-    dirs.push(dir);
-    const newest = Date.parse(FIXTURE_NOW);
     const subjects = Array.from({ length: 11 }, (_, i) => (i === 7 ? "Long" : `Short ${i}`));
-    const { delivered } = seedThreads(
-      dir,
-      subjects.map((subject, slot) => {
-        const size = subject === "Long" ? 150 : 12;
-        return {
-          id: subject,
-          subject,
-          labels: ["INBOX"],
-          messages: Array.from({ length: size }, (_, k) => ({
-            at: new Date(newest - (slot + 1) * 86_400_000 - (size - 1 - k) * 60_000)
-              .toISOString()
-              .replace(/\.\d+Z$/, "+00:00"),
-            from: "priya",
-            to: ["me"],
-            text: `${subject} note ${k}`,
-          })),
-        };
-      }),
-      { now: FIXTURE_NOW, pageSize: 100 },
+    const { dir, delivered } = seedSized(
+      subjects.map((subject) => ({ subject, size: subject === "Long" ? 150 : 12 })),
     );
 
     const { pages, items } = await syncAll(sourceFor(dir, ["INBOX"]), null);
     expect(pages.map((page) => [...new Set(page.upserts.map(subjectOf))])).toEqual([
       subjects.slice(0, 8),
       subjects.slice(8),
+      [],
     ]);
-    expect(pages.map((page) => page.upserts.length)).toEqual([7 * 12 + 150, 3 * 12]);
+    expect(pages.map(({ kind }) => kind)).toEqual(["backfill", "backfill", "live"]);
+    expect(pages.map((page) => page.upserts.length)).toEqual([7 * 12 + 150, 3 * 12, 0]);
     expect(pages[0]?.upserts.filter((item) => subjectOf(item) === "Long")).toHaveLength(150);
     expect(items.size).toBe(delivered);
-    const fetched = readCalls(dir)
-      .filter(({ command }) => command === "threads get")
-      .map(({ params }) => params.id);
+    const fetched = threadGets(dir);
+    expect(fetched).toHaveLength(subjects.length);
+    expect(new Set(fetched).size).toBe(subjects.length);
+  });
+
+  it("re-lists a backfill page so a thread that lost its label does not hide the next one", async () => {
+    const subjects = [
+      "First",
+      ...Array.from({ length: 6 }, (_, i) => `Short ${i}`),
+      "Long",
+      "Last",
+    ];
+    const sizes: Record<string, number> = { First: 1, Long: 100 };
+    const { dir } = seedSized(subjects.map((subject) => ({ subject, size: sizes[subject] ?? 2 })));
+    const source = sourceFor(dir, ["INBOX"]);
+
+    const first = await syncPage(source, null);
+    expect([...new Set(first.upserts.map(subjectOf))]).toEqual(subjects.slice(0, 8));
+    expect(first).toMatchObject({ more: true, kind: "backfill", backfill: "running" });
+    const [moved] = first.upserts.filter((item) => subjectOf(item) === "First");
+    relabel(dir, moved?.externalId ?? "", { remove: ["INBOX"] });
+
+    const rest = await syncAll(source, first.cursor);
+    expect(rest.pages.flatMap((page) => page.upserts.map(subjectOf))).toEqual(["Last", "Last"]);
+    const fetched = threadGets(dir);
+    expect(fetched).toHaveLength(subjects.length);
+    expect(new Set(fetched).size).toBe(subjects.length);
+  });
+
+  it("bounds a live page like a backfill page and fetches the rest after a restart", async () => {
+    const subjects = Array.from({ length: 10 }, (_, i) => `Starred ${i}`);
+    const { dir, delivered } = seedSized(
+      subjects.map((subject) => ({ subject, size: 13, labels: ["STARRED"] })),
+    );
+    const starred = await syncAll(sourceFor(dir, ["STARRED"]), null);
+    const cold = await syncAll(sourceFor(dir, ["INBOX"]), null);
+    expect(cold.items.size).toBe(0);
+    for (const subject of subjects) {
+      relabel(dir, idsWithSubject(starred.items, subject)[0] ?? "", { add: ["INBOX"] });
+    }
+    const since = readCalls(dir).length;
+
+    const first = await syncPage(sourceFor(dir, ["INBOX"]), cold.cursor);
+    expect(first).toMatchObject({ more: true, kind: "live", backfill: "done" });
+    expect(first.upserts).toHaveLength(8 * 13);
+
+    const restarted = sourceFor(dir, ["INBOX"]);
+    const rest = await syncAll(restarted, first.cursor);
+    expect(rest.pages.map(({ kind, more }) => [kind, more])).toEqual([["live", false]]);
+    expect(rest.pages[0]?.upserts).toHaveLength(2 * 13);
+    const stored = new Set([...first.upserts, ...rest.items.values()].map((i) => i.externalId));
+    expect(stored.size).toBe(delivered);
+
+    const idle = await syncPage(restarted, rest.cursor);
+    expect(idle).toMatchObject({ upserts: [], deletions: [], more: false });
+    const fetched = threadGets(dir, since);
     expect(fetched).toHaveLength(subjects.length);
     expect(new Set(fetched).size).toBe(subjects.length);
   });
@@ -256,7 +322,7 @@ describe("gws plugin against fake-gws", () => {
     const inbox = await syncAll(sourceFor(dir, ["INBOX"]), null);
     const widened = await syncAll(sourceFor(dir, ["INBOX", "CATEGORY_PROMOTIONS"]), inbox.cursor);
     expect(widened.pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(
-      backfillKinds(widened.pages),
+      passKinds(widened.pages),
     );
     expect(widened.items.size).toBe(32);
     expect(JSON.parse(widened.cursor ?? "")).toMatchObject({
@@ -340,7 +406,7 @@ describe("gws plugin against fake-gws", () => {
     const recovered = await syncAll(source, cold.cursor);
     expect(recovered.items.size).toBe(32);
     expect(recovered.pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(
-      backfillKinds(recovered.pages),
+      passKinds(recovered.pages),
     );
     expect(JSON.parse(recovered.cursor ?? "")).toMatchObject({ phase: "incremental" });
     const [id] = recovered.items.keys();
