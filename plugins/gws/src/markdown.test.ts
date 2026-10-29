@@ -39,19 +39,19 @@ describe("html", () => {
     '<div class="gmail_signature">Robin</div>' +
     '<div class="gmail_quote"><div class="gmail_attr">On Mon Ben wrote:</div><blockquote class="gmail_quote">old</blockquote></div>';
 
-  it("keeps the sender's text verbatim in bodyNew and drops signature and quote", () => {
-    expect(htmlBodyNew.turndown(html)).toBe("Use **bold** at https://x.example/a\nnext line");
+  it("shows the sender's typed asterisks as text in bodyNew and drops signature and quote", () => {
+    expect(htmlBodyNew(html)).toBe("Use \\*\\*bold\\*\\* at https://x.example/a\nnext line");
   });
 
   it("keeps signature and quote in body", () => {
-    const body = htmlBody.turndown(html);
+    const body = htmlBody(html);
     expect(body).toContain("Robin");
     expect(body).toContain("> old");
   });
 
   it("drops a standalone quote blockquote and signature paragraph from bodyNew", () => {
     expect(
-      htmlBodyNew.turndown(
+      htmlBodyNew(
         '<p>Ship it.</p><p class="gmail_signature">Robin</p><blockquote class="gmail_quote">old</blockquote>',
       ),
     ).toBe("Ship it.");
