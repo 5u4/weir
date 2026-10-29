@@ -871,10 +871,10 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li><strong>结果列表。</strong>左栏变成结果列表。一条结果是一个 conversation，最多 3 行命中，命中的词都有标记。先列命中的消息，每条消息一行，按 digest topic、原文正文、发件人、来源的顺序取第一个命中的字段。topic 命中显示 topic 标题和正文。正文命中显示一段约 120 字符的原文摘录。发件人和来源命中显示完整的发件人或来源名。不满 3 行时再补 conversation 自己的命中，目前只有 digest headline，显示一段较短的摘录。标题命中不单独成行。每行标出命中的是哪个字段。结果按最新一条命中消息的时间排序。</li>
 <li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开的 conversation 照常按视口记已读。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
 <li><strong>阅读区。</strong>搜索时没打开 conversation，阅读岛只显示一句空状态 <code>Pick a result to read it.</code>，不再列一遍结果。第 10 轮的灵动岛方案在这里放过一份结果简报，和左栏重复，所以删掉了。</li>
-<li><strong>打开结果。</strong>阅读区落在第一处命中。命中在 digest 里时落在那张卡片上。命中在被 digest 覆盖的原文里时，那个 topic 的原文自动展开。气泡里命中的词有标记。灵动岛收成药丸，显示查询、计数 <code>1/4</code>，以及上一处、下一处、关闭三个按钮。</li>
+<li><strong>打开结果。</strong>阅读区落在第一处命中。命中在 digest 里时落在那张卡片上。命中在被 digest 覆盖的原文里时，那个 topic 的原文自动展开。气泡里命中的词有标记。一条消息只在发件人或来源上命中时，气泡上带一个小标签 <code>Sender</code> 或 <code>Source</code>。阅读区标题里命中的词也有标记，但标题命中不算进计数。灵动岛收成药丸，显示查询、计数 <code>1/4</code>，以及上一处、下一处、关闭三个按钮。没有消息命中时不显示计数，药丸写明命中在哪：标题命中写 <code>Matched in Title</code>；查询只有 chip、没有文字时写 <code>Matched in filters</code>；都不是时写 <code>Matched the conversation</code>。</li>
 <li><strong>离开搜索。</strong>按 Esc、清空输入框或点关闭，都回到搜索前的视图、搜索前打开的 conversation，以及左栏原来的滚动位置。</li>
 <li><strong>字段 chip。</strong>在输入框里写 <code>from:</code>、<code>in:</code>、<code>source:</code> 开头的词，按空格或者离开输入框后，它变成一个可以删掉的 chip。三种 chip 对应 <code>weir-axi search</code> 的 <code>--from</code>、<code>--tag</code>、<code>--source</code>，和其他词是 AND 的关系。<code>in:</code> 后面写 tag 名或 <code>Untagged</code>，不分大小写。<code>source:</code> 后面写 source 的 id，比如 <code>source:personal-mail</code>。它是搜索筛选，不是视图。输入框空着时按退格，删掉最后一个 chip。</li>
-<li><strong>只搜新写的正文。</strong>原文只搜 <code>body_new</code>。一条回复不会因为它引用的旧文字而命中。所以落点那条消息的原文里，一定看得到这个词。</li>
+<li><strong>只搜新写的正文。</strong>原文只搜 <code>body_new</code>。一条回复不会因为它引用的旧文字而命中。所以落点是正文命中时，那条消息的原文里一定看得到这个词。</li>
 <li><strong>标记的颜色。</strong>深色主题的标记用琥珀色，比黄色在近黑的底色上安静。两种主题下，标记里的文字对比度都要达到 WCAG AA 的 4.5。</li>
 </ul>
 
