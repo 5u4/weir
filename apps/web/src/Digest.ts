@@ -6,6 +6,8 @@ import type {
   Event,
   NotFound,
 } from "@weir/daemon/Api";
+import type * as HttpClientError from "effect/http/HttpClientError";
+import type * as Schema from "effect/Schema";
 
 export type Action =
   | { readonly _tag: "Now" }
@@ -21,7 +23,9 @@ export type Cause =
   | { readonly _tag: "Failed"; readonly error: string; readonly log_path: string | null }
   | { readonly _tag: "Conflict"; readonly message: string }
   | { readonly _tag: "NotFound"; readonly message: string }
-  | { readonly _tag: "Interrupted"; readonly message: string };
+  | { readonly _tag: "Interrupted"; readonly message: string }
+  | { readonly _tag: "Unreachable" }
+  | { readonly _tag: "Unexpected"; readonly message: string };
 
 export type Origin =
   | { readonly _tag: "Tab"; readonly action: Action }
@@ -66,7 +70,13 @@ export const earlierLabel = (gap: { readonly items: number; readonly run_items: 
 
 export const within = (range: Range, seq: number) => range.from <= seq && seq <= range.to;
 
-export type Rejection = NotFound | DigestConflict | DigestFailed | DigestInterrupted;
+export type Rejection =
+  | NotFound
+  | DigestConflict
+  | DigestFailed
+  | DigestInterrupted
+  | HttpClientError.HttpClientError
+  | Schema.SchemaError;
 
 export const cause = (error: Rejection): Cause => {
   switch (error._tag) {
@@ -78,10 +88,25 @@ export const cause = (error: Rejection): Cause => {
       return { _tag: "NotFound", message: error.message };
     case "DigestInterrupted":
       return { _tag: "Interrupted", message: error.message };
+    case "HttpClientError":
+      return error.reason._tag === "TransportError"
+        ? { _tag: "Unreachable" }
+        : { _tag: "Unexpected", message: error.message };
+    case "SchemaError":
+      return { _tag: "Unexpected", message: error.message };
   }
 };
 
-export const reason = (cause: Cause) => (cause._tag === "Failed" ? cause.error : cause.message);
+export const reason = (cause: Cause) => {
+  switch (cause._tag) {
+    case "Failed":
+      return cause.error;
+    case "Unreachable":
+      return "Couldn't reach weir";
+    default:
+      return cause.message;
+  }
+};
 
 export type DigestEvent = Extract<Event, { readonly type: "digest" }>;
 

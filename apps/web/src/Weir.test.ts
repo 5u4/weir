@@ -21,7 +21,7 @@ const daemon = vi.hoisted(() => {
   const rows = new Map<number, Row>();
   const requests: Array<string> = [];
   const digests: Array<unknown> = [];
-  const replies: Array<Response> = [];
+  const replies: Array<Response | TypeError> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -31,7 +31,9 @@ const daemon = vi.hoisted(() => {
       digests.push(
         JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body as Uint8Array)),
       );
-      return replies.shift() ?? new Response(null, { status: 500 });
+      const reply = replies.shift() ?? new Response(null, { status: 500 });
+      if (reply instanceof TypeError) throw reply;
+      return reply;
     }
     const done = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]));
     if (method === "POST" && done !== undefined) {
@@ -258,6 +260,33 @@ it("a failed Digest earlier retries the same up_to, then lands and goes idle", a
   await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
   expect(daemon.digests).toEqual([{ up_to: 9 }, { up_to: 9 }]);
   expect(landed).toEqual([[]]);
+  registry.dispose();
+});
+
+it("a digest request that never reaches the daemon fails as Unreachable, not Interrupted", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const open = conversation(id);
+  const run = digestRun(id);
+  registry.mount(open);
+  registry.mount(run);
+  await settled(registry, open);
+
+  daemon.replies.push(new TypeError("Failed to fetch"));
+  const action = { _tag: "Now" } as const;
+  const land = () => () => {};
+  registry.set(runDigest, { id, action, range: { from: 1, to: 3 }, items: 3, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Failed"));
+  expect(registry.get(run)).toMatchObject({
+    _tag: "Failed",
+    action,
+    cause: { _tag: "Unreachable" },
+  });
+
+  daemon.replies.push(Response.json({ digests: [] }));
+  registry.set(runDigest, { id, action, range: { from: 1, to: 3 }, items: 3, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  expect(daemon.digests).toEqual([{}, {}]);
   registry.dispose();
 });
 

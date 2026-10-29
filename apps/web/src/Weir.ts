@@ -174,12 +174,7 @@ export const runDigest = Weir.runtime
             : client.digest({ params: { id }, payload: Digest.payload(action) });
         const outcome = yield* request.pipe(
           Effect.map(({ digests }) => ({ _tag: "Landed" as const, digests })),
-          Effect.catchTag(
-            ["NotFound", "DigestConflict", "DigestFailed", "DigestInterrupted"],
-            (error) => Effect.succeed(Digest.cause(error)),
-            (error) =>
-              Effect.succeed<Digest.Cause>({ _tag: "Interrupted", message: error.message }),
-          ),
+          Effect.catch((error) => Effect.succeed(Digest.cause(error))),
         );
         if (outcome._tag !== "Landed") {
           settle({ _tag: "Failed", action, range, items, cause: outcome });

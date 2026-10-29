@@ -5,6 +5,8 @@ import {
   type Event,
   NotFound,
 } from "@weir/daemon/Api";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { describe, expect, it } from "vitest";
 import { type Block, closedUi, type Detail, type ItemSummary, reader } from "./Blocks.ts";
 import {
@@ -16,6 +18,7 @@ import {
   observe,
   payload,
   type Run,
+  reason,
   seeded,
   settle,
 } from "./Digest.ts";
@@ -177,6 +180,27 @@ describe("rejections", () => {
     expect(cause(new DigestInterrupted({ message: "reloaded" }))).toEqual({
       _tag: "Interrupted",
       message: "reloaded",
+    });
+  });
+
+  it("a request that never reaches the daemon is Unreachable, any other client error Unexpected", () => {
+    const request = HttpClientRequest.post("http://weir.test/conversations/1/digest");
+    const unreachable = cause(
+      new HttpClientError.HttpClientError({
+        reason: new HttpClientError.TransportError({ request, description: "Failed to fetch" }),
+      }),
+    );
+    expect(unreachable).toEqual({ _tag: "Unreachable" });
+    expect(reason(unreachable)).toBe("Couldn't reach weir");
+    expect(
+      cause(
+        new HttpClientError.HttpClientError({
+          reason: new HttpClientError.EncodeError({ request, description: "bad body" }),
+        }),
+      ),
+    ).toEqual({
+      _tag: "Unexpected",
+      message: "Encode: bad body (POST http://weir.test/conversations/1/digest)",
     });
   });
 });
