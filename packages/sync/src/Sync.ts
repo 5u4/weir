@@ -86,14 +86,20 @@ export const syncStream = Effect.fnUntraced(function* (
   let streamId = Option.getOrNull(yield* Read.streamId(sourceId, descriptor.id));
   let counts: SyncCounts = { upserts: 0, deletions: 0 };
   return yield* Effect.gen(function* () {
-    const { stream, fromMeChanged } = yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const upserted = yield* Write.upsertStream(sourceId, descriptor);
-        yield* recomputeTags(tags, upserted.fromMeChanged);
-        return upserted;
-      }),
-    );
-    if (fromMeChanged.length > 0) yield* onWritten(fromMeChanged);
+    const { stream } = yield* sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const upserted = yield* Write.upsertStream(sourceId, descriptor);
+          yield* recomputeTags(tags, upserted.fromMeChanged);
+          return upserted;
+        }),
+      )
+      .pipe(
+        Effect.tap(({ fromMeChanged }) =>
+          fromMeChanged.length > 0 ? onWritten(fromMeChanged) : Effect.void,
+        ),
+        Effect.uninterruptible,
+      );
     streamId = stream.id;
     let cursor = stream.cursor;
     let more = true;
@@ -101,7 +107,9 @@ export const syncStream = Effect.fnUntraced(function* (
       const page = yield* callSource(sourceId, (signal) =>
         source.sync(descriptor.id, cursor, signal),
       ).pipe(Effect.flatMap(decodePage));
-      yield* onWritten(yield* sql.withTransaction(writePage(stream, page, tags)));
+      yield* sql
+        .withTransaction(writePage(stream, page, tags))
+        .pipe(Effect.flatMap(onWritten), Effect.uninterruptible);
       counts = {
         upserts: counts.upserts + page.upserts.length,
         deletions: counts.deletions + page.deletions.length,
@@ -113,7 +121,9 @@ export const syncStream = Effect.fnUntraced(function* (
   }).pipe(
     Effect.onExit((exit) =>
       Effect.gen(function* () {
-        if (streamId === null) return;
+        if (streamId === null || (Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause))) {
+          return;
+        }
         const finishedAt = yield* Clock.currentTimeMillis;
         const error = Exit.isFailure(exit) ? errorMessage(Cause.squash(exit.cause)) : null;
         yield* sql.withTransaction(

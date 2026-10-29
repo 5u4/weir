@@ -1,13 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import { decodeConfig } from "@weir/contract/Config";
-import type { SourcePlugin } from "@weir/contract/Source";
+import type { Source, SourcePlugin, SyncPage } from "@weir/contract/Source";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import { loadSources, type PluginRegistry, run, type SyncOutcome } from "../src/Scheduler.ts";
-import { page, rawItem, scriptedSource, storeLayer } from "./fixtures.ts";
+import { mailStream, page, rawItem, scriptedSource, storeLayer } from "./fixtures.ts";
 
 const FakeConfig = Schema.Struct({ command: Schema.NonEmptyArray(Schema.String) });
 
@@ -123,5 +124,69 @@ describe("run", () => {
       expect(yield* syncRunCount).toBe(2);
       yield* Fiber.interrupt(fiber);
     }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect(
+    "an interrupted pass aborts the in-flight page, keeps written pages, records nothing",
+    () =>
+      Effect.gen(function* () {
+        const calls: Array<string | null> = [];
+        const aborted: Array<string | null> = [];
+        const reports: Array<[string, SyncOutcome]> = [];
+        let hang = true;
+        const source: Source = {
+          streams: async () => [mailStream],
+          sync: (_streamId, cursor, signal) => {
+            calls.push(cursor);
+            if (cursor === null)
+              return Promise.resolve(
+                page({ cursor: "c1", more: true, backfill: "running", upserts: [rawItem("m1")] }),
+              );
+            if (!hang) return Promise.resolve(page({ cursor: "c2", upserts: [rawItem("m2")] }));
+            const { promise, reject } = Promise.withResolvers<SyncPage>();
+            signal.addEventListener("abort", () => {
+              aborted.push(cursor);
+              reject(signal.reason);
+            });
+            return promise;
+          },
+        };
+        const pass = run(
+          [{ id: "a", every: Duration.minutes(5), source }],
+          [],
+          () => Effect.void,
+          (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
+          () => Effect.void,
+        );
+        const sql = yield* SqlClient.SqlClient;
+        const stored = Effect.all({
+          items: sql<{ externalId: string }>`SELECT external_id FROM item ORDER BY seq`,
+          cursors: sql<{ cursor: string }>`SELECT cursor FROM stream`,
+        });
+
+        const first = yield* Effect.forkChild(pass);
+        for (let attempt = 0; attempt < 100 && calls.length < 2; attempt++) {
+          yield* TestClock.withLive(Effect.sleep("5 millis"));
+        }
+        yield* Fiber.interrupt(first);
+        expect(aborted).toEqual(["c1"]);
+        expect(reports).toEqual([]);
+        expect(yield* syncRunCount).toBe(0);
+        expect(yield* stored).toEqual({
+          items: [{ externalId: "m1" }],
+          cursors: [{ cursor: "c1" }],
+        });
+
+        hang = false;
+        const second = yield* Effect.forkChild(pass);
+        yield* awaitSyncRuns(1);
+        expect(calls.slice(2)).toEqual(["c1"]);
+        expect(reports).toEqual([["a", { listing: "ok", streamErrors: [] }]]);
+        expect(yield* stored).toEqual({
+          items: [{ externalId: "m1" }, { externalId: "m2" }],
+          cursors: [{ cursor: "c2" }],
+        });
+        yield* Fiber.interrupt(second);
+      }).pipe(Effect.provide(storeLayer())),
   );
 });
