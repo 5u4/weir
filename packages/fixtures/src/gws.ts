@@ -7,7 +7,14 @@ import {
   parseClock,
 } from "./mailbox.ts";
 
-export type GwsResult = { stdout: string; stderr: string; exitCode: number; delayMs: number };
+export type GwsCall = { command: string; params: Record<string, unknown>; failed: boolean };
+export type GwsResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  delayMs: number;
+  log?: { mailboxDir: string; call: GwsCall };
+};
 type Params = Record<string, unknown>;
 
 class GwsError extends Error {
@@ -84,35 +91,70 @@ const newerThanCutoff = (mailbox: Mailbox, q: unknown): number => {
   );
 };
 
-const listMessages = (mailbox: Mailbox, p: Params) => {
+const labelIdOf = (mailbox: Mailbox, raw: unknown): string | undefined => {
+  const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  if (values.length > 1) {
+    throw validation(`fake-gws supports at most one labelIds value, got ${values.length}`);
+  }
+  const [id] = values;
+  if (id === undefined) return undefined;
+  if (typeof id !== "string" || !mailbox.labels.some((l) => l.id === id)) {
+    throw invalidArgument(`Invalid label: ${String(id)}`);
+  }
+  return id;
+};
+
+const listThreads = (mailbox: Mailbox, p: Params) => {
   userOf(mailbox, p);
   const cutoff = newerThanCutoff(mailbox, p.q);
   const withSpamTrash = boolParam(p, "includeSpamTrash");
-  const matching = Object.values(mailbox.messages)
-    .filter(
-      (m) =>
-        Number(m.internalDate) > cutoff &&
-        (withSpamTrash || !m.labelIds.some((l) => l === "SPAM" || l === "TRASH")),
-    )
-    .sort((a, b) => Number(b.internalDate) - Number(a.internalDate) || b.id.localeCompare(a.id));
+  const labelId = labelIdOf(mailbox, p.labelIds);
+  const newest = new Map<string, Message>();
+  for (const m of Object.values(mailbox.messages)) {
+    if (
+      Number(m.internalDate) > cutoff &&
+      (withSpamTrash || !m.labelIds.some((l) => l === "SPAM" || l === "TRASH")) &&
+      (labelId === undefined || m.labelIds.includes(labelId))
+    ) {
+      const seen = newest.get(m.threadId);
+      if (seen === undefined || Number(m.internalDate) > Number(seen.internalDate)) {
+        newest.set(m.threadId, m);
+      }
+    }
+  }
+  const matching = [...newest.values()].sort(
+    (a, b) => Number(b.internalDate) - Number(a.internalDate) || b.id.localeCompare(a.id),
+  );
   const size = Math.min(intParam(p, "maxResults", 100, 500), mailbox.pageSize);
   const { items, nextPageToken } = page(matching, p, size);
   return {
-    ...(items.length ? { messages: items.map((m) => ({ id: m.id, threadId: m.threadId })) } : {}),
+    ...(items.length
+      ? {
+          threads: items.map((m) => ({ id: m.threadId, snippet: m.snippet })),
+        }
+      : {}),
     ...(nextPageToken ? { nextPageToken } : {}),
     resultSizeEstimate: matching.length,
   };
 };
 
-const getMessage = (mailbox: Mailbox, p: Params): Message => {
+const getThread = (mailbox: Mailbox, p: Params) => {
   userOf(mailbox, p);
   if (p.format !== undefined && p.format !== "full") {
     throw validation(`fake-gws supports only format "full", got "${String(p.format)}"`);
   }
   if (typeof p.id !== "string") throw validation("Required path parameter 'id' is missing");
-  const message = mailbox.messages[p.id];
-  if (!message) throw notFound();
-  return message;
+  const messages = Object.values(mailbox.messages)
+    .filter((m) => m.threadId === p.id)
+    .sort((a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id));
+  if (!messages.length) throw notFound();
+  const historyId = String(Math.max(...messages.map((m) => Number(m.historyId))));
+  return { id: p.id, historyId, messages };
+};
+
+const listLabels = (mailbox: Mailbox, p: Params) => {
+  userOf(mailbox, p);
+  return { labels: mailbox.labels };
 };
 
 const historyTypesOf = (raw: unknown): HistoryType[] => {
@@ -174,11 +216,12 @@ const COMMANDS: Record<
   string,
   { params: string[]; run: (mailbox: Mailbox, p: Params) => unknown }
 > = {
-  "gmail users messages list": {
-    params: ["userId", "q", "maxResults", "pageToken", "includeSpamTrash"],
-    run: listMessages,
+  "gmail users threads list": {
+    params: ["userId", "labelIds", "q", "maxResults", "pageToken", "includeSpamTrash"],
+    run: listThreads,
   },
-  "gmail users messages get": { params: ["userId", "id", "format"], run: getMessage },
+  "gmail users threads get": { params: ["userId", "id", "format"], run: getThread },
+  "gmail users labels list": { params: ["userId"], run: listLabels },
   "gmail users history list": {
     params: ["userId", "startHistoryId", "historyTypes", "maxResults", "pageToken"],
     run: listHistory,
@@ -226,8 +269,25 @@ export const runGws = (
   load: (mailboxDir: string | undefined) => Mailbox,
 ): GwsResult => {
   let delayMs = 0;
+  let called: { mailboxDir: string; command: string; params: Params } | undefined;
+  const finish = (stdout: string, stderr: string, exitCode: number): GwsResult => ({
+    stdout,
+    stderr,
+    exitCode,
+    delayMs,
+    ...(called
+      ? {
+          log: {
+            mailboxDir: called.mailboxDir,
+            call: { command: called.command, params: called.params, failed: exitCode !== 0 },
+          },
+        }
+      : {}),
+  });
   try {
     const { command, params, mailboxDir } = parseArgs(args);
+    const method = command.replace(/^gmail users /, "");
+    if (mailboxDir !== undefined) called = { mailboxDir, command: method, params };
     const spec = COMMANDS[command];
     if (!spec) throw validation(`error: fake-gws does not support the command '${command}'`);
     const unsupported = Object.keys(params).filter((k) => !spec.params.includes(k));
@@ -242,21 +302,15 @@ export const runGws = (
     } catch (e) {
       throw validation(`fake-gws cannot read mailbox ${mailboxDir}: ${(e as Error).message}`);
     }
-    delayMs = mailbox.delay?.[command.replace(/^gmail users /, "")] ?? 0;
-    return {
-      stdout: `${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`,
-      stderr: "",
-      exitCode: 0,
-      delayMs,
-    };
+    delayMs = mailbox.delay?.[method] ?? 0;
+    return finish(`${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`, "", 0);
   } catch (e) {
     if (!(e instanceof GwsError)) throw e;
     const body = { error: { code: e.code, message: e.message, reason: e.reason } };
-    return {
-      stdout: `${JSON.stringify(body, null, 2)}\n`,
-      stderr: `error[${e.kind}]: ${e.message}\n`,
-      exitCode: e.kind === "api" ? 1 : 3,
-      delayMs,
-    };
+    return finish(
+      `${JSON.stringify(body, null, 2)}\n`,
+      `error[${e.kind}]: ${e.message}\n`,
+      e.kind === "api" ? 1 : 3,
+    );
   }
 };

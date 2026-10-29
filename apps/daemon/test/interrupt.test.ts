@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
-import { seedMailbox, setDelay } from "@weir/fixtures";
+import { FIXTURE_NOW, seedThreads, setDelay } from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Duration from "effect/Duration";
@@ -19,8 +19,25 @@ const listDelay = 2_000;
 
 const slowMailbox = (home: WeirHome, writeConfig: (body: string) => void) => {
   const mailbox = join(home.root, "mailbox");
-  seedMailbox(mailbox);
-  setDelay(mailbox, { "messages list": listDelay });
+  const newest = Date.parse(FIXTURE_NOW);
+  seedThreads(
+    mailbox,
+    Array.from({ length: 3 * pageSize + 1 }, (_, i) => ({
+      id: `slow-${i}`,
+      subject: `Slow ${i}`,
+      labels: ["INBOX"],
+      messages: [
+        {
+          at: new Date(newest - (i + 1) * 3_600_000).toISOString().replace(/\.\d+Z$/, "+00:00"),
+          from: "priya",
+          to: ["me"],
+          text: `Note ${i}`,
+        },
+      ],
+    })),
+    { now: FIXTURE_NOW, pageSize },
+  );
+  setDelay(mailbox, { "threads list": listDelay });
   writeConfig(`[[source]]
 id = "gmail"
 plugin = "gws"

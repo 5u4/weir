@@ -2,7 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem, SourcePlugin } from "@weir/contract/Source";
-import { deliver as deliverMail, seedMailbox } from "@weir/fixtures";
+import {
+  deliver as deliverMail,
+  readCalls,
+  remove as removeMail,
+  seedMailbox,
+} from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Clock from "effect/Clock";
@@ -392,6 +397,147 @@ backfill = "newer_than:30d"
       expect(detail.items.length).toBeGreaterThan(0);
       expect(detail.items.every(({ stream }) => stream === "robin.ellis@example.com")).toBe(true);
       expect((yield* client.status()).sources[0]?.streams).toMatchObject([{ backfill: "done" }]);
+    }).pipe(Effect.scoped),
+  );
+});
+
+const gwsSource = (mailbox: string, labels: ReadonlyArray<string>, every = "100ms") => `[[source]]
+id = "gmail"
+plugin = "gws"
+sync_every = "${every}"
+
+[source.config]
+command = ["${join(import.meta.dirname, "../node_modules/.bin/fake-gws")}", "--mailbox", "${mailbox}"]
+backfill = "newer_than:30d"
+labels = ${JSON.stringify(labels)}
+`;
+
+describe("gws labels", () => {
+  const northwind = "Northwind migration: cutover plan and UAT sign-off";
+  const ridgeway = "Robin, your weekend list: 30% off trail packs ends Sunday";
+  const saltmarsh = "Last call: 2 nights for the price of 1 in Lisbon";
+
+  it.live("a label change re-backfills the new threads and keeps read state", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox, { until: "2026-10-23T07:00:00-07:00" });
+      writeConfig(gwsSource(mailbox, ["INBOX"]));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
+      const states = client
+        .search({ query: { q: "" } })
+        .pipe(
+          Effect.map(({ conversations }) =>
+            Object.fromEntries(conversations.map(({ title, state }) => [title, state])),
+          ),
+        );
+
+      yield* eventually(stream, (s) => s?.backfill === "done");
+      const inbox = yield* states;
+      expect(inbox[northwind]).toBe("read");
+      expect(inbox[saltmarsh]).toBeUndefined();
+      const thread = yield* client.search({ query: { q: "cutover plan" } });
+      const detail = yield* client.conversation({
+        params: { id: thread.conversations[0]?.id ?? 0 },
+      });
+      expect(detail.items.filter(({ from_me }) => from_me)).toHaveLength(3);
+
+      const [promo] = deliverMail(mailbox);
+      removeMail(mailbox, promo ?? "");
+      deliverMail(mailbox);
+      const live = yield* eventually(states, (s) => s[northwind] === "unread");
+      expect(live[northwind]).toBe("unread");
+      expect(live[ridgeway]).toBeUndefined();
+      expect((yield* stream)?.last_error).toBeNull();
+
+      writeConfig(gwsSource(mailbox, ["INBOX", "CATEGORY_PROMOTIONS"]));
+      yield* client.reload();
+      const running = yield* eventually(stream, (s) => s?.backfill === "running");
+      expect(running?.backfill).toBe("running");
+      const done = yield* eventually(stream, (s) => s?.backfill === "done");
+      expect(done).toMatchObject({ backfill: "done", last_error: null });
+      const widened = yield* states;
+      expect(widened[saltmarsh]).toBe("read");
+      expect(widened[ridgeway]).toBeUndefined();
+      expect(widened[northwind]).toBe("unread");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a thread under both INBOX and SENT is fetched once in a backfill pass", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox);
+      writeConfig(gwsSource(mailbox, ["INBOX", "SENT"]));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      yield* eventually(
+        client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0])),
+        (s) => s?.backfill === "done",
+      );
+      const thread = yield* client.search({ query: { q: "cutover plan" } });
+      const detail = yield* client.conversation({
+        params: { id: thread.conversations[0]?.id ?? 0 },
+      });
+      expect(detail.items.filter(({ from_me }) => from_me)).toHaveLength(3);
+      expect(detail.items.filter(({ from_me }) => !from_me).length).toBeGreaterThan(0);
+
+      const fetched = readCalls(mailbox)
+        .filter(({ command }) => command === "threads get")
+        .map(({ params }) => params.id);
+      const conversations = (yield* client.search({ query: { q: "" } })).conversations;
+      expect(fetched).toHaveLength(conversations.length);
+      expect(new Set(fetched).size).toBe(conversations.length);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a label change replays history from the last checkpoint in the same sync pass", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox);
+      writeConfig(gwsSource(mailbox, ["INBOX"], "1h"));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
+
+      const before = yield* eventually(stream, (s) => s?.last_sync_at != null);
+      const thread = yield* client.search({ query: { q: "cutover plan" } });
+      const detail = yield* client.conversation({
+        params: { id: thread.conversations[0]?.id ?? 0 },
+      });
+      const seq = detail.items[0]?.seq ?? 0;
+      const stored = yield* client.item({ params: { seq } });
+      expect(stored.deleted_at).toBeNull();
+      removeMail(mailbox, stored.link?.split("#all/")[1] ?? "");
+
+      writeConfig(gwsSource(mailbox, ["INBOX", "CATEGORY_PROMOTIONS"], "1h"));
+      yield* client.reload();
+      const after = yield* eventually(
+        stream,
+        (s) => s?.last_sync_at != null && s.last_sync_at !== before?.last_sync_at,
+      );
+      expect(after).toMatchObject({ backfill: "done", last_error: null });
+      expect((yield* client.item({ params: { seq } })).deleted_at).not.toBeNull();
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a label Gmail does not have fails the sync with an error naming it", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox);
+      writeConfig(gwsSource(mailbox, ["INBOX", "Nope"]));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      const failed = yield* eventually(
+        client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0])),
+        (s) => s?.last_error != null,
+      );
+      expect(failed?.last_error).toContain('Gmail has no label named "Nope"');
+      expect((yield* client.search({ query: { q: "" } })).conversations).toEqual([]);
     }).pipe(Effect.scoped),
   );
 });

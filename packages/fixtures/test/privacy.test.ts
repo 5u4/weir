@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import scenarios from "../scenarios.json" with { type: "json" };
-import { gmail, listAllIds } from "./fake-gws.ts";
+import { gmail } from "./fake-gws.ts";
 import { privacyReport } from "./privacy.ts";
 
 const fakeGwsOutputs = () => {
@@ -14,10 +14,13 @@ const fakeGwsOutputs = () => {
   };
   call("getProfile", { userId: "me" });
   call("settings sendAs list", { userId: "me" });
-  const { messages } = listAllIds("");
-  outputs.push(["fake-gws gmail users messages list (all pages)", messages]);
-  for (const m of messages) call("messages get", { userId: "me", id: m.id });
+  call("labels list", { userId: "me" });
   let pageToken: string | undefined;
+  do {
+    const page = call("threads list", { userId: "me", ...(pageToken ? { pageToken } : {}) });
+    for (const { id } of page.threads ?? []) call("threads get", { userId: "me", id });
+    pageToken = page.nextPageToken;
+  } while (pageToken);
   do {
     const page = call("history list", {
       userId: "me",

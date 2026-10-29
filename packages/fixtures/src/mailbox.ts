@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type GeneratedMessage, gmailMessages, type Message } from "./gmail.ts";
-import { scenarios } from "./scenarios.ts";
+import { scenarios, type Thread } from "./scenarios.ts";
 
 export type HistoryMessage = { id: string; threadId: string; labelIds?: string[] };
 export type HistoryLabelChange = { message: HistoryMessage; labelIds: string[] };
@@ -32,6 +32,26 @@ export type SendAs = {
   verificationStatus: string;
 };
 
+export type Label = { id: string; name: string; type: "system" | "user" };
+
+const SYSTEM_LABELS = [
+  "CHAT",
+  "SENT",
+  "INBOX",
+  "IMPORTANT",
+  "TRASH",
+  "DRAFT",
+  "SPAM",
+  "CATEGORY_FORUMS",
+  "CATEGORY_UPDATES",
+  "CATEGORY_PERSONAL",
+  "CATEGORY_PROMOTIONS",
+  "CATEGORY_SOCIAL",
+  "STARRED",
+  "UNREAD",
+];
+const USER_LABELS: Label[] = [{ id: "Label_1", name: "Receipts", type: "user" }];
+
 export type Mailbox = {
   now: string;
   historyFloor: string;
@@ -39,6 +59,7 @@ export type Mailbox = {
   pageSize: number;
   emailAddress: string;
   sendAs: SendAs[];
+  labels: Label[];
   messages: Record<string, Message>;
   pending: string[];
   history: History[];
@@ -107,6 +128,10 @@ const empty = (now: string): Mailbox => {
         verificationStatus: "accepted",
       },
     ],
+    labels: [
+      ...SYSTEM_LABELS.map((id): Label => ({ id, name: id, type: "system" })),
+      ...USER_LABELS,
+    ],
     messages: {},
     pending: [],
     history: [],
@@ -120,6 +145,15 @@ export const seed = (now: string): Mailbox => {
     if (Number(m.internalDate) <= cutoff) deliverOne(mailbox, m);
     else mailbox.pending.push(m.id);
   }
+  return mailbox;
+};
+
+export const seedWith = (now: string, threads: ReadonlyArray<Thread>): Mailbox => {
+  const mailbox = empty(now);
+  const messages = gmailMessages({ ...scenarios, threads: [...threads] }).sort(
+    (a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id),
+  );
+  for (const m of messages) deliverOne(mailbox, m);
   return mailbox;
 };
 
@@ -152,6 +186,10 @@ export const relabelMessage = (
   change: { add?: string[]; remove?: string[] },
 ) => {
   const message = delivered(mailbox, id);
+  const unknown = [...(change.add ?? []), ...(change.remove ?? [])].filter(
+    (l) => !mailbox.labels.some((label) => label.id === l),
+  );
+  if (unknown.length) throw new Error(`mailbox has no label ${unknown.join(", ")}`);
   const added = [...new Set(change.add ?? [])].filter((l) => !message.labelIds.includes(l));
   const removed = [...new Set(change.remove ?? [])].filter((l) => message.labelIds.includes(l));
   if (!added.length && !removed.length) return;
@@ -169,6 +207,8 @@ export const expire = (mailbox: Mailbox) => {
   mailbox.historyFloor = mailbox.historyId;
   mailbox.history = [];
 };
+
+export const callsFile = (dir: string) => join(dir, "calls.log");
 
 export const mailboxFile = (dir: string) => join(dir, "mailbox.json");
 

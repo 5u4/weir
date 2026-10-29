@@ -2690,7 +2690,7 @@
     {
       "id": "bank-1",
       "subject": "Card purchase: $42.18 at KOKORO RAMEN",
-      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "labels": ["INBOX", "CATEGORY_UPDATES", "Label_1"],
       "messages": [
         {
           "at": "2026-10-23T13:41:00-07:00",
@@ -2703,7 +2703,7 @@
     {
       "id": "bank-2",
       "subject": "Direct deposit received: $4,862.30",
-      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "labels": ["INBOX", "CATEGORY_UPDATES", "Label_1"],
       "messages": [
         {
           "at": "2026-10-22T05:02:00-07:00",
@@ -2716,7 +2716,7 @@
     {
       "id": "bank-3",
       "subject": "Card purchase: $1,284.00 at SALTMARSH TRAVEL",
-      "labels": ["INBOX", "CATEGORY_UPDATES"],
+      "labels": ["INBOX", "CATEGORY_UPDATES", "Label_1"],
       "messages": [
         {
           "at": "2026-10-24T19:55:00-07:00",

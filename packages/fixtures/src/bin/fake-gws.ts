@@ -1,11 +1,15 @@
 #!/usr/bin/env bun
+import { appendFileSync, existsSync } from "node:fs";
 import { runGws } from "../gws.ts";
 import { FIXTURE_NOW } from "../index.ts";
-import { readMailbox, seed } from "../mailbox.ts";
+import { callsFile, readMailbox, seed } from "../mailbox.ts";
 
 const result = runGws(process.argv.slice(2), (dir) =>
   dir === undefined ? seed(FIXTURE_NOW) : readMailbox(dir),
 );
+if (result.log && existsSync(result.log.mailboxDir)) {
+  appendFileSync(callsFile(result.log.mailboxDir), `${JSON.stringify(result.log.call)}\n`);
+}
 await Bun.sleep(result.delayMs);
 process.stdout.write(result.stdout);
 process.stderr.write(result.stderr);

@@ -17,6 +17,7 @@ sync_every = "5m"
 [source.config]
 command = ["fake-gws"]
 backfill = "newer_than:30d"
+labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]
 
 [[tag]]
 name = "Me"

@@ -1,6 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import expectedDigestsJson from "../expected-digests.json" with { type: "json" };
 import expected from "../expected-tags.json" with { type: "json" };
+import type { GwsCall } from "./gws.ts";
 import {
+  callsFile,
   deliverNext,
   expire,
   parseClock,
@@ -8,8 +11,12 @@ import {
   relabelMessage,
   removeMessage,
   seed,
+  seedWith,
   writeMailbox,
 } from "./mailbox.ts";
+import type { Thread } from "./scenarios.ts";
+
+export type { Thread };
 
 export const FIXTURE_NOW = "2026-10-25T09:00:00-07:00";
 
@@ -65,6 +72,7 @@ sync_every = "5m"
 [source.config]
 command = [${command.map(tomlString).join(", ")}]
 backfill = "newer_than:30d"
+labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]
 
 [[tag]]
 name = "Me"
@@ -124,6 +132,17 @@ export const seedMailbox = (dir: string, options: { until?: string } = {}) => {
   };
 };
 
+export const seedThreads = (
+  dir: string,
+  threads: ReadonlyArray<Thread>,
+  options: { now: string; pageSize: number },
+) => {
+  const mailbox = seedWith(options.now, threads);
+  mailbox.pageSize = options.pageSize;
+  writeMailbox(dir, mailbox);
+  return { delivered: Object.keys(mailbox.messages).length };
+};
+
 export const deliver = (dir: string, n = 1): string[] => {
   const mailbox = readMailbox(dir);
   const ids = deliverNext(mailbox, n);
@@ -160,4 +179,13 @@ export const setDelay = (dir: string, delay: Record<string, number>) => {
   const mailbox = readMailbox(dir);
   mailbox.delay = delay;
   writeMailbox(dir, mailbox);
+};
+
+export const readCalls = (dir: string): GwsCall[] => {
+  const file = callsFile(dir);
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as GwsCall);
 };
