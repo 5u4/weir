@@ -1,4 +1,4 @@
-import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
+import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -31,11 +31,23 @@ import {
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
 import { clockTime, dayAndTime, plural } from "./Health.ts";
+import { type Hit, hitKey } from "./Hits.ts";
+import { Highlighted } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
-import { dock, type Preview, pins, preview, readerUi, reading } from "./Reading.ts";
+import {
+  dock,
+  hitAt,
+  landing,
+  type Preview,
+  pins,
+  preview,
+  readerUi,
+  reading,
+  searchHits,
+} from "./Reading.ts";
 import { type ConversationId, route } from "./Route.ts";
 import { homeTag, tagHue } from "./Rows.ts";
-import { conversation, digestRun, dismiss, runDigest, tagOrder } from "./Weir.ts";
+import { conversation, digestRun, dismiss, runDigest, searchPattern, tagOrder } from "./Weir.ts";
 
 type Controls = {
   readonly run: Run;
@@ -180,6 +192,17 @@ type Watch = (end: HTMLElement) => () => void;
 
 type Mark = { readonly seen: number; readonly unread: (from: number) => void };
 
+type Found = {
+  readonly pattern: RegExp | null;
+  readonly hits: ReadonlyMap<string, Hit>;
+  readonly current: string | null;
+};
+
+const hitProps = (found: Found, key: string) =>
+  found.hits.has(key)
+    ? { "data-hit": key, "data-current": found.current === key ? "" : undefined }
+    : {};
+
 function End({ seq, watch }: { seq: number; watch: Watch }) {
   return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
 }
@@ -190,13 +213,17 @@ function Bubble({
   controls,
   watch,
   mark,
+  found,
 }: {
   item: ItemSummary;
   here: Here | undefined;
   controls: Controls | null;
   watch: Watch | undefined;
   mark: Mark;
+  found: Found;
 }) {
+  const key = hitKey({ _tag: "Item", seq: item.seq });
+  const hit = found.hits.get(key);
   const [shown, setPreview] = useAtom(preview);
   const run = controls?.run;
   const action: Action = { _tag: "From", seq: item.seq };
@@ -214,6 +241,7 @@ function Bubble({
     <>
       <div
         className={classes.filter(Boolean).join(" ")}
+        {...hitProps(found, key)}
         onClick={(event) => {
           if (!digestible || !(event.nativeEvent instanceof globalThis.PointerEvent)) return;
           if (event.nativeEvent.pointerType !== "touch") return;
@@ -225,9 +253,16 @@ function Bubble({
           {item.body_new.trim() === "" ? (
             <p className="body b-none">(no text)</p>
           ) : (
-            <p className="body">{item.body_new}</p>
+            <p className="body">
+              <Highlighted text={item.body_new} pattern={found.pattern} />
+            </p>
           )}
         </div>
+        {hit?._tag === "Item" && hit.field === "from" && (
+          <span className="bh" title="Matched in Sender">
+            Sender
+          </span>
+        )}
         {(digestible || item.seq <= mark.seen) && (
           <span className="dfh-w">
             {item.seq <= mark.seen && (
@@ -261,11 +296,13 @@ function Bubble({
 function Group({
   group,
   mark,
+  found,
   watch,
   controls = null,
 }: {
   group: Bubbles;
   mark: Mark;
+  found: Found;
   watch?: Watch;
   controls?: Controls | null;
 }) {
@@ -292,6 +329,7 @@ function Group({
           controls={controls}
           watch={watch}
           mark={mark}
+          found={found}
         />
       ))}
     </div>
@@ -324,11 +362,13 @@ function Topic({
   view,
   solo,
   mark,
+  found,
 }: {
   id: ConversationId;
   view: TopicView;
   solo: boolean;
   mark: Mark;
+  found: Found;
 }) {
   const [, setUi] = useAtom(readerUi(id));
   const toggle = () =>
@@ -340,15 +380,22 @@ function Topic({
     });
   const who = [...new Map(view.items.map((item) => [item.from_me || item.from.address, item]))];
   return (
-    <section className={`tp${view.open ? " open" : ""}${solo ? " solo" : ""}`}>
+    <section
+      className={`tp${view.open ? " open" : ""}${solo ? " solo" : ""}`}
+      {...hitProps(found, hitKey({ _tag: "Topic", key: view.key }))}
+    >
       {!solo && (
         <header className={`tp-h${view.open ? " pin" : ""}`} data-key={view.key}>
           <i className={`tsm tsm-${view.topic.state}`}>{stateNames[view.topic.state]}</i>
-          <h4 className="tp-t">{view.topic.title}</h4>
+          <h4 className="tp-t">
+            <Highlighted text={view.topic.title} pattern={found.pattern} />
+          </h4>
           {view.open && <Pin id={id} unfold={toggle} view={view} />}
         </header>
       )}
-      <p className="tp-b">{view.topic.body}</p>
+      <p className="tp-b">
+        <Highlighted text={view.topic.body} pattern={found.pattern} />
+      </p>
       <button
         type="button"
         className={`tp-o${view.open ? " on" : ""}`}
@@ -370,7 +417,7 @@ function Topic({
       {view.open && (
         <div className="unf">
           {view.groups.map((group) => (
-            <Group key={group.items[0]?.seq} group={group} mark={mark} />
+            <Group key={group.items[0]?.seq} group={group} mark={mark} found={found} />
           ))}
         </div>
       )}
@@ -389,12 +436,14 @@ function DigestCard({
   block,
   watch,
   mark,
+  found,
   controls,
 }: {
   id: ConversationId;
   block: Extract<Block, { _tag: "DigestCard" }>;
   watch: Watch;
   mark: Mark;
+  found: Found;
   controls: Controls | null;
 }) {
   const [, setUi] = useAtom(readerUi(id));
@@ -421,7 +470,11 @@ function DigestCard({
       aria-label={digest.headline}
       aria-busy={redoing || undefined}
     >
-      <header className={`dc-h${pinned ? " pin" : ""}`} data-key={only?.key}>
+      <header
+        className={`dc-h${pinned ? " pin" : ""}`}
+        data-key={only?.key}
+        {...hitProps(found, hitKey({ _tag: "Headline", digest: digest.id }))}
+      >
         {digest.from_seq !== digest.to_seq && (
           <p className="dc-m">
             {meta(digest, items).map((bit) => (
@@ -430,7 +483,9 @@ function DigestCard({
           </p>
         )}
         <div className="dc-hl">
-          <h3 className="dc-t">{digest.headline}</h3>
+          <h3 className="dc-t">
+            <Highlighted text={digest.headline} pattern={found.pattern} />
+          </h3>
           {solo && only?.open && <Pin id={id} unfold={unfoldOnly} view={only} />}
           <button type="button" className="dc-x" onClick={collapse}>
             Collapse
@@ -461,7 +516,7 @@ function DigestCard({
       </header>
       <div className="tps">
         {topics.map((view) => (
-          <Topic key={view.key} id={id} view={view} solo={solo} mark={mark} />
+          <Topic key={view.key} id={id} view={view} solo={solo} mark={mark} found={found} />
         ))}
       </div>
       <End seq={digest.to_seq} watch={watch} />
@@ -474,12 +529,14 @@ function BlockView({
   block,
   watch,
   mark,
+  found,
   controls,
 }: {
   id: ConversationId;
   block: Block;
   watch: Watch;
   mark: Mark;
+  found: Found;
   controls: Controls | null;
 }) {
   const [, setUi] = useAtom(readerUi(id));
@@ -526,7 +583,16 @@ function BlockView({
         </div>
       );
     case "DigestCard":
-      return <DigestCard id={id} block={block} watch={watch} mark={mark} controls={controls} />;
+      return (
+        <DigestCard
+          id={id}
+          block={block}
+          watch={watch}
+          mark={mark}
+          found={found}
+          controls={controls}
+        />
+      );
     case "GapBar": {
       const { gap } = block;
       const action: Action = { _tag: "UpTo", seq: block.up_to };
@@ -607,7 +673,7 @@ function BlockView({
     case "Skeleton":
       return <Skeleton items={block.items} />;
     case "Bubbles":
-      return <Group group={block} watch={watch} mark={mark} controls={controls} />;
+      return <Group group={block} watch={watch} mark={mark} found={found} controls={controls} />;
   }
 }
 
@@ -673,6 +739,15 @@ function Conversation({
   const run = useAtomValue(digestRun(id));
   const start = useAtomSet(runDigest);
   const setPreview = useAtomSet(preview);
+  const pattern = useAtomValue(searchPattern);
+  const hits = Option.getOrElse(useAtomValue(searchHits(id)), () => []);
+  const at = useAtomValue(hitAt(id));
+  const current = hits[at];
+  const found: Found = {
+    pattern,
+    hits: new Map(hits.map((hit) => [hitKey(hit), hit])),
+    current: current === undefined ? null : hitKey(current),
+  };
   const controls: Controls | null =
     detail.digest.earlier === null
       ? null
@@ -736,6 +811,7 @@ function Conversation({
             block={block}
             watch={watch}
             mark={mark}
+            found={found}
             controls={controls}
           />
         ),
@@ -804,6 +880,7 @@ export function Reader({ id }: { id: ConversationId }) {
   const result = useAtomValue(conversation(id));
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
+  useAtomMount(landing(id));
   const arm = () => dispatch({ _tag: "Input" });
   const track = (event: UIEvent<HTMLElement>) => {
     const next = new Map<TopicKey, number>();

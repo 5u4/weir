@@ -30,8 +30,15 @@ export function App() {
     Option.none,
   );
   const alert = Option.exists(loaded, ({ health }) => health.alert);
-  const form: CapForm =
-    open || reading ? "compact" : opened || current.query !== "" ? "search" : "full";
+  const form: CapForm = open
+    ? "compact"
+    : reading
+      ? current.query === ""
+        ? "compact"
+        : "result"
+      : opened || current.query !== ""
+        ? "search"
+        : "full";
   return (
     <>
       <div id="app" className={open || reading ? "reading" : undefined}>

@@ -1480,6 +1480,10 @@ button {
   --bb-ring: var(--line);
   --bb-me-bg: color-mix(in oklch, var(--me-bg) 72%, transparent);
 }
+[data-current] > .bb {
+  outline: 2.5px solid var(--ink);
+  outline-offset: 3px;
+}
 .bl + .bl .bb {
   border-top-left-radius: 6px;
 }
@@ -2117,6 +2121,94 @@ mark {
 .q-x:hover {
   background: var(--cap-hover);
   color: var(--cap-1);
+}
+.cap.result .cap-nav {
+  padding: 0 6px 0 18px;
+}
+.cap.result .q-i {
+  flex: none;
+  margin-right: 8px;
+  color: var(--cap-2);
+}
+.cap.result .q-x {
+  width: 36px;
+  height: 36px;
+}
+.q-st {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.q-st::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  margin: 0 12px 0 14px;
+  background: var(--cap-rule);
+}
+.q-n {
+  margin-right: 6px;
+  font: 600 14px / 1 var(--display);
+  color: var(--cap-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.q-n b {
+  font-weight: 700;
+  color: var(--cap-1);
+}
+.q-n span {
+  margin: 0 3px;
+  color: var(--cap-2);
+}
+.q-conv {
+  font: 500 13px / 1 var(--sans);
+}
+.q-b {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--cap-1);
+  transition: background-color 160ms;
+}
+.q-b:hover:not(:disabled) {
+  background: var(--cap-hover);
+}
+.q-b:disabled {
+  color: var(--cap-3);
+  opacity: 0.5;
+  cursor: default;
+}
+.q-b:not(:disabled):active {
+  transform: scale(0.94);
+}
+.bh {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.bh::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--mk);
+}
+.tp[data-current] > .tp-b,
+.dc-h[data-current] .dc-t {
+  border-radius: 6px;
+  outline: 2.5px solid var(--ink);
+  outline-offset: 4px;
 }
 .cap.search .cap-nav {
   padding: 8px 28px 18px;

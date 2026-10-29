@@ -7,10 +7,11 @@ import * as Reactivity from "effect/reactivity/Reactivity";
 import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./Blocks.ts";
 import type { Range } from "./Digest.ts";
 import { type DockAction, dockActions } from "./Dock.ts";
+import { type Hit, hitKey, hits, reveal } from "./Hits.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
 import type { Target } from "./Rows.ts";
-import { conversation, inTurn, intents, Weir } from "./Weir.ts";
+import { conversation, inTurn, intents, searchPattern, Weir } from "./Weir.ts";
 
 const debounce = 300;
 
@@ -211,3 +212,76 @@ export const pins = Atom.family((_: ConversationId) =>
 export type Preview = { readonly range: Range; readonly tapped: boolean } | null;
 
 export const preview = Atom.make<Preview>(null);
+
+export const searchHits = Atom.family((id: ConversationId) =>
+  Atom.make((get): Option.Option<ReadonlyArray<Hit>> => {
+    const detail = get(conversation(id));
+    return AsyncResult.isSuccess(detail)
+      ? Option.some(hits(detail.value, get(searchPattern)))
+      : Option.none();
+  }),
+);
+
+export const hitAt = Atom.family((_: ConversationId) => Atom.make(0).pipe(Atom.setIdleTTL(0)));
+
+const scrollToHit = (key: string, smooth: boolean) =>
+  requestAnimationFrame(() => {
+    const target = document.querySelector<HTMLElement>(`.reader [data-hit="${key}"]`);
+    const scroller = target?.closest(".r-scroll");
+    if (target == null || scroller == null) return;
+    const pin =
+      target.closest(".unf") === null
+        ? null
+        : (target.closest(".tp:not(.solo)") ?? target.closest(".dc"))?.querySelector(".pin");
+    const anchor = target.matches(".tp.solo")
+      ? (target.closest(".dc") ?? target)
+      : target.previousElementSibling?.matches(".g-head")
+        ? (target.closest(".sg") ?? target)
+        : target;
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        anchor.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        (pin?.getBoundingClientRect().height ?? 0) -
+        24,
+      behavior:
+        smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto",
+    });
+  });
+
+export const jumpTo = Atom.writable(
+  () => undefined,
+  (
+    ctx,
+    {
+      id,
+      at,
+      smooth,
+    }: { readonly id: ConversationId; readonly at: number; readonly smooth: boolean },
+  ) => {
+    const detail = ctx.get(conversation(id));
+    const hit = Option.getOrElse(ctx.get(searchHits(id)), () => [])[at];
+    if (!AsyncResult.isSuccess(detail) || hit === undefined) return;
+    ctx.set(hitAt(id), at);
+    ctx.set(readerUi(id), reveal(ctx.get(readerUi(id)), detail.value, hit));
+    scrollToHit(hitKey(hit), smooth);
+  },
+);
+
+export const landing = Atom.family((id: ConversationId) =>
+  Atom.make((get) => {
+    let landed = false;
+    get.subscribe(
+      searchHits(id),
+      (found) => {
+        if (landed || Option.isNone(found)) return;
+        landed = true;
+        if (found.value.length > 0) {
+          queueMicrotask(() => get.registry.set(jumpTo, { id, at: 0, smooth: false }));
+        }
+      },
+      { immediate: true },
+    );
+  }).pipe(Atom.setIdleTTL(0)),
+);

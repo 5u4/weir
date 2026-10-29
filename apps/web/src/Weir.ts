@@ -1,4 +1,5 @@
 import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daemon/Api";
+import { termPattern } from "@weir/daemon/Match";
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
@@ -278,6 +279,10 @@ const searchRequest = Atom.make((get) => searchParams(get(searchQuery))).pipe(
 
 export const searching = Atom.make((get) => Option.isSome(get(searchRequest)));
 
+export const searchPattern = Atom.make((get) => termPattern(get(searchQuery).text)).pipe(
+  Atom.withEquality((left: RegExp | null, right: RegExp | null) => left?.source === right?.source),
+);
+
 export const searchResult = Weir.runtime
   .atom((get) =>
     Option.match(get(searchRequest), {
@@ -294,6 +299,15 @@ export const searchResult = Weir.runtime
   .pipe(Atom.withReactivity(["list"]));
 
 export const searchGroup = Atom.make(Option.none<View>());
+
+export const leaveSearch = Atom.writable(
+  () => undefined,
+  (ctx, _: undefined) => {
+    ctx.set(searchOpen, false);
+    ctx.set(searchGroup, Option.none());
+    ctx.set(route, { _tag: "Type", query: "" });
+  },
+);
 
 export const found = Atom.make((get) => Option.flatten(AsyncResult.value(get(searchResult))));
 

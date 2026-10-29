@@ -15,12 +15,22 @@ import {
   widgetDescription,
 } from "./Notch.ts";
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
+import { hitAt, jumpTo, searchHits } from "./Reading.ts";
 import { groups, type ResultGroup } from "./Results.ts";
-import { type Route, route, statusOpen, type View } from "./Route.ts";
+import {
+  type ConversationId,
+  href,
+  listTops,
+  type Route,
+  route,
+  statusOpen,
+  type View,
+} from "./Route.ts";
 import { CloseIcon, StatusIcon } from "./Status.tsx";
 import {
   counts,
   found,
+  leaveSearch,
   pickedGroup,
   searchGroup,
   searching,
@@ -72,6 +82,14 @@ const scrollStrip = (arrow: HTMLElement, direction: 1 | -1) => {
   });
 };
 
+function Chevron({ direction }: { readonly direction: 1 | -1 }) {
+  return (
+    <svg className="ch-i" viewBox="0 0 16 16" aria-hidden="true">
+      <path d={direction === -1 ? "M10 3.5L5.5 8l4.5 4.5" : "M6 3.5L10.5 8 6 12.5"} />
+    </svg>
+  );
+}
+
 function StripArrow(props: { readonly direction: 1 | -1 }) {
   const prev = props.direction === -1;
   return (
@@ -82,9 +100,7 @@ function StripArrow(props: { readonly direction: 1 | -1 }) {
       aria-label={prev ? "Scroll tags left" : "Scroll tags right"}
       onClick={({ currentTarget }) => scrollStrip(currentTarget, props.direction)}
     >
-      <svg className="ch-i" viewBox="0 0 16 16" aria-hidden="true">
-        <path d={prev ? "M10 3.5L5.5 8l4.5 4.5" : "M6 3.5L10.5 8 6 12.5"} />
-      </svg>
+      <Chevron direction={props.direction} />
     </button>
   );
 }
@@ -189,10 +205,14 @@ function QueryField() {
   const tags = useAtomValue(tagOrder);
   const opened = useAtomValue(searchOpen);
   const setGroup = useAtomSet(searchGroup);
+  const [tops, setTops] = useAtom(listTops);
   const field = fieldOf(current.query, tags);
   const write = (next: Field) => {
     const query = queryOf(next);
     if (query === "") setGroup(Option.none());
+    if (current.query === "" && query !== "") {
+      setTops(new Map(tops).set(href(current), document.querySelector(".list")?.scrollTop ?? 0));
+    }
     navigate({ _tag: "Type", query });
   };
   return (
@@ -320,19 +340,56 @@ function SearchSentence() {
   });
 }
 
-export type CapForm = "full" | "compact" | "search";
+function HitStepper({ id }: { id: ConversationId }) {
+  const hits = useAtomValue(searchHits(id));
+  const at = useAtomValue(hitAt(id));
+  const jump = useAtomSet(jumpTo);
+  if (Option.isNone(hits)) return null;
+  const total = hits.value.length;
+  if (total === 0) {
+    return (
+      <span className="q-st">
+        <span className="q-n q-conv">Matched the conversation</span>
+      </span>
+    );
+  }
+  return (
+    <span className="q-st">
+      <span className="q-n" role="status" aria-label={`Match ${at + 1} of ${total}`}>
+        <b>{at + 1}</b>
+        <span>/</span>
+        {total}
+      </span>
+      {([-1, 1] as const).map((direction) => (
+        <button
+          key={direction}
+          type="button"
+          className="q-b"
+          aria-label={direction === -1 ? "Previous match" : "Next match"}
+          title={direction === -1 ? "Previous match" : "Next match"}
+          disabled={direction === -1 ? at === 0 : at === total - 1}
+          onClick={() => jump({ id, at: at + direction, smooth: true })}
+        >
+          <Chevron direction={direction} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
+export type CapForm = "full" | "compact" | "search" | "result";
 
 export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
-  const [current, navigate] = useAtom(route);
+  const current = useAtomValue(route);
   const setSearching = useAtomSet(searchOpen);
-  const setGroup = useAtomSet(searchGroup);
+  const leave = useAtomSet(leaveSearch);
   const loaded = AsyncResult.getOrElse(AsyncResult.map(useAtomValue(counts), Option.some), () =>
     Option.none(),
   );
   const active = current.query === "" ? current.view : null;
   return (
     <div
-      className={`cap${form === "full" ? "" : ` ${form}`}`}
+      className={`cap${form === "full" ? "" : form === "result" ? " compact result" : ` ${form}`}`}
       role="region"
       aria-label="weir"
       ref={measureCap}
@@ -343,22 +400,21 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
       {form !== "full" ? (
         <div
           className={form === "search" ? "cap-q" : "cap-nav"}
-          role={form === "search" ? "search" : undefined}
+          role={form === "compact" ? undefined : "search"}
           onMouseDown={keepFocus}
         >
-          {form === "search" && <SearchIcon />}
+          {form !== "compact" && <SearchIcon />}
           <QueryField />
-          {form === "search" ? (
+          {form === "result" && Option.isSome(current.conversation) && (
+            <HitStepper id={current.conversation.value} />
+          )}
+          {form !== "compact" ? (
             <button
               type="button"
               className="q-x"
               aria-label="Close search"
               title="Close search"
-              onClick={() => {
-                setSearching(false);
-                setGroup(Option.none());
-                navigate({ _tag: "Type", query: "" });
-              }}
+              onClick={() => leave(undefined)}
             >
               <CloseIcon />
             </button>

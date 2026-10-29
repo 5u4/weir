@@ -3,13 +3,13 @@ import type { Row } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useCallback } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import { reading } from "./Reading.ts";
 import { ResultList } from "./ResultList.tsx";
-import { ConversationId, route, type View, viewLabel } from "./Route.ts";
+import { ConversationId, href, listTops, route, type View, viewLabel } from "./Route.ts";
 import { face, shown, tagHue } from "./Rows.ts";
 import { clearAll, dismiss, intents, searching, tagOrder, viewList } from "./Weir.ts";
 
@@ -116,6 +116,22 @@ function ViewList() {
   const loaded = AsyncResult.getOrElse(AsyncResult.map(result, Option.some), () => Option.none());
   const rows = Option.map(loaded, (list) => shown(view, list.conversations, pending));
   const open = Option.getOrNull(current.conversation);
+  const [tops, setTops] = useAtom(listTops);
+  const at = href(current);
+  const top = tops.get(at);
+  const restore = useCallback(
+    (rows: HTMLElement | null) => {
+      const list = rows?.closest(".list");
+      if (list == null || top === undefined) return;
+      list.scrollTop = top;
+      setTops((saved) => {
+        const next = new Map(saved);
+        next.delete(at);
+        return next;
+      });
+    },
+    [at, top, setTops],
+  );
   return (
     <>
       <header className="l-head">
@@ -151,7 +167,7 @@ function ViewList() {
             list.length === 0 ? (
               <Empty view={view} />
             ) : (
-              <ul className={`rows${view === "cleared" ? " cleared" : ""}`}>
+              <ul className={`rows${view === "cleared" ? " cleared" : ""}`} ref={restore}>
                 {list.map((row) => {
                   const props: RowProps = {
                     row,
