@@ -39,7 +39,7 @@ export interface Job {
 
 export interface Queue {
   readonly running: ReadonlyArray<Job>;
-  readonly waiting: number;
+  readonly queued: ReadonlyArray<Job>;
 }
 
 export type JobStatus =
@@ -350,13 +350,13 @@ export const make = Effect.fnUntraced(function* (
         { _tag: "Redo", id },
       ),
     queue: Effect.map(Ref.get(queue), (jobs) => {
-      const all = [...jobs.values()];
+      const all = [...jobs.values()].map(({ running, conversationId, range, trigger }) => ({
+        running,
+        job: { conversationId, range, trigger },
+      }));
       return {
-        running: all
-          .filter(({ running }) => running)
-          .map(({ conversationId, range, trigger }) => ({ conversationId, range, trigger })),
-        waiting: new Set(all.filter(({ running }) => !running).map((job) => job.conversationId))
-          .size,
+        running: all.filter(({ running }) => running).map(({ job }) => job),
+        queued: all.filter(({ running }) => !running).map(({ job }) => job),
       };
     }),
   } satisfies Digester;

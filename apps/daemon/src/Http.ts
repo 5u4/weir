@@ -114,7 +114,13 @@ const status = Effect.fnUntraced(function* (
       open: row?.open ?? 0,
     };
   };
-  const queue = Option.isNone(digester) ? { running: [], waiting: 0 } : yield* digester.value.queue;
+  const digestJob = ({ conversationId, range, trigger }: Digester.Job) => ({
+    conversation_id: conversationId,
+    from_seq: range.fromSeq,
+    to_seq: range.toSeq,
+    trigger,
+  });
+  const queue = Option.isNone(digester) ? { running: [], queued: [] } : yield* digester.value.queue;
   const lastRun = yield* Read.digestRunsSince(
     DateTime.subtract(yield* DateTime.now, { hours: lastRunHours }),
   );
@@ -164,13 +170,8 @@ const status = Effect.fnUntraced(function* (
         : {
             ai: state.config.digest.ai,
             threshold: state.config.digest.threshold,
-            running: queue.running.map(({ conversationId, range, trigger }) => ({
-              conversation_id: conversationId,
-              from_seq: range.fromSeq,
-              to_seq: range.toSeq,
-              trigger,
-            })),
-            waiting: queue.waiting,
+            running: queue.running.map(digestJob),
+            queued: queue.queued.map(digestJob),
             last_run: Option.getOrNull(
               Option.map(lastRun, ({ at, written, failed, avgMs }) => ({
                 at: DateTime.formatIso(at),

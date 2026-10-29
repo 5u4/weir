@@ -179,7 +179,7 @@ const demo = Effect.gen(function* () {
                 ({ conversation_id, from_seq, to_seq }) =>
                   `running ${conversation_id} #${from_seq}-#${to_seq}`,
               ),
-              ...(digest.waiting > 0 ? [`${digest.waiting} waiting`] : []),
+              ...(digest.queued.length > 0 ? [`${digest.queued.length} queued`] : []),
             ].join(", ");
       return { done: pending === "", pending, value: status };
     }),
