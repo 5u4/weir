@@ -84,37 +84,6 @@ const newerThanCutoff = (mailbox: Mailbox, q: unknown): number => {
   );
 };
 
-const listMessages = (mailbox: Mailbox, p: Params) => {
-  userOf(mailbox, p);
-  const cutoff = newerThanCutoff(mailbox, p.q);
-  const withSpamTrash = boolParam(p, "includeSpamTrash");
-  const matching = Object.values(mailbox.messages)
-    .filter(
-      (m) =>
-        Number(m.internalDate) > cutoff &&
-        (withSpamTrash || !m.labelIds.some((l) => l === "SPAM" || l === "TRASH")),
-    )
-    .sort((a, b) => Number(b.internalDate) - Number(a.internalDate) || b.id.localeCompare(a.id));
-  const size = Math.min(intParam(p, "maxResults", 100, 500), mailbox.pageSize);
-  const { items, nextPageToken } = page(matching, p, size);
-  return {
-    ...(items.length ? { messages: items.map((m) => ({ id: m.id, threadId: m.threadId })) } : {}),
-    ...(nextPageToken ? { nextPageToken } : {}),
-    resultSizeEstimate: matching.length,
-  };
-};
-
-const getMessage = (mailbox: Mailbox, p: Params): Message => {
-  userOf(mailbox, p);
-  if (p.format !== undefined && p.format !== "full") {
-    throw validation(`fake-gws supports only format "full", got "${String(p.format)}"`);
-  }
-  if (typeof p.id !== "string") throw validation("Required path parameter 'id' is missing");
-  const message = mailbox.messages[p.id];
-  if (!message) throw notFound();
-  return message;
-};
-
 const labelIdOf = (mailbox: Mailbox, raw: unknown): string | undefined => {
   const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
   if (values.length > 1) {
@@ -240,11 +209,6 @@ const COMMANDS: Record<
   string,
   { params: string[]; run: (mailbox: Mailbox, p: Params) => unknown }
 > = {
-  "gmail users messages list": {
-    params: ["userId", "q", "maxResults", "pageToken", "includeSpamTrash"],
-    run: listMessages,
-  },
-  "gmail users messages get": { params: ["userId", "id", "format"], run: getMessage },
   "gmail users threads list": {
     params: ["userId", "labelIds", "q", "maxResults", "pageToken", "includeSpamTrash"],
     run: listThreads,

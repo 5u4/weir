@@ -101,10 +101,10 @@ const summarize = (itemTags: ItemTags[]) => {
 };
 
 const pluginItemTags = async (): Promise<ItemTags[]> => {
-  const source = gws.create({ command: [join(import.meta.dir, "../../../node_modules/.bin/fake-gws")], backfill: "newer_than:30d" });
+  const source = gws.create({ command: [join(import.meta.dir, "../../../node_modules/.bin/fake-gws")], backfill: "newer_than:30d", labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"] });
   const [stream] = await source.streams();
   if (!stream) throw new Error("gws plugin returned no stream");
-  const result: ItemTags[] = [];
+  const result = new Map<string, ItemTags>();
   let cursor: string | null = null;
   for (;;) {
     const page = await source.sync(stream.id, cursor, new AbortController().signal);
@@ -120,10 +120,10 @@ const pluginItemTags = async (): Promise<ItemTags[]> => {
         body: i.body,
         raw: i.raw,
       };
-      result.push({ threadId: i.threadId ?? i.containerId, tags: tags.filter((t) => match(t.match, input)).map((t) => t.name) });
+      result.set(i.externalId, { threadId: i.threadId ?? i.containerId, tags: tags.filter((t) => match(t.match, input)).map((t) => t.name) });
     }
     cursor = page.cursor;
-    if (!page.more) return result;
+    if (!page.more) return [...result.values()];
   }
 };
 

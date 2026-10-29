@@ -57,14 +57,21 @@ const SendAsList = Schema.Struct({
   sendAs: Schema.optionalKey(Schema.Array(Schema.Struct({ sendAsEmail: Schema.String }))),
 });
 
-const MessageRef = Schema.Struct({ id: Schema.String });
+const LabelList = Schema.Struct({
+  labels: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  ),
+});
 
-const MessageList = Schema.Struct({
-  messages: Schema.optionalKey(Schema.Array(MessageRef)),
+const ThreadList = Schema.Struct({
+  threads: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))),
   nextPageToken: Schema.optionalKey(Schema.String),
 });
 
-const Changes = Schema.optionalKey(Schema.Array(Schema.Struct({ message: MessageRef })));
+const Thread = Schema.Struct({ messages: Schema.optionalKey(Schema.Array(Message)) });
+
+const HistoryMessage = Schema.Struct({ id: Schema.String, threadId: Schema.String });
+const Changes = Schema.optionalKey(Schema.Array(Schema.Struct({ message: HistoryMessage })));
 
 const HistoryList = Schema.Struct({
   history: Schema.optionalKey(
@@ -72,8 +79,11 @@ const HistoryList = Schema.Struct({
       Schema.Struct({
         messagesAdded: Changes,
         messagesDeleted: Changes,
-        labelsAdded: Changes,
-        labelsRemoved: Changes,
+        labelsAdded: Schema.optionalKey(
+          Schema.Array(
+            Schema.Struct({ message: HistoryMessage, labelIds: Schema.Array(Schema.String) }),
+          ),
+        ),
       }),
     ),
   ),
@@ -136,8 +146,12 @@ export const getProfile = (command: Command, signal?: AbortSignal) =>
 export const listSendAs = (command: Command) =>
   call(command, ["settings", "sendAs", "list"], { userId: "me" }, SendAsList);
 
-export const listMessages = (
+export const listLabels = (command: Command, signal: AbortSignal) =>
+  call(command, ["labels", "list"], { userId: "me" }, LabelList, signal);
+
+export const listThreads = (
   command: Command,
+  labelId: string,
   q: string,
   pageToken: string | null,
   maxResults: number,
@@ -145,14 +159,20 @@ export const listMessages = (
 ) =>
   call(
     command,
-    ["messages", "list"],
-    { userId: "me", q, maxResults, ...(pageToken === null ? {} : { pageToken }) },
-    MessageList,
+    ["threads", "list"],
+    {
+      userId: "me",
+      labelIds: [labelId],
+      q,
+      maxResults,
+      ...(pageToken === null ? {} : { pageToken }),
+    },
+    ThreadList,
     signal,
   );
 
-export const getMessage = (command: Command, id: string, signal: AbortSignal) =>
-  call(command, ["messages", "get"], { userId: "me", id, format: "full" }, Message, signal);
+export const getThread = (command: Command, id: string, signal: AbortSignal) =>
+  call(command, ["threads", "get"], { userId: "me", id, format: "full" }, Thread, signal);
 
 export const listHistory = (
   command: Command,
@@ -166,7 +186,7 @@ export const listHistory = (
     {
       userId: "me",
       startHistoryId,
-      historyTypes: ["messageAdded", "messageDeleted", "labelAdded", "labelRemoved"],
+      historyTypes: ["messageAdded", "messageDeleted", "labelAdded"],
       ...(pageToken === null ? {} : { pageToken }),
     },
     HistoryList,

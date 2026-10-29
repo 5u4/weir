@@ -169,6 +169,14 @@ describe("fake-gws default mailbox", () => {
     expect(run.stderr).toMatch(/^error\[validation\]: /);
   });
 
+  it.each([
+    ["messages", "list"],
+    ["messages", "get"],
+  ])("rejects the unimplemented command %s %s", (...method) => {
+    const run = fakeGws(["gmail", "users", ...method, "--params", '{"userId":"me"}']);
+    expect(run.exitCode).toBe(3);
+  });
+
   it("rejects formats other than full", () => {
     const run = fakeGws([
       "gmail",
@@ -285,16 +293,16 @@ describe("fake-gws --mailbox", () => {
   it("sleeps before answering only the commands named in delay", () => {
     const dir = tempMailbox();
     seedMailbox(dir);
-    setDelay(dir, { "messages list": 1500 });
+    setDelay(dir, { "threads list": 1500 });
     const timed = (command: string) => {
       const start = performance.now();
       const answer = gmail(command, { userId: "me" }, dir);
       return { answer, ms: performance.now() - start };
     };
-    const list = timed("messages list");
+    const list = timed("threads list");
     const profile = timed("getProfile");
     expect(list.ms).toBeGreaterThanOrEqual(1500);
-    expect(list.answer.messages).toHaveLength(10);
+    expect(list.answer.threads).toHaveLength(10);
     expect(profile.ms).toBeLessThan(1500);
     expect(profile.answer.messagesTotal).toBe(32);
   });
