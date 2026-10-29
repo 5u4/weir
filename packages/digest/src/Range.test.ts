@@ -4,7 +4,15 @@ import { DigestId, Seq } from "@weir/store/Rows";
 import * as DateTime from "effect/DateTime";
 import * as Result from "effect/Result";
 import { context, type DigestText } from "./Prompt.ts";
-import { autoRange, backlog, chunks, type ItemLite, manualRange, type Span } from "./Range.ts";
+import {
+  autoRange,
+  backlog,
+  chunks,
+  gaps,
+  type ItemLite,
+  manualRange,
+  type Span,
+} from "./Range.ts";
 
 const since = DateTime.makeUnsafe("2026-10-28T09:00:00Z");
 
@@ -160,6 +168,42 @@ describe("manualRange", () => {
         manualRange(small, [span(1, 7, 12)], { _tag: "Redo", id: DigestId.make(9) }, maxInput),
       ),
     ).toBe(true);
+  });
+});
+
+describe("gaps", () => {
+  const items = (chars: ReadonlyArray<number>) =>
+    chars.map((count, index) => item(index + 1, count));
+  const gap = (fromSeq: number, toSeq: number, count: number, runItems: number) => ({
+    ...range(fromSeq, toSeq),
+    items: count,
+    runItems,
+  });
+
+  it("has one earlier entry per run before a digest, in seq order, and the tail as now", () => {
+    const eight = items([100, 100, 100, 100, 100, 100, 100, 100]);
+    expect(gaps(eight, [span(2, 6, 6), span(1, 3, 3)], 150)).toEqual({
+      earlier: [
+        { ...gap(2, 2, 1, 2), beforeDigest: DigestId.make(1) },
+        { ...gap(5, 5, 1, 2), beforeDigest: DigestId.make(2) },
+      ],
+      now: gap(7, 8, 2, 2),
+    });
+  });
+
+  it("covers an item over maxInput alone", () => {
+    expect(gaps(items([100, 30000, 100]), [span(1, 3, 3)], maxInput)).toEqual({
+      earlier: [{ ...gap(2, 2, 1, 2), beforeDigest: DigestId.make(1) }],
+      now: null,
+    });
+  });
+
+  it("has no earlier entry for adjacent digests and no now without undigested items", () => {
+    expect(gaps(items([100, 100]), [span(1, 1, 1), span(2, 2, 2)], maxInput)).toEqual({
+      earlier: [],
+      now: null,
+    });
+    expect(gaps(items([100, 100]), [], maxInput)).toEqual({ earlier: [], now: gap(1, 2, 2, 2) });
   });
 });
 

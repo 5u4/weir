@@ -174,6 +174,14 @@ export const ItemSummary = Schema.Struct({
   body_new: Schema.String,
 });
 
+export const DigestGap = Schema.Struct({
+  from_seq: Schema.Int,
+  to_seq: Schema.Int,
+  items: Schema.Int,
+  run_items: Schema.Int,
+});
+export type DigestGap = typeof DigestGap.Type;
+
 export const Conversation = Schema.Struct({
   id: Schema.Int,
   source: Schema.String,
@@ -191,6 +199,10 @@ export const Conversation = Schema.Struct({
   digests: Schema.Array(Digest),
   digest: Schema.Struct({
     backlog: Schema.NullOr(Schema.Struct({ chars: Schema.Int, threshold: Schema.Int })),
+    earlier: Schema.NullOr(
+      Schema.Array(Schema.Struct({ before_digest: Schema.Int, ...DigestGap.fields })),
+    ),
+    now: Schema.NullOr(DigestGap),
     last_failure: Schema.NullOr(DigestRun),
   }),
 });

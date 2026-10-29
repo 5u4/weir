@@ -119,6 +119,59 @@ export const manualRange = (
   return Result.succeed({ fromSeq: items[from]?.seq ?? request.seq, toSeq: request.seq });
 };
 
+export interface Gap extends Range {
+  readonly items: number;
+  readonly runItems: number;
+}
+
+export interface EarlierGap extends Gap {
+  readonly beforeDigest: DigestId;
+}
+
+export interface Gaps {
+  readonly earlier: ReadonlyArray<EarlierGap>;
+  readonly now: Gap | null;
+}
+
+const gap = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  run: ReadonlyArray<ItemLite>,
+  request: Request,
+  maxInput: number,
+): Gap | null => {
+  if (run.length === 0) return null;
+  const range = manualRange(items, spans, request, maxInput);
+  if (Result.isFailure(range)) return null;
+  const { fromSeq, toSeq } = range.success;
+  return {
+    fromSeq,
+    toSeq,
+    items: run.filter(({ seq }) => fromSeq <= seq && seq <= toSeq).length,
+    runItems: run.length,
+  };
+};
+
+export const gaps = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  maxInput: number,
+): Gaps => {
+  const earlier = spans
+    .toSorted((a, b) => a.fromSeq - b.fromSeq)
+    .flatMap((span): Array<EarlierGap> => {
+      const floor = floorOf(spans.filter(({ toSeq }) => toSeq < span.fromSeq));
+      const run = items.filter(({ seq }) => floor < seq && seq < span.fromSeq);
+      const last = run.at(-1);
+      if (last === undefined) return [];
+      const found = gap(items, spans, run, { _tag: "UpTo", seq: last.seq }, maxInput);
+      return found === null ? [] : [{ ...found, beforeDigest: span.id }];
+    });
+  const floor = floorOf(spans);
+  const tail = items.filter(({ seq }) => seq > floor);
+  return { earlier, now: gap(items, spans, tail, { _tag: "Now" }, maxInput) };
+};
+
 export const chunks = (
   items: ReadonlyArray<ItemLite>,
   range: Range,
