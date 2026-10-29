@@ -8,12 +8,10 @@ import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import { reading } from "./Reading.ts";
-import { ConversationId, route, type View } from "./Route.ts";
+import { ResultList } from "./ResultList.tsx";
+import { ConversationId, route, type View, viewLabel } from "./Route.ts";
 import { face, shown, tagHue } from "./Rows.ts";
-import { clearAll, dismiss, intents, tagOrder, viewList } from "./Weir.ts";
-
-const viewLabel = (view: View) =>
-  view === "untagged" ? "Untagged" : view === "cleared" ? "Cleared" : view.slice("tag:".length);
+import { clearAll, dismiss, intents, searching, tagOrder, viewList } from "./Weir.ts";
 
 type RowProps = {
   row: Row;
@@ -107,7 +105,7 @@ const headMeta = (view: View, rows: ReadonlyArray<Row>) => {
   return `${plural(rows.length, "conversation")}${state}`;
 };
 
-export function List() {
+function ViewList() {
   const [current, navigate] = useAtom(route);
   const { view } = current;
   const result = useAtomValue(viewList(view));
@@ -175,4 +173,8 @@ export function List() {
       )}
     </>
   );
+}
+
+export function List() {
+  return useAtomValue(searching) ? <ResultList /> : <ViewList />;
 }
