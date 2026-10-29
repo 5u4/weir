@@ -537,9 +537,9 @@ flowchart TD
 <div class="tw"><table>
 <thead><tr><th>入口</th><th>范围</th></tr></thead>
 <tbody>
-<tr><td>Digest now</td><td><code>(floor, last_seq]</code>，也就是最后一份 digest 之后还没 digest 的尾巴，不管字数够不够。</td></tr>
+<tr><td>Digest now</td><td><code>(floor, last_seq]</code>，也就是最后一份 digest 之后还没 digest 的尾巴，不管字数够不够。范围是整段尾巴，超过一次调用的上限时按段写。阅读区从 <code>digest.now</code> 读这段：<code>{from_seq, to_seq, items, run_items}</code>，尾巴为空时是 <code>null</code>。</td></tr>
 <tr><td>Digest from here</td><td>还没 digest 的每条原文气泡，不管是排在某份 digest 前面的一段，还是最后的尾巴，悬停或聚焦时都显示这个按钮，按钮上写它覆盖几条。窄屏上点一下气泡显示它。范围从这条到下一份 digest 的 <code>from_seq - 1</code>，后面没有 digest 时到 <code>last_seq</code>。</td></tr>
-<tr><td>Digest earlier</td><td>Digest now 的反方向。排在某份 digest 前面的一段原文，底部紧挨着那份 digest 的地方有一条 <code>Not digested</code>、<code>N messages above</code> 和这个按钮。范围从这段的最后一条往前数，正文累计到一次调用的上限 24000 字符为止，至少一条，不越过上一份 digest。一次装不下整段时，按钮写成 <code>Digest K earlier</code>。写完后条子留在新卡片上面，数字变小，再点就继续往前。这段原文全部 digest 完，条子就消失。</td></tr>
+<tr><td>Digest earlier</td><td>Digest now 的反方向。排在某份 digest 前面的一段原文，底部紧挨着那份 digest 的地方有一条 <code>Not digested</code>、<code>N messages above</code> 和这个按钮。范围从这段的最后一条往前数，正文累计到一次调用的上限 24000 字符为止，至少一条，不越过上一份 digest。一次装不下整段时，按钮写成 <code>Digest K earlier</code>。写完后条子留在新卡片上面，数字变小，再点就继续往前。这段原文全部 digest 完，条子就消失。阅读区从 <code>digest.earlier</code> 读这些条子：每份前面有未 digest 原文的 digest 对应一项 <code>{before_digest, from_seq, to_seq, items, run_items}</code>。<code>before_digest</code> 是紧挨着的那份 digest 的 id，<code>from_seq</code>–<code>to_seq</code> 是点一次要写的范围，<code>items</code> 是 K，<code>run_items</code> 是 N。</td></tr>
 <tr><td>Redo</td><td>在 digest 卡片上点它。用当前的 prompt 和模型重写同一个范围，替换原来那一行：同一个事务里先插入新行，再删掉旧行和它的搜索索引行。新行拿新的 id，id 不复用，旧 id 之后返回 404。原来的范围按当前的 <code>max_input</code> 一次装不下时，不调用 AI，直接返回 409 <code>DigestConflict</code>，消息是 <code>#a-#b is over max_input N; raise max_input to redo it</code>。</td></tr>
 </tbody></table></div>
 <p>前三个入口只填空隙，Redo 只替换同一个范围，所以 digest 之间从不重叠。手动写的 digest 也算进 <code>floor</code>。所以自动链条会从它之后接着算，不会重复覆盖。悬停在 Digest from here 或 Digest earlier 上时，要被 digest 的那几条原文会被标出来。</p>
@@ -555,7 +555,7 @@ flowchart TD
 <li><code>command</code> 是 argv 数组，不经过 shell 拼接。</li>
 <li>core 拼好完整的 prompt，从 stdin 传入。prompt 包括系统指令、输出语言、<code>guide</code> 文件、上下文、数据，以及输出 schema。</li>
 <li>core 取 stdout 里最后一个 JSON 块，用 Schema 校验。这样能兼容在 JSON 前后输出多余文字的 harness。</li>
-<li>校验失败时重试，同一个范围最多调用 3 次。重试的 prompt 末尾带上校验错误，并重申各项长度和数量限制。3 次都失败，原始输出写到 <code>~/.weir/logs/digest/</code>，<code>digest_run</code> 记下错误，这个 conversation 的阅读区显示失败和重试按钮。阅读区的数据来自 <code>GET /conversations/:id</code>：<code>digests[]</code> 是已有的 digest，<code>digest.last_failure</code> 是这个 conversation 最近一次运行失败时的 <code>digest_run</code>，最近一次成功时是 <code>null</code>。<code>digest.backlog</code> 是 <code>{chars, threshold}</code>，<code>chars</code> 数 <code>ai_since</code> 之后、最后一份 digest 之后还没 digest 的字数；不属于 AI tag 或没配 <code>[digest]</code> 时是 <code>null</code>。之后自动 digest 不再重试这个范围，直到有新 item 让范围的末尾往后移，或者 reload。</li>
+<li>校验失败时重试，同一个范围最多调用 3 次。重试的 prompt 末尾带上校验错误，并重申各项长度和数量限制。3 次都失败，原始输出写到 <code>~/.weir/logs/digest/</code>，<code>digest_run</code> 记下错误，这个 conversation 的阅读区显示失败和重试按钮。阅读区的数据来自 <code>GET /conversations/:id</code>：<code>digests[]</code> 是已有的 digest，<code>digest.last_failure</code> 是这个 conversation 最近一次运行失败时的 <code>digest_run</code>，最近一次成功时是 <code>null</code>。<code>digest.backlog</code> 是 <code>{chars, threshold}</code>，<code>chars</code> 数 <code>ai_since</code> 之后、最后一份 digest 之后还没 digest 的字数；不属于 AI tag 或没配 <code>[digest]</code> 时是 <code>null</code>。<code>digest.earlier</code> 和 <code>digest.now</code> 是 Digest earlier 和 Digest now 的范围（见<a href="#manual">手动入口</a>），不看 AI tag；没配 <code>[digest]</code> 时都是 <code>null</code>，配了但没有这样的空隙时 <code>earlier</code> 是 <code>[]</code>。之后自动 digest 不再重试这个范围，直到有新 item 让范围的末尾往后移，或者 reload。</li>
 <li>不同 conversation 的调用可以并发，并发数由 profile 的 <code>concurrency</code> 决定。同一个 conversation 的调用按顺序跑，因为后一份要用前一份当上下文。</li>
 </ul>
 <details>
