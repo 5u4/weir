@@ -61,22 +61,24 @@ export const href = (route: Route) => {
 
 export type Navigation =
   | { readonly _tag: "Go"; readonly to: Route }
+  | { readonly _tag: "Replace"; readonly to: Route }
   | { readonly _tag: "Type"; readonly query: string };
 
 export const destination = (previous: Route, navigation: Navigation): Route =>
-  navigation._tag === "Go"
-    ? navigation.to
-    : {
+  navigation._tag === "Type"
+    ? {
         ...previous,
         query: navigation.query,
         conversation: navigation.query === "" ? previous.conversation : Option.none(),
-      };
+      }
+    : navigation.to;
 
 export type Write = "push" | "replace" | "leave" | "none";
 
 export const writeKind = (previous: Route, navigation: Navigation): Write => {
   const next = destination(previous, navigation);
   if (href(previous) === href(next)) return "none";
+  if (navigation._tag === "Replace") return "replace";
   if (navigation._tag === "Go" || previous.query === "") return "push";
   return next.query === "" ? "leave" : "replace";
 };
