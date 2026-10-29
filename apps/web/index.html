@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="data:," />
     <title>weir</title>
+    <script>
+      {
+        let stored = null;
+        try {
+          stored = JSON.parse(localStorage.getItem("weir:theme"));
+        } catch {}
+        document.documentElement.dataset.theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
