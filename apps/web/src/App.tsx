@@ -53,7 +53,13 @@ export function App() {
         aria-label="Search"
         placeholder="Search"
         value={current.query}
-        onChange={(event) => navigate({ ...current, query: event.target.value })}
+        onChange={({ target: { value } }) =>
+          navigate({
+            ...current,
+            query: value,
+            conversation: value === "" ? current.conversation : Option.none(),
+          })
+        }
       />
       <pre id="status">
         {AsyncResult.match(result, {
