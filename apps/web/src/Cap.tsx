@@ -65,7 +65,7 @@ const fadeStrip = (strip: HTMLElement) => {
   observeChips();
   mutated.observe(strip, { childList: true });
   const turn = (event: WheelEvent) => {
-    if (strip.scrollWidth <= strip.clientWidth) return;
+    if (event.ctrlKey || strip.scrollWidth <= strip.clientWidth) return;
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
     event.preventDefault();
     strip.scrollLeft += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
