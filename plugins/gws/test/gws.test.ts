@@ -31,8 +31,10 @@ afterEach(() => {
 const sourceFor = (dir: string): Source =>
   gws.create({ command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d" });
 
+const running = new AbortController().signal;
+
 const syncPage = async (source: Source, cursor: string | null) =>
-  decodePage(await source.sync(ME, cursor));
+  decodePage(await source.sync(ME, cursor, running));
 
 const syncAll = async (source: Source, cursor: string | null) => {
   const pages: SyncPage[] = [];
@@ -236,8 +238,8 @@ describe("gws plugin against fake-gws", () => {
 
   it("rejects an unknown stream and an invalid cursor", async () => {
     const source = sourceFor(seeded());
-    await expect(source.sync("someone@example.com", null)).rejects.toThrow(/no stream/);
-    await expect(source.sync(ME, "historyId-42")).rejects.toThrow();
+    await expect(source.sync("someone@example.com", null, running)).rejects.toThrow(/no stream/);
+    await expect(source.sync(ME, "historyId-42", running)).rejects.toThrow();
   });
 
   it("surfaces gws failures as GwsError", async () => {
@@ -258,7 +260,7 @@ describe("gws plugin against fake-gws", () => {
       command: ["sh", "-c", "echo gws exploded >&2; exit 2"],
       backfill: "newer_than:30d",
     });
-    const shellError = await crash.sync(ME, null).catch((e: unknown) => e);
+    const shellError = await crash.sync(ME, null, running).catch((e: unknown) => e);
     expect(shellError).toBeInstanceOf(GwsError);
     expect(shellError).toMatchObject({ exitCode: 2, message: "gws exploded" });
   });

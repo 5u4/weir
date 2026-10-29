@@ -66,7 +66,7 @@ export type SyncPage = typeof SyncPage.Type;
 
 export interface Source {
   streams(): Promise<ReadonlyArray<StreamDescriptor>>;
-  sync(streamId: string, cursor: string | null): Promise<SyncPage>;
+  sync(streamId: string, cursor: string | null, signal: AbortSignal): Promise<SyncPage>;
 }
 
 export interface SourcePlugin<Config> {

@@ -100,16 +100,24 @@ const call = async <A>(
   method: ReadonlyArray<string>,
   params: Params,
   schema: Schema.Codec<A>,
+  signal?: AbortSignal,
 ): Promise<A> => {
+  signal?.throwIfAborted();
   const proc = Bun.spawn(
     [...command, "gmail", "users", ...method, "--params", JSON.stringify(params)],
-    { stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+    {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      ...(signal === undefined ? {} : { signal }),
+    },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  signal?.throwIfAborted();
   if (exitCode !== 0) {
     const body = Schema.decodeUnknownOption(ErrorBody)(stdout);
     throw new GwsError(
@@ -122,8 +130,8 @@ const call = async <A>(
   return Schema.decodeUnknownSync(Schema.fromJsonString(schema))(stdout);
 };
 
-export const getProfile = (command: Command) =>
-  call(command, ["getProfile"], { userId: "me" }, Profile);
+export const getProfile = (command: Command, signal?: AbortSignal) =>
+  call(command, ["getProfile"], { userId: "me" }, Profile, signal);
 
 export const listSendAs = (command: Command) =>
   call(command, ["settings", "sendAs", "list"], { userId: "me" }, SendAsList);
@@ -133,18 +141,25 @@ export const listMessages = (
   q: string,
   pageToken: string | null,
   maxResults: number,
+  signal: AbortSignal,
 ) =>
   call(
     command,
     ["messages", "list"],
     { userId: "me", q, maxResults, ...(pageToken === null ? {} : { pageToken }) },
     MessageList,
+    signal,
   );
 
-export const getMessage = (command: Command, id: string) =>
-  call(command, ["messages", "get"], { userId: "me", id, format: "full" }, Message);
+export const getMessage = (command: Command, id: string, signal: AbortSignal) =>
+  call(command, ["messages", "get"], { userId: "me", id, format: "full" }, Message, signal);
 
-export const listHistory = (command: Command, startHistoryId: string, pageToken: string | null) =>
+export const listHistory = (
+  command: Command,
+  startHistoryId: string,
+  pageToken: string | null,
+  signal: AbortSignal,
+) =>
   call(
     command,
     ["history", "list"],
@@ -155,4 +170,5 @@ export const listHistory = (command: Command, startHistoryId: string, pageToken:
       ...(pageToken === null ? {} : { pageToken }),
     },
     HistoryList,
+    signal,
   );

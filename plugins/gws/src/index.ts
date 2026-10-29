@@ -46,14 +46,19 @@ const HIDDEN: Record<string, true> = { SPAM: true, TRASH: true };
 const isNotFound = (error: unknown): error is GwsError =>
   error instanceof GwsError && error.code === 404;
 
-const fetchMessages = async (command: Command, emailAddress: string, ids: string[]) => {
+const fetchMessages = async (
+  command: Command,
+  emailAddress: string,
+  ids: string[],
+  signal: AbortSignal,
+) => {
   const upserts: RawItem[] = [];
   const deletions: string[] = [];
   for (let i = 0; i < ids.length; i += CONCURRENCY) {
     const batch = await Promise.all(
       ids.slice(i, i + CONCURRENCY).map(async (id) => ({
         id,
-        message: await getMessage(command, id).catch((error: unknown) => {
+        message: await getMessage(command, id, signal).catch((error: unknown) => {
           if (isNotFound(error)) return null;
           throw error;
         }),
@@ -75,12 +80,14 @@ const create = ({ command, backfill }: GwsConfig) => {
     emailAddress: string,
     startHistoryId: string,
     pageToken: string | null,
+    signal: AbortSignal,
   ): Promise<SyncPage> => {
-    const list = await listMessages(command, backfill, pageToken, PAGE_SIZE);
+    const list = await listMessages(command, backfill, pageToken, PAGE_SIZE, signal);
     const page = await fetchMessages(
       command,
       emailAddress,
       (list.messages ?? []).map((m) => m.id),
+      signal,
     );
     const next: Cursor =
       list.nextPageToken === undefined
@@ -101,12 +108,13 @@ const create = ({ command, backfill }: GwsConfig) => {
     restartHistoryId: string,
     historyId: string,
     pageToken: string | null,
+    signal: AbortSignal,
   ): Promise<SyncPage> => {
     let history: HistoryList;
     try {
-      history = await listHistory(command, historyId, pageToken);
+      history = await listHistory(command, historyId, pageToken, signal);
     } catch (error) {
-      if (isNotFound(error)) return backfillPage(emailAddress, restartHistoryId, null);
+      if (isNotFound(error)) return backfillPage(emailAddress, restartHistoryId, null, signal);
       throw error;
     }
     const deleted = new Set<string>();
@@ -125,6 +133,7 @@ const create = ({ command, backfill }: GwsConfig) => {
       command,
       emailAddress,
       [...changed].filter((id) => !deleted.has(id)),
+      signal,
     );
     const next: Cursor =
       history.nextPageToken === undefined
@@ -158,22 +167,33 @@ const create = ({ command, backfill }: GwsConfig) => {
         },
       ];
     },
-    sync: async (streamId: string, cursor: string | null): Promise<SyncPage> => {
+    sync: async (
+      streamId: string,
+      cursor: string | null,
+      signal: AbortSignal,
+    ): Promise<SyncPage> => {
       const position = cursor === null ? null : decodeCursor(cursor);
-      const profile = await getProfile(command);
+      const profile = await getProfile(command, signal);
       if (streamId !== profile.emailAddress) {
         throw new Error(`gws has no stream ${streamId}; the mailbox is ${profile.emailAddress}`);
       }
-      if (position === null) return backfillPage(profile.emailAddress, profile.historyId, null);
+      if (position === null)
+        return backfillPage(profile.emailAddress, profile.historyId, null, signal);
       switch (position.phase) {
         case "backfill":
-          return backfillPage(profile.emailAddress, position.startHistoryId, position.pageToken);
+          return backfillPage(
+            profile.emailAddress,
+            position.startHistoryId,
+            position.pageToken,
+            signal,
+          );
         case "incremental":
           return incrementalPage(
             profile.emailAddress,
             profile.historyId,
             position.historyId,
             position.pageToken,
+            signal,
           );
       }
     },

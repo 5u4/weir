@@ -29,7 +29,7 @@ const strict = { onExcessProperty: "error" } as const;
 const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamDescriptor), strict);
 const decodePage = Schema.decodeUnknownEffect(SyncPage, strict);
 
-const callSource = <A>(sourceId: string, call: () => Promise<A>) =>
+const callSource = <A>(sourceId: string, call: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
     try: call,
     catch: (cause) =>
@@ -98,9 +98,9 @@ export const syncStream = Effect.fnUntraced(function* (
     let cursor = stream.cursor;
     let more = true;
     while (more) {
-      const page = yield* callSource(sourceId, () => source.sync(descriptor.id, cursor)).pipe(
-        Effect.flatMap(decodePage),
-      );
+      const page = yield* callSource(sourceId, (signal) =>
+        source.sync(descriptor.id, cursor, signal),
+      ).pipe(Effect.flatMap(decodePage));
       yield* onWritten(yield* sql.withTransaction(writePage(stream, page, tags)));
       counts = {
         upserts: counts.upserts + page.upserts.length,
