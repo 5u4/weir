@@ -8,7 +8,14 @@ import {
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { describe, expect, it } from "vitest";
-import { type Block, closedUi, type Detail, type ItemSummary, reader } from "./Blocks.ts";
+import {
+  type Block,
+  closedUi,
+  type Detail,
+  type ItemSummary,
+  reader,
+  revealing,
+} from "./Blocks.ts";
 import {
   cause,
   type DigestEvent,
@@ -256,14 +263,57 @@ describe("run state", () => {
       error: "bad json",
       log_path: "/tmp/run.log",
     };
-    expect(seeded(idle, failure, [1, 2, 4, 7, 9].map(item))).toEqual({
+    expect(seeded(idle, failure, [1, 2, 4, 7, 9].map(item), [])).toEqual({
       _tag: "Failed",
       action: { _tag: "From", seq: 2 },
       range: { from: 2, to: 7 },
       items: 3,
       cause: { _tag: "Failed", error: "bad json", log_path: "/tmp/run.log" },
     });
-    expect(seeded(failed, failure, [])).toBe(failed);
-    expect(seeded(idle, null, [])).toBe(idle);
+    expect(seeded(failed, failure, [], [])).toBe(failed);
+    expect(seeded(idle, null, [], [])).toBe(idle);
+  });
+
+  it("a last failure on a range a digest covers seeds a Redo of that digest and opens its card", () => {
+    const failure = {
+      conversation_id: 1,
+      from_seq: 4,
+      to_seq: 7,
+      trigger: "manual" as const,
+      at: "2026-10-25T16:00:00.000Z",
+      ms: 12,
+      ok: false,
+      error: "bad json",
+      log_path: "/tmp/redo.log",
+    };
+    const read = detail(
+      [1, 2, 4, 7, 9],
+      [
+        [3, 1, 2],
+        [8, 4, 7],
+      ],
+    );
+    const run = seeded(idle, failure, read.items, read.digests);
+    expect(run).toEqual({
+      _tag: "Failed",
+      action: { _tag: "Redo", id: 8 },
+      range: { from: 4, to: 7 },
+      items: 2,
+      cause: { _tag: "Failed", error: "bad json", log_path: "/tmp/redo.log" },
+    });
+    expect(tags(reader(read, 9, closedUi, null))).toEqual([
+      "DigestRow",
+      "DigestRow",
+      "Tail",
+      "[9]",
+    ]);
+    expect(tags(reader(read, 9, revealing(closedUi, run), null))).toEqual([
+      "DigestRow",
+      "DigestCard",
+      "Tail",
+      "[9]",
+    ]);
+    const collapsed = { ...closedUi, shapes: new Map([[8, "row" as const]]) };
+    expect(revealing(collapsed, run)).toBe(collapsed);
   });
 });

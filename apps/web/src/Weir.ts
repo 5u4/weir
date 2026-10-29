@@ -110,7 +110,12 @@ export const digestRun = Atom.family((id: ConversationId) =>
     const local = get(digestRuns).get(id) ?? Digest.idle;
     const detail = get(conversation(id));
     return AsyncResult.isSuccess(detail)
-      ? Digest.seeded(local, detail.value.digest.last_failure, detail.value.items)
+      ? Digest.seeded(
+          local,
+          detail.value.digest.last_failure,
+          detail.value.items,
+          detail.value.digests,
+        )
       : local;
   }),
 );

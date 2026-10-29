@@ -12,6 +12,7 @@ import {
   type ItemSummary,
   participants,
   reader,
+  revealing,
   span,
   type TopicKey,
   type TopicView,
@@ -696,9 +697,17 @@ function Conversation({
         </p>
         <h2 className="r-title">{detail.title}</h2>
       </header>
-      {reader(detail, frozen, ui, run._tag === "Running" ? run.range : null).map((block) => (
-        <BlockView key={blockKey(block)} id={id} block={block} watch={watch} controls={controls} />
-      ))}
+      {reader(detail, frozen, revealing(ui, run), run._tag === "Running" ? run.range : null).map(
+        (block) => (
+          <BlockView
+            key={blockKey(block)}
+            id={id}
+            block={block}
+            watch={watch}
+            controls={controls}
+          />
+        ),
+      )}
     </article>
   );
 }

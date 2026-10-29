@@ -133,12 +133,23 @@ export const seeded = (
   run: Run,
   failure: DigestRun | null,
   items: ReadonlyArray<{ readonly seq: number }>,
+  digests: ReadonlyArray<{
+    readonly id: number;
+    readonly from_seq: number;
+    readonly to_seq: number;
+  }>,
 ): Run => {
   if (run._tag !== "Idle" || failure === null) return run;
   const range = { from: failure.from_seq, to: failure.to_seq };
+  const covering = digests.find(
+    (digest) => digest.from_seq <= range.from && range.to <= digest.to_seq,
+  );
   return {
     _tag: "Failed",
-    action: { _tag: "From", seq: failure.from_seq },
+    action:
+      covering === undefined
+        ? { _tag: "From", seq: failure.from_seq }
+        : { _tag: "Redo", id: covering.id },
     range,
     items: items.filter(({ seq }) => within(range, seq)).length,
     cause: {

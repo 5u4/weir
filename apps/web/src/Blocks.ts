@@ -1,5 +1,5 @@
 import type { Conversation } from "@weir/daemon/Api";
-import { type Here, heres, type Range, within } from "./Digest.ts";
+import { type Here, heres, type Range, type Run, within } from "./Digest.ts";
 
 export type Detail = typeof Conversation.Type;
 export type ItemSummary = Detail["items"][number];
@@ -19,6 +19,11 @@ export type ReaderUi = {
 };
 
 export const closedUi: ReaderUi = { shapes: new Map(), earlier: false, originals: new Set() };
+
+export const revealing = (ui: ReaderUi, run: Run): ReaderUi =>
+  run._tag === "Failed" && run.action._tag === "Redo" && !ui.shapes.has(run.action.id)
+    ? { ...ui, shapes: new Map(ui.shapes).set(run.action.id, "card") }
+    : ui;
 
 export type Bubbles = {
   readonly _tag: "Bubbles";
