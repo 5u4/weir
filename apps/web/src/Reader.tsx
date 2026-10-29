@@ -12,6 +12,7 @@ import {
   type ItemSummary,
   participants,
   reader,
+  span,
   type TopicKey,
   type TopicView,
 } from "./Blocks.ts";
@@ -148,9 +149,9 @@ const day = (iso: string) =>
   DateTime.formatLocal(DateTime.makeUnsafe(iso), { month: "short", day: "numeric" });
 
 const timeSpan = (items: ReadonlyArray<ItemSummary>) => {
-  const first = items[0]?.occurred_at;
-  const last = items.at(-1)?.occurred_at;
-  if (first === undefined || last === undefined) return "";
+  const covered = span(items);
+  if (covered === null) return "";
+  const { first, last } = covered;
   const from = DateTime.makeUnsafe(first);
   const to = DateTime.makeUnsafe(last);
   if (first === last) return dayAndTime(from);

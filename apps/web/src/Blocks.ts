@@ -83,6 +83,19 @@ const startsGroup = (previous: ItemSummary | undefined, item: ItemSummary) =>
   sender(previous) !== sender(item) ||
   Date.parse(item.occurred_at) - Date.parse(previous.occurred_at) >= pause;
 
+export const span = (items: ReadonlyArray<ItemSummary>) =>
+  items.reduce<{ readonly first: string; readonly last: string } | null>(
+    (covered, { occurred_at }) =>
+      covered === null
+        ? { first: occurred_at, last: occurred_at }
+        : {
+            first:
+              Date.parse(occurred_at) < Date.parse(covered.first) ? occurred_at : covered.first,
+            last: Date.parse(occurred_at) > Date.parse(covered.last) ? occurred_at : covered.last,
+          },
+    null,
+  );
+
 const group = (
   items: ReadonlyArray<ItemSummary>,
   breakBefore: (item: ItemSummary) => boolean,

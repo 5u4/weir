@@ -7,6 +7,7 @@ import {
   type ItemSummary,
   participants,
   reader,
+  span,
   topicKey,
 } from "./Blocks.ts";
 
@@ -206,5 +207,28 @@ describe("reader blocks", () => {
 
   it("counts me once among the participants", () => {
     expect(participants(northwind)).toBe(3);
+  });
+});
+
+describe("time span", () => {
+  it.each([
+    ["no items", [], null],
+    [
+      "one item",
+      [item(1, 5)],
+      { first: "2026-10-20T09:05:00.000Z", last: "2026-10-20T09:05:00.000Z" },
+    ],
+    [
+      "items in time order",
+      [item(1, 5), item(2, 9)],
+      { first: "2026-10-20T09:05:00.000Z", last: "2026-10-20T09:09:00.000Z" },
+    ],
+    [
+      "a later seq that happened earlier",
+      [item(1, 30), item(2, 5), item(3, 12)],
+      { first: "2026-10-20T09:05:00.000Z", last: "2026-10-20T09:30:00.000Z" },
+    ],
+  ])("%s", (_, items, expected) => {
+    expect(span(items)).toEqual(expected);
   });
 });
