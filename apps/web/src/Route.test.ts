@@ -1,6 +1,6 @@
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { ConversationId, chips, href, parse, type Route, writeKind } from "./Route.ts";
+import { ConversationId, href, parse, type Route, writeKind } from "./Route.ts";
 
 const at = (view: Route["view"], query = "", conversation?: number): Route => ({
   view,
@@ -48,18 +48,6 @@ describe("route URL", () => {
   });
 });
 
-describe("chips", () => {
-  it.each([
-    ["", []],
-    ["from:ada", []],
-    ["from:ada ", ["from:ada"]],
-    ["in:Me source:gws invoice", ["in:Me", "source:gws"]],
-    ["xfrom:ada invoice", []],
-  ])("finds closed field tokens in %j", (query, expected) => {
-    expect(chips(query)).toEqual(expected);
-  });
-});
-
 describe("history write kind", () => {
   it.each([
     ["same route", at("untagged", "abc"), at("untagged", "abc"), "none"],
@@ -69,12 +57,15 @@ describe("history write kind", () => {
     ["switch conversation", at("untagged", "", 4), at("untagged", "", 5), "push"],
     ["close conversation", at("untagged", "", 4), at("untagged"), "push"],
     ["first keystroke", at("cleared"), at("cleared", "a"), "push"],
+    ["first keystroke over a conversation", at("cleared", "", 4), at("cleared", "a"), "push"],
     ["later keystroke", at("cleared", "a"), at("cleared", "ab"), "replace"],
     ["deleting a character", at("cleared", "ab"), at("cleared", "a"), "replace"],
-    ["clearing the query", at("cleared", "a"), at("cleared"), "push"],
-    ["chip added", at("untagged", "from:ada"), at("untagged", "from:ada "), "push"],
+    ["clearing the query", at("cleared", "a"), at("cleared"), "leave"],
+    ["clearing the query over a result", at("cleared", "a", 9), at("cleared", "", 9), "leave"],
+    ["chip added", at("untagged", "from:ada"), at("untagged", "from:ada "), "replace"],
     ["typing after a chip", at("untagged", "from:ada "), at("untagged", "from:ada x"), "replace"],
-    ["chip removed", at("untagged", "from:ada x"), at("untagged", "x"), "push"],
+    ["chip removed", at("untagged", "from:ada x"), at("untagged", "x"), "replace"],
+    ["editing over a result", at("untagged", "abc", 9), at("untagged", "abcd"), "replace"],
     ["open result while searching", at("untagged", "abc"), at("untagged", "abc", 9), "push"],
   ] as const)("%s -> %s", (_, previous, next, expected) => {
     expect(writeKind(previous, next)).toBe(expected);

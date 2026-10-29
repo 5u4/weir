@@ -59,21 +59,27 @@ export const href = (route: Route) => {
   return search === "" ? "/" : `/?${search}`;
 };
 
-const closedChip = /(?:^|\s)(?:from|in|source):\S+(?=\s)/gi;
-
-export const chips = (query: string) => query.match(closedChip)?.map((chip) => chip.trim()) ?? [];
-
-export type Write = "push" | "replace" | "none";
+export type Write = "push" | "replace" | "leave" | "none";
 
 export const writeKind = (previous: Route, next: Route): Write => {
   if (href(previous) === href(next)) return "none";
-  const typingInSearch =
-    previous.view === next.view &&
-    Option.getOrNull(previous.conversation) === Option.getOrNull(next.conversation) &&
-    previous.query !== "" &&
-    next.query !== "" &&
-    chips(previous.query).join(" ") === chips(next.query).join(" ");
-  return typingInSearch ? "replace" : "push";
+  if (previous.view !== next.view || previous.query === next.query || previous.query === "") {
+    return "push";
+  }
+  return next.query === "" ? "leave" : "replace";
+};
+
+const SearchEntry = Schema.Struct({ preSearch: Schema.String, adjacent: Schema.Boolean });
+type SearchEntry = typeof SearchEntry.Type;
+const searchEntry = Schema.decodeUnknownOption(SearchEntry);
+
+const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
+  if (next.query === "") return null;
+  if (previous.query === "") return { preSearch: href(previous), adjacent: true };
+  return Option.match(searchEntry(history.state), {
+    onNone: () => null,
+    onSome: ({ preSearch }) => ({ preSearch, adjacent: false }),
+  });
 };
 
 export const route = Atom.writable(
@@ -84,10 +90,28 @@ export const route = Atom.writable(
     return parse(location.search);
   },
   (ctx, next: Route) => {
-    const kind = writeKind(ctx.get(route), next);
-    if (kind === "none") return;
-    if (kind === "push") history.pushState(null, "", href(next));
-    else history.replaceState(null, "", href(next));
-    ctx.setSelf(next);
+    const previous = ctx.get(route);
+    switch (writeKind(previous, next)) {
+      case "none":
+        return;
+      case "push":
+        history.pushState(pushedEntry(previous, next), "", href(next));
+        ctx.setSelf(next);
+        return;
+      case "replace":
+        history.replaceState(history.state, "", href(next));
+        ctx.setSelf(next);
+        return;
+      case "leave": {
+        const entry = searchEntry(history.state);
+        const target = Option.match(entry, {
+          onNone: () => href({ ...next, conversation: Option.none() }),
+          onSome: ({ preSearch }) => preSearch,
+        });
+        if (Option.exists(entry, ({ adjacent }) => adjacent)) history.back();
+        else history.replaceState(null, "", target);
+        ctx.setSelf(parse(new URL(target, location.href).search));
+      }
+    }
   },
 );
