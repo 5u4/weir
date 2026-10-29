@@ -52,7 +52,7 @@ import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
-import { segments, termPattern } from "./Match.ts";
+import { segments, senderLabel, termPattern } from "./Match.ts";
 import * as Web from "./Web.ts";
 
 const tagTestBatch = 200;
@@ -320,7 +320,7 @@ const hitLines = (
     if (coveredByTopic.has(item.seq)) return [];
     const fields = [
       ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
-      ["from", item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`],
+      ["from", senderLabel(item.fromName, item.fromAddress)],
       ["source", item.streamName],
     ] as const;
     for (const [field, text] of fields) {

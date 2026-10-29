@@ -125,6 +125,19 @@ describe("hits", () => {
     ]);
   });
 
+  it("matches the sender as name <address>, the text the daemon searches", () => {
+    expect(found(northwind, "Gomez").map(describeHit)).toEqual([
+      "item 1 from",
+      "item 4 from",
+      "item 18 from",
+    ]);
+    expect(found(northwind, "<rachel.gomez@").map(describeHit)).toEqual([
+      "item 1 from",
+      "item 4 from",
+      "item 18 from",
+    ]);
+  });
+
   it("a matching headline is one hit for its card", () => {
     expect(found(northwind, "duplicate").map(describeHit)).toEqual(["headline 7", "topic 7:1"]);
   });

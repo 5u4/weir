@@ -1,3 +1,4 @@
+import { senderLabel } from "@weir/daemon/Match";
 import { type Detail, type Digest, type ReaderUi, type TopicKey, topicKey } from "./Blocks.ts";
 
 export type Hit =
@@ -36,7 +37,7 @@ export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit>
   for (const { seq, from, body_new } of detail.items) {
     const field = matches(body_new)
       ? "body"
-      : matches(from.name === "" ? from.address : `${from.name} <${from.address}>`)
+      : matches(senderLabel(from.name, from.address))
         ? "from"
         : null;
     if (field === null) continue;

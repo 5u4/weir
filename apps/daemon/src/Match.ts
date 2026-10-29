@@ -21,3 +21,6 @@ export const segments = (text: string, pattern: RegExp) => {
   if (at < text.length) result.push({ text: text.slice(at), mark: false });
   return result;
 };
+
+export const senderLabel = (name: string, address: string) =>
+  name === "" ? address : `${name} <${address}>`;
