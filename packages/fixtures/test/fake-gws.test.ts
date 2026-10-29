@@ -8,6 +8,7 @@ import {
   relabel,
   remove,
   seedMailbox,
+  setDelay,
   setNow,
 } from "@weir/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
@@ -218,5 +219,22 @@ describe("fake-gws --mailbox", () => {
     });
     expect(run.exitCode).toBe(1);
     expect(JSON.parse(run.stdout).error).toMatchObject({ code: 404, reason: "notFound" });
+  });
+
+  it("sleeps before answering only the commands named in delay", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    setDelay(dir, { "messages list": 1500 });
+    const timed = (command: string) => {
+      const start = performance.now();
+      const answer = gmail(command, { userId: "me" }, dir);
+      return { answer, ms: performance.now() - start };
+    };
+    const list = timed("messages list");
+    const profile = timed("getProfile");
+    expect(list.ms).toBeGreaterThanOrEqual(1500);
+    expect(list.answer.messages).toHaveLength(10);
+    expect(profile.ms).toBeLessThan(1500);
+    expect(profile.answer.messagesTotal).toBe(32);
   });
 });

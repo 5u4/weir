@@ -6,6 +6,7 @@ import { readMailbox, seed } from "../mailbox.ts";
 const result = runGws(process.argv.slice(2), (dir) =>
   dir === undefined ? seed(FIXTURE_NOW) : readMailbox(dir),
 );
+await Bun.sleep(result.delayMs);
 process.stdout.write(result.stdout);
 process.stderr.write(result.stderr);
 process.exitCode = result.exitCode;

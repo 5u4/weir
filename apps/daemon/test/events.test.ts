@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
@@ -22,97 +22,11 @@ import {
   fakeSource,
   mailStream,
   makeHome,
+  openEvents,
   rawItem,
   sourceConfig,
+  spawnDaemon,
 } from "./harness.ts";
-
-type Frame = { readonly kind: "ping" } | { readonly kind: "event"; readonly event: Event };
-
-const openEvents = (port: number) =>
-  Effect.acquireRelease(
-    Effect.promise(async () => {
-      const controller = new AbortController();
-      const response = await fetch(`http://127.0.0.1:${port}/events`, {
-        signal: controller.signal,
-      });
-      const body = response.body;
-      if (body === null) throw new Error("no /events body");
-      const reader = body.getReader();
-      const decoder = new TextDecoder();
-      const frames: Array<Frame> = [];
-      const wakers = new Set<() => void>();
-      let ended = false;
-      let text = "";
-      let cursor = 0;
-      const wake = () => {
-        for (const waker of wakers) waker();
-      };
-      void (async () => {
-        try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            text += decoder.decode(value, { stream: true });
-            let end = text.indexOf("\n\n");
-            while (end !== -1) {
-              const block = text.slice(0, end);
-              text = text.slice(end + 2);
-              end = text.indexOf("\n\n");
-              if (block.startsWith(":")) {
-                frames.push({ kind: "ping" });
-                continue;
-              }
-              const data = block
-                .split("\n")
-                .filter((line) => line.startsWith("data:"))
-                .map((line) => line.slice(5).trimStart())
-                .join("\n");
-              frames.push({ kind: "event", event: JSON.parse(data) as Event });
-            }
-            wake();
-          }
-        } catch {}
-        ended = true;
-        wake();
-      })();
-      const next = () =>
-        new Promise<Frame | "end">((resolve) => {
-          const check = () => {
-            const frame = frames[cursor];
-            if (frame !== undefined) {
-              cursor += 1;
-              wakers.delete(check);
-              resolve(frame);
-            } else if (ended) {
-              wakers.delete(check);
-              resolve("end");
-            }
-          };
-          wakers.add(check);
-          check();
-        });
-      return { next, controller };
-    }),
-    ({ controller }) => Effect.sync(() => controller.abort()),
-  ).pipe(
-    Effect.map(({ next, controller }) => {
-      const take = Effect.promise(next);
-      const until = <A extends Event>(match: (event: Event) => event is A) =>
-        Effect.gen(function* () {
-          for (;;) {
-            const frame = yield* take;
-            if (frame === "end") throw new Error("/events ended");
-            if (frame.kind === "event" && match(frame.event)) return frame.event;
-          }
-        });
-      return {
-        take,
-        until,
-        state: until((event): event is Extract<Event, { type: "state" }> => event.type === "state"),
-        close: Effect.sync(() => controller.abort()),
-      };
-    }),
-  );
 
 type SyncEvent = Extract<Event, { type: "sync" }>;
 
@@ -413,26 +327,7 @@ describe("events", () => {
     Effect.gen(function* () {
       const { home, port } = makeHome(sourceConfig("1h"));
       writeFileSync(join(home.root, "source.json"), "[]");
-      const child = yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          Bun.spawn(["bun", join(import.meta.dirname, "daemon-process.ts")], {
-            env: { ...Bun.env, WEIR_HOME: home.root },
-            stdout: "ignore",
-            stderr: "inherit",
-          }),
-        ),
-        (running) =>
-          Effect.promise(async () => {
-            running.kill("SIGKILL");
-            await running.exited;
-          }),
-      );
-      yield* eventually(
-        Effect.sync(() =>
-          existsSync(home.daemon) ? JSON.parse(readFileSync(home.daemon, "utf8")).pid : null,
-        ),
-        (pid) => pid === child.pid,
-      );
+      const child = yield* spawnDaemon(home);
       const events = yield* openEvents(port);
       expect(yield* events.take).toEqual({ kind: "event", event: { type: "ready" } });
       const [elapsed] = yield* Effect.timed(

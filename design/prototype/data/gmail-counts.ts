@@ -107,7 +107,7 @@ const pluginItemTags = async (): Promise<ItemTags[]> => {
   const result: ItemTags[] = [];
   let cursor: string | null = null;
   for (;;) {
-    const page = await source.sync(stream.id, cursor);
+    const page = await source.sync(stream.id, cursor, new AbortController().signal);
     for (const i of page.upserts) {
       const input: RuleInput = {
         source: SOURCE,

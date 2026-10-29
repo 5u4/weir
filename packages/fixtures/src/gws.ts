@@ -7,7 +7,7 @@ import {
   parseClock,
 } from "./mailbox.ts";
 
-export type GwsResult = { stdout: string; stderr: string; exitCode: number };
+export type GwsResult = { stdout: string; stderr: string; exitCode: number; delayMs: number };
 type Params = Record<string, unknown>;
 
 class GwsError extends Error {
@@ -225,6 +225,7 @@ export const runGws = (
   args: string[],
   load: (mailboxDir: string | undefined) => Mailbox,
 ): GwsResult => {
+  let delayMs = 0;
   try {
     const { command, params, mailboxDir } = parseArgs(args);
     const spec = COMMANDS[command];
@@ -241,10 +242,12 @@ export const runGws = (
     } catch (e) {
       throw validation(`fake-gws cannot read mailbox ${mailboxDir}: ${(e as Error).message}`);
     }
+    delayMs = mailbox.delay?.[command.replace(/^gmail users /, "")] ?? 0;
     return {
       stdout: `${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`,
       stderr: "",
       exitCode: 0,
+      delayMs,
     };
   } catch (e) {
     if (!(e instanceof GwsError)) throw e;
@@ -253,6 +256,7 @@ export const runGws = (
       stdout: `${JSON.stringify(body, null, 2)}\n`,
       stderr: `error[${e.kind}]: ${e.message}\n`,
       exitCode: e.kind === "api" ? 1 : 3,
+      delayMs,
     };
   }
 };

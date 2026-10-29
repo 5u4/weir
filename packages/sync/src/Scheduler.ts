@@ -90,14 +90,15 @@ export const run = (
         Effect.andThen(syncSource(id, source, tags, onWritten)),
         Effect.matchCauseEffect({
           onFailure: (cause) =>
-            Effect.logError(`sync of ${id} failed`, cause).pipe(
-              Effect.andThen(
-                report(id, { listing: "failed", error: errorMessage(Cause.squash(cause)) }),
-              ),
-            ),
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.interrupt
+              : Effect.logError(`sync of ${id} failed`, cause).pipe(
+                  Effect.andThen(
+                    report(id, { listing: "failed", error: errorMessage(Cause.squash(cause)) }),
+                  ),
+                ),
           onSuccess: (streamErrors) => report(id, { listing: "ok", streamErrors }),
         }),
-        Effect.uninterruptible,
         Effect.repeat(Schedule.spaced(every)),
       ),
     { concurrency: "unbounded", discard: true },

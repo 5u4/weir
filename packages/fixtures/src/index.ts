@@ -155,3 +155,9 @@ export const setNow = (dir: string, iso: string) => {
   mailbox.now = iso;
   writeMailbox(dir, mailbox);
 };
+
+export const setDelay = (dir: string, delay: Record<string, number>) => {
+  const mailbox = readMailbox(dir);
+  mailbox.delay = delay;
+  writeMailbox(dir, mailbox);
+};
