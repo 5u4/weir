@@ -97,7 +97,7 @@ function StatusButton({ className, alert }: { className: string; alert: boolean 
   );
 }
 
-function SentenceWidget({ widget, active }: { widget: Widget; active: View | null }) {
+export function SentenceWidget({ widget, active }: { widget: Widget; active: View | null }) {
   return (
     <Link
       to={viewRoute(widget.view)}
@@ -133,7 +133,7 @@ function SentenceClause({ clause, active }: { clause: Clause; active: View | nul
   ));
 }
 
-function Chip({ widget, active }: { widget: Widget; active: View | null }) {
+export function Chip({ widget, active }: { widget: Widget; active: View | null }) {
   return (
     <Link
       to={viewRoute(widget.view)}
