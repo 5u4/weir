@@ -1,7 +1,7 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { face, type Intents, intentFor, neighbor, shown, tagHue } from "./Rows.ts";
+import { face, type Intents, intentFor, moved, neighbor, shown, tagHue } from "./Rows.ts";
 
 const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   id,
@@ -27,22 +27,29 @@ const ids = (rows: ReadonlyArray<Row>) => rows.map(({ id }) => id);
 
 describe("rows shown under pending intents", () => {
   it("Done hides the row from its view until something newer arrives", () => {
-    const intents: Intents = new Map([[1, intentFor("untagged", row(1, 5))]]);
+    const intents: Intents = new Map([[1, intentFor("Done", row(1, 5))]]);
     expect(ids(shown("untagged", [row(1, 5), row(2, 6)], intents))).toEqual([2]);
     expect(ids(shown("tag:Work", [row(1, 5)], intents))).toEqual([]);
     expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([1]);
   });
 
   it("Done never hides the row from Cleared", () => {
-    const intents: Intents = new Map([[1, intentFor("untagged", row(1, 5))]]);
+    const intents: Intents = new Map([[1, intentFor("Done", row(1, 5))]]);
     expect(ids(shown("cleared", [row(1, 5, 5)], intents))).toEqual([1]);
   });
 
   it("Restore hides the row from Cleared until it is cleared again later", () => {
-    const intents: Intents = new Map([[1, intentFor("cleared", row(1, 5, 5))]]);
+    const intents: Intents = new Map([[1, intentFor("Restore", row(1, 5, 5))]]);
     expect(ids(shown("cleared", [row(1, 5, 5)], intents))).toEqual([]);
     expect(ids(shown("untagged", [row(1, 5)], intents))).toEqual([1]);
     expect(ids(shown("cleared", [row(1, 9, 9)], intents))).toEqual([1]);
+  });
+
+  it("Mute hides the row from every view but Cleared, even when something newer arrives", () => {
+    const intents: Intents = new Map([[1, intentFor("Mute", row(1, 5))]]);
+    expect(ids(shown("untagged", [row(1, 5), row(2, 6)], intents))).toEqual([2]);
+    expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([]);
+    expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
   });
 });
 
@@ -59,6 +66,25 @@ describe("next row after Done", () => {
 
   it("the only row has no next", () => {
     expect(neighbor([row(1, 1)], 1)).toEqual(Option.none());
+  });
+});
+
+describe("j and k move through the list", () => {
+  const rows = [row(1, 1), row(2, 2), row(3, 3)];
+  it.each<[string, Option.Option<number>, 1 | -1, Option.Option<number>]>([
+    ["j with nothing open opens the first", Option.none(), 1, Option.some(1)],
+    ["k with nothing open opens the first", Option.none(), -1, Option.some(1)],
+    ["j opens the next", Option.some(1), 1, Option.some(2)],
+    ["k opens the previous", Option.some(2), -1, Option.some(1)],
+    ["j stays on the last", Option.some(3), 1, Option.some(3)],
+    ["k stays on the first", Option.some(1), -1, Option.some(1)],
+    ["j from a conversation not in the list opens the first", Option.some(9), 1, Option.some(1)],
+  ])("%s", (_, open, by, expected) => {
+    expect(Option.map(moved(rows, open, by), (next) => next.id)).toEqual(expected);
+  });
+
+  it("an empty list opens nothing", () => {
+    expect(moved([], Option.none(), 1)).toEqual(Option.none());
   });
 });
 

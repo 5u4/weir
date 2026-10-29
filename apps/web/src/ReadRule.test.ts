@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Command, type Event, open, type State, step } from "./ReadRule.ts";
+import { type Command, type Event, open, type State, seen, step } from "./ReadRule.ts";
 
 const opened = (overrides: Partial<State> = {}): State => ({
   ...open({ seen: 9, last: 25, focused: true, visible: true }),
@@ -26,6 +26,8 @@ const elapsed: Event = { _tag: "Elapsed" };
 const leave: Event = { _tag: "Leave" };
 const acked = (seq: number): Event => ({ _tag: "Acked", seq });
 const failed = (seq: number): Event => ({ _tag: "Failed", seq });
+const pause = (from: number | null = null): Event => ({ _tag: "Pause", from });
+const resume: Event = { _tag: "Resume" };
 
 describe("read rule", () => {
   it.each<{
@@ -94,9 +96,24 @@ describe("read rule", () => {
     },
     {
       name: "paused never advances",
-      start: { paused: true },
+      start: { mode: { _tag: "Paused", seen: 24 } },
       events: [input, viewport(25), focus(true), leave],
       commands: ["Idle", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "marking unread drops a pending read and sends nothing until the conversation closes",
+      events: [input, viewport(12), pause(), viewport(25), elapsed, focus(true), leave],
+      commands: ["Idle", "Debounce", "Idle", "Idle", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "new messages that arrive after Mark unread are not read either",
+      events: [input, viewport(25), pause(), { _tag: "Grown", last: 30 }, viewport(30), leave],
+      commands: ["Idle", 25, "Idle", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "a mark unread that fails resumes reading",
+      events: [input, pause(), viewport(25), resume],
+      commands: ["Idle", "Idle", "Idle", 25],
     },
     {
       name: "scrolling back up never sends a lower seq",
@@ -155,5 +172,18 @@ describe("read rule", () => {
     const retried = run(failedOnce, [leave, acked(18)]);
     expect(retried.commands).toEqual([18, "Idle"]);
     expect(retried.state.sent).toBe(18);
+  });
+
+  it.each([
+    ["Mark unread leaves the last message unread", null, 24],
+    ["Mark unread from here leaves that message and later ones unread", 12, 11],
+    ["Mark unread from the first message leaves nothing read", 1, 0],
+  ])("%s", (_, from, expected) => {
+    const { state } = run(opened(), [input, viewport(25), pause(from)]);
+    expect(seen(state)).toBe(expected);
+  });
+
+  it("seen follows reading until paused", () => {
+    expect(seen(run(opened(), [input, viewport(18)]).state)).toBe(18);
   });
 });

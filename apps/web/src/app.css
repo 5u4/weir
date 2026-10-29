@@ -842,6 +842,72 @@ button {
   stroke-width: 1.6;
   stroke-linecap: round;
 }
+.r-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--island) 93%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-float);
+}
+.r-dock button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  transition:
+    background-color 140ms,
+    transform 120ms;
+}
+.r-dock button:hover {
+  background: var(--hover);
+}
+.r-dock button:active {
+  transform: scale(0.97);
+}
+.r-dock .primary {
+  padding: 0 20px;
+  background: var(--capbg);
+  color: var(--cap-1);
+}
+.r-dock .primary:hover {
+  background: var(--primary-hover);
+}
+.r-dock .back {
+  display: none;
+}
+.r-dock kbd {
+  padding: 2px 4px;
+  border-radius: 4px;
+  font: 600 10px / 1 var(--sans);
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.6;
+}
+.bk-i {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .sv {
   max-width: 760px;
@@ -1880,13 +1946,15 @@ button {
   bottom: calc(100% - 12px);
   display: flex;
   justify-content: safe flex-end;
+  gap: 6px;
   padding: 0 10px;
   pointer-events: none;
 }
 .sg.me .dfh-w {
   direction: rtl;
 }
-.dfh {
+.dfh,
+.mu {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1908,24 +1976,28 @@ button {
     background-color 140ms;
 }
 .bl.tap .dfh,
+.bl.tap .mu,
 .dfh.on {
   opacity: 1;
   transform: none;
   pointer-events: auto;
 }
-.bl.dg:focus-within .dfh {
+.bl:focus-within .dfh,
+.bl:focus-within .mu {
   opacity: 1;
   transform: none;
   pointer-events: auto;
 }
 @media (hover: hover) {
-  .bl.dg:hover .dfh {
+  .bl:hover .dfh,
+  .bl:hover .mu {
     opacity: 1;
     transform: none;
     pointer-events: auto;
   }
 }
-.dfh:hover:not(:disabled) {
+.dfh:hover:not(:disabled),
+.mu:hover {
   background: var(--hover);
 }
 .dfh:disabled {
@@ -2006,7 +2078,8 @@ button {
 .dc-redo:active,
 .tl-go:active,
 .gp-go:active,
-.dfh:active {
+.dfh:active,
+.mu:active {
   transform: scale(0.97);
 }
 .dc.sk {
@@ -2099,7 +2172,7 @@ button {
     right: var(--edge);
     max-width: calc(100vw - 2 * var(--edge) - 2 * var(--inset));
   }
-  .reading + .cap.compact {
+  .reading:not(:has(.r-dock)) + .cap.compact {
     right: calc(var(--edge) + var(--pill) + var(--inset));
     max-width: calc(100vw - 2 * var(--edge) - 3 * var(--inset) - var(--pill));
   }
@@ -2162,6 +2235,22 @@ button {
     order: 5;
     flex-basis: 100%;
   }
+  .r-dock {
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    gap: 2px;
+    padding: 5px;
+  }
+  .r-dock button {
+    padding: 0 13px;
+  }
+  .r-dock .back {
+    display: inline-flex;
+    padding: 0 10px;
+  }
+  .r-dock kbd,
+  .r-dock ~ .r-x {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2172,7 +2261,8 @@ button {
   .sk-dot {
     animation: none;
   }
-  .dfh {
+  .dfh,
+  .mu {
     transform: none;
   }
   .sv-thumb,

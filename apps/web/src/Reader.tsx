@@ -29,12 +29,13 @@ import {
   runs,
   within,
 } from "./Digest.ts";
+import type { DockAction } from "./Dock.ts";
 import { clockTime, dayAndTime, plural } from "./Health.ts";
 import { monogram } from "./Notch.ts";
-import { type Preview, pins, preview, readerUi, reading } from "./Reading.ts";
+import { dock, type Preview, pins, preview, readerUi, reading } from "./Reading.ts";
 import { type ConversationId, route } from "./Route.ts";
 import { homeTag, tagHue } from "./Rows.ts";
-import { conversation, digestRun, runDigest, tagOrder } from "./Weir.ts";
+import { conversation, digestRun, dismiss, runDigest, tagOrder } from "./Weir.ts";
 
 type Controls = {
   readonly run: Run;
@@ -177,6 +178,8 @@ function Chevron({ up = false }: { up?: boolean }) {
 
 type Watch = (end: HTMLElement) => () => void;
 
+type Mark = { readonly seen: number; readonly unread: (from: number) => void };
+
 function End({ seq, watch }: { seq: number; watch: Watch }) {
   return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
 }
@@ -186,11 +189,13 @@ function Bubble({
   here,
   controls,
   watch,
+  mark,
 }: {
   item: ItemSummary;
   here: Here | undefined;
   controls: Controls | null;
   watch: Watch | undefined;
+  mark: Mark;
 }) {
   const [shown, setPreview] = useAtom(preview);
   const run = controls?.run;
@@ -223,18 +228,25 @@ function Bubble({
             <p className="body">{item.body_new}</p>
           )}
         </div>
-        {digestible && (
+        {(digestible || item.seq <= mark.seen) && (
           <span className="dfh-w">
-            <button
-              type="button"
-              className={`dfh${runs(controls.run, action) ? " on" : ""}`}
-              disabled={controls.run._tag === "Running"}
-              onClick={() => controls.act(action, here.range, here.items)}
-              {...previewing(setPreview, here.range)}
-            >
-              <Arrow />
-              {runs(controls.run, action) ? "Digesting…" : hereLabel(here.items)}
-            </button>
+            {item.seq <= mark.seen && (
+              <button type="button" className="mu" onClick={() => mark.unread(item.seq)}>
+                Mark unread from here
+              </button>
+            )}
+            {digestible && (
+              <button
+                type="button"
+                className={`dfh${runs(controls.run, action) ? " on" : ""}`}
+                disabled={controls.run._tag === "Running"}
+                onClick={() => controls.act(action, here.range, here.items)}
+                {...previewing(setPreview, here.range)}
+              >
+                <Arrow />
+                {runs(controls.run, action) ? "Digesting…" : hereLabel(here.items)}
+              </button>
+            )}
           </span>
         )}
         {watch !== undefined && <End seq={item.seq} watch={watch} />}
@@ -248,10 +260,12 @@ function Bubble({
 
 function Group({
   group,
+  mark,
   watch,
   controls = null,
 }: {
   group: Bubbles;
+  mark: Mark;
   watch?: Watch;
   controls?: Controls | null;
 }) {
@@ -277,6 +291,7 @@ function Group({
           here={group.heres?.[index]}
           controls={controls}
           watch={watch}
+          mark={mark}
         />
       ))}
     </div>
@@ -304,7 +319,17 @@ function Pin({ id, unfold, view }: { id: ConversationId; unfold: () => void; vie
   );
 }
 
-function Topic({ id, view, solo }: { id: ConversationId; view: TopicView; solo: boolean }) {
+function Topic({
+  id,
+  view,
+  solo,
+  mark,
+}: {
+  id: ConversationId;
+  view: TopicView;
+  solo: boolean;
+  mark: Mark;
+}) {
   const [, setUi] = useAtom(readerUi(id));
   const toggle = () =>
     setUi((ui) => {
@@ -345,7 +370,7 @@ function Topic({ id, view, solo }: { id: ConversationId; view: TopicView; solo: 
       {view.open && (
         <div className="unf">
           {view.groups.map((group) => (
-            <Group key={group.items[0]?.seq} group={group} />
+            <Group key={group.items[0]?.seq} group={group} mark={mark} />
           ))}
         </div>
       )}
@@ -363,11 +388,13 @@ function DigestCard({
   id,
   block,
   watch,
+  mark,
   controls,
 }: {
   id: ConversationId;
   block: Extract<Block, { _tag: "DigestCard" }>;
   watch: Watch;
+  mark: Mark;
   controls: Controls | null;
 }) {
   const [, setUi] = useAtom(readerUi(id));
@@ -434,7 +461,7 @@ function DigestCard({
       </header>
       <div className="tps">
         {topics.map((view) => (
-          <Topic key={view.key} id={id} view={view} solo={solo} />
+          <Topic key={view.key} id={id} view={view} solo={solo} mark={mark} />
         ))}
       </div>
       <End seq={digest.to_seq} watch={watch} />
@@ -446,11 +473,13 @@ function BlockView({
   id,
   block,
   watch,
+  mark,
   controls,
 }: {
   id: ConversationId;
   block: Block;
   watch: Watch;
+  mark: Mark;
   controls: Controls | null;
 }) {
   const [, setUi] = useAtom(readerUi(id));
@@ -497,7 +526,7 @@ function BlockView({
         </div>
       );
     case "DigestCard":
-      return <DigestCard id={id} block={block} watch={watch} controls={controls} />;
+      return <DigestCard id={id} block={block} watch={watch} mark={mark} controls={controls} />;
     case "GapBar": {
       const { gap } = block;
       const action: Action = { _tag: "UpTo", seq: block.up_to };
@@ -578,7 +607,7 @@ function BlockView({
     case "Skeleton":
       return <Skeleton items={block.items} />;
     case "Bubbles":
-      return <Group group={block} watch={watch} controls={controls} />;
+      return <Group group={block} watch={watch} mark={mark} controls={controls} />;
   }
 }
 
@@ -630,11 +659,13 @@ function Conversation({
   detail,
   frozen,
   watch,
+  mark,
 }: {
   id: ConversationId;
   detail: Detail;
   frozen: number;
   watch: Watch;
+  mark: Mark;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
   const { view } = useAtomValue(route);
@@ -704,6 +735,7 @@ function Conversation({
             id={id}
             block={block}
             watch={watch}
+            mark={mark}
             controls={controls}
           />
         ),
@@ -712,9 +744,51 @@ function Conversation({
   );
 }
 
+const dockLabels: Record<DockAction, string> = {
+  Done: "Done",
+  Restore: "Restore",
+  MarkUnread: "Mark unread",
+  Mute: "Mute",
+};
+
+function Dock({ id }: { id: ConversationId }) {
+  const shown = useAtomValue(dock(id));
+  const [current, navigate] = useAtom(route);
+  const { unread } = useAtomValue(reading(id));
+  const run = useAtomSet(dismiss);
+  if (Option.isNone(shown)) return null;
+  const { actions, target } = shown.value;
+  return (
+    <div className="r-dock" role="group" aria-label="Conversation actions">
+      <button
+        type="button"
+        className="back"
+        aria-label="Back"
+        onClick={() => navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })}
+      >
+        <svg className="bk-i" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M10 3.5L5.5 8l4.5 4.5" />
+        </svg>
+      </button>
+      {actions.map((action) => (
+        <button
+          key={action}
+          type="button"
+          className={action === "Done" || action === "Restore" ? "primary" : undefined}
+          aria-keyshortcuts={action === "Done" ? "e" : undefined}
+          onClick={() => (action === "MarkUnread" ? unread(null) : run({ act: action, target }))}
+        >
+          {dockLabels[action]}
+          {action === "Done" && <kbd aria-hidden="true">e</kbd>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Reader({ id }: { id: ConversationId }) {
   const result = useAtomValue(conversation(id));
-  const { frozen, dispatch, watch } = useAtomValue(reading(id));
+  const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
   const arm = () => dispatch({ _tag: "Input" });
   const track = (event: UIEvent<HTMLElement>) => {
@@ -732,32 +806,36 @@ export function Reader({ id }: { id: ConversationId }) {
     );
   };
   return (
-    <div
-      className="r-scroll"
-      onWheel={arm}
-      onTouchMove={arm}
-      onPointerDown={arm}
-      onKeyDown={(event: KeyboardEvent) => {
-        if (scrollKeys[event.key]) arm();
-      }}
-      onScroll={track}
-    >
-      {AsyncResult.isFailure(result) && !AsyncResult.isSuccess(result) ? (
-        <div className="calm es warn">
-          <p className="es-alert">Can't load this conversation.</p>
-        </div>
-      ) : (
-        AsyncResult.isSuccess(result) &&
-        Option.isSome(frozen) && (
-          <Conversation
-            key={id}
-            id={id}
-            detail={result.value}
-            frozen={frozen.value}
-            watch={watch}
-          />
-        )
-      )}
-    </div>
+    <>
+      <div
+        className="r-scroll"
+        onWheel={arm}
+        onTouchMove={arm}
+        onPointerDown={arm}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (scrollKeys[event.key]) arm();
+        }}
+        onScroll={track}
+      >
+        {AsyncResult.isFailure(result) && !AsyncResult.isSuccess(result) ? (
+          <div className="calm es warn">
+            <p className="es-alert">Can't load this conversation.</p>
+          </div>
+        ) : (
+          AsyncResult.isSuccess(result) &&
+          Option.isSome(frozen) && (
+            <Conversation
+              key={id}
+              id={id}
+              detail={result.value}
+              frozen={frozen.value}
+              watch={watch}
+              mark={{ seen, unread }}
+            />
+          )
+        )}
+      </div>
+      <Dock id={id} />
+    </>
   );
 }

@@ -99,17 +99,7 @@ const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
   });
 };
 
-export const statusOpen = Atom.writable(
-  (get) => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") get.setSelf(false);
-    };
-    addEventListener("keydown", closeOnEscape);
-    get.addFinalizer(() => removeEventListener("keydown", closeOnEscape));
-    return false;
-  },
-  (ctx, open: boolean) => ctx.setSelf(open),
-);
+export const statusOpen = Atom.make(false);
 
 export const route = Atom.writable(
   (get) => {
