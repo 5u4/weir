@@ -1,14 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
 import { decodeConfig } from "@weir/contract/Config";
 import type { Source, SourcePlugin, SyncPage } from "@weir/contract/Source";
+import { conversations } from "@weir/store/Read";
+import { ConversationId } from "@weir/store/Rows";
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Statement from "effect/sql/Statement";
 import * as TestClock from "effect/testing/TestClock";
 import { loadSources, type PluginRegistry, run, type SyncOutcome } from "../src/Scheduler.ts";
-import { mailStream, page, rawItem, scriptedSource, storeLayer } from "./fixtures.ts";
+import { mailStream, page, rawItem, type Step, scriptedSource, storeLayer } from "./fixtures.ts";
 
 const FakeConfig = Schema.Struct({ command: Schema.NonEmptyArray(Schema.String) });
 
@@ -188,5 +194,69 @@ describe("run", () => {
         });
         yield* Fiber.interrupt(second);
       }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("an interrupt during a page commit lets the page land, then stops the pass", () =>
+    Effect.gen(function* () {
+      const reports: Array<[string, SyncOutcome]> = [];
+      const written: Array<ReadonlyArray<ConversationId>> = [];
+      const { source, calls } = scriptedSource(
+        new Map<string | null, Step>([
+          [
+            null,
+            page({
+              cursor: "c1",
+              more: true,
+              kind: "backfill",
+              backfill: "running",
+              upserts: [rawItem("m1", { threadId: "t1", title: "hello" })],
+            }),
+          ],
+          ["c1", page({ cursor: "c2", upserts: [rawItem("m2")] })],
+        ]),
+      );
+      const reached = yield* Deferred.make<void>();
+      const gate = yield* Deferred.make<void>();
+      const holdCursorWrite: Statement.Transformer = (statement) =>
+        statement.compile()[0].startsWith("UPDATE stream SET cursor")
+          ? Deferred.succeed(reached, undefined).pipe(
+              Effect.andThen(Deferred.await(gate)),
+              Effect.as(statement),
+            )
+          : Effect.succeed(statement);
+
+      const pass = yield* Effect.forkChild(
+        run(
+          [{ id: "a", every: Duration.minutes(5), source }],
+          [{ name: "greeting", match: { type: "eq", target: "/title", is: "hello" } }],
+          () => Effect.void,
+          (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
+          (ids) => Effect.sync(() => written.push(ids)),
+        ).pipe(Effect.provideService(Statement.CurrentTransformer, holdCursorWrite)),
+      );
+      yield* Deferred.await(reached);
+      const interrupter = yield* Effect.forkChild(Fiber.interrupt(pass), {
+        startImmediately: true,
+      });
+      yield* Deferred.succeed(gate, undefined);
+      yield* Fiber.join(interrupter);
+
+      const exit = yield* Fiber.await(pass);
+      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+      const sql = yield* SqlClient.SqlClient;
+      expect(yield* sql`SELECT external_id FROM item`).toEqual([{ externalId: "m1" }]);
+      expect(yield* sql`SELECT tag FROM conversation_tag`).toEqual([{ tag: "greeting" }]);
+      expect(yield* sql`SELECT cursor FROM stream`).toEqual([{ cursor: "c1" }]);
+      const ids = (yield* sql<{ id: number }>`SELECT id FROM conversation`).map(({ id }) =>
+        ConversationId.make(id),
+      );
+      expect(
+        (yield* conversations({ _tag: "Ids", ids })).map(({ key, state }) => ({ key, state })),
+      ).toEqual([{ key: "t1", state: "read" }]);
+      expect(written).toEqual([ids]);
+      expect(calls).toEqual([null]);
+      expect(yield* syncRunCount).toBe(0);
+      expect(reports).toEqual([]);
+    }).pipe(Effect.provide(storeLayer())),
   );
 });
