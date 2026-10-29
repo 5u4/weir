@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { type Connect, defineConfig, type Plugin } from "vite";
+import { type Connect, defineConfig, type Plugin, type UserConfig } from "vite";
 
 const daemonPort = Effect.gen(function* () {
   const override = yield* Config.option(Config.Port("WEIR_PORT"));
@@ -22,8 +22,6 @@ const daemonPort = Effect.gen(function* () {
     ConfigFile.read(home.config).pipe(Effect.flatMap(({ port }) => Effect.fromNullishOr(port))),
   ]).pipe(Effect.orElseSucceed(() => defaultPort));
 });
-
-const daemon = `http://127.0.0.1:${await Effect.runPromise(daemonPort)}`;
 
 const apiRoots = new Set<string>();
 HttpApi.reflect(Api, {
@@ -52,16 +50,21 @@ const loopback: Plugin = {
   },
 };
 
-export default defineConfig({
-  plugins: [loopback, react()],
-  publicDir: false,
-  server: {
-    proxy: {
-      [`^/(${[...apiRoots].join("|")})(/|\\?|$)`]: {
-        target: daemon,
-        changeOrigin: true,
-        headers: { origin: daemon },
-      },
+const proxy = async () => {
+  const daemon = `http://127.0.0.1:${await Effect.runPromise(daemonPort)}`;
+  return {
+    [`^/(${[...apiRoots].join("|")})(/|\\?|$)`]: {
+      target: daemon,
+      changeOrigin: true,
+      headers: { origin: daemon },
     },
-  },
-});
+  };
+};
+
+export default defineConfig(
+  async ({ command }): Promise<UserConfig> => ({
+    plugins: [loopback, react()],
+    publicDir: false,
+    server: command === "serve" ? { proxy: await proxy() } : {},
+  }),
+);
