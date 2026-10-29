@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
@@ -6,7 +6,6 @@ import * as Database from "@weir/store/Database";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import type { WeirHome } from "../src/Home.ts";
 import {
   apiClient,
   digestConfig,
@@ -15,9 +14,8 @@ import {
   rawItem,
   readCapture,
   sourceConfig,
+  spawnDaemon,
 } from "./harness.ts";
-
-const entry = join(import.meta.dirname, "daemon-process.ts");
 
 const workTag = `
 [[tag]]
@@ -25,31 +23,6 @@ name = "Work"
 ai = true
 match = { type = "regex", target = "/title", regex = "work", flags = "i" }
 `;
-
-const daemon = (home: WeirHome) =>
-  Effect.gen(function* () {
-    const child = yield* Effect.acquireRelease(
-      Effect.sync(() =>
-        Bun.spawn(["bun", entry], {
-          env: { ...Bun.env, WEIR_HOME: home.root },
-          stdout: "ignore",
-          stderr: "inherit",
-        }),
-      ),
-      (running) =>
-        Effect.promise(async () => {
-          running.kill("SIGKILL");
-          await running.exited;
-        }),
-    );
-    yield* eventually(
-      Effect.sync(() =>
-        existsSync(home.daemon) ? JSON.parse(readFileSync(home.daemon, "utf8")).pid : null,
-      ),
-      (pid) => pid === child.pid,
-    );
-    return child;
-  });
 
 const kill = (child: Bun.Subprocess) =>
   Effect.promise(async () => {
@@ -92,13 +65,13 @@ describe("restart", () => {
         }),
       );
 
-      const first = yield* daemon(home);
+      const first = yield* spawnDaemon(home);
       yield* append("w1");
       yield* eventually(workItems, (seqs) => seqs.length === 1);
       yield* kill(first);
 
       yield* append("w2");
-      const second = yield* daemon(home);
+      const second = yield* spawnDaemon(home);
       const [s1, s2] = yield* eventually(workItems, (seqs) => seqs.length === 2);
       yield* eventually(
         Effect.sync(() => readCapture(capture)),
@@ -106,7 +79,7 @@ describe("restart", () => {
       );
       yield* kill(second);
 
-      yield* daemon(home);
+      yield* spawnDaemon(home);
       yield* eventually(
         Effect.sync(() => readCapture(capture)),
         (calls) => calls.length === 2,
