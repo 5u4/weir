@@ -46,6 +46,7 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 - State the problem in a sentence or two, then how it was fixed.
 - Rebase onto the latest main before opening.
 - UI changes need before/after images; motion or timing needs a short video.
+- The daemon serves the Web UI only after `bun run build:web`; `bun run demo` runs it first.
 - UI images and videos come only from `bun run demo --serve` (synthetic data), never from a real
   mailbox.
 - Use squash merge and delete the source branch.
