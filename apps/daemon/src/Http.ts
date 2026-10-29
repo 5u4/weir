@@ -567,12 +567,14 @@ const weirHandlers = HttpApiBuilder.group(
           const since = yield* Read.aiSince(conversation.id);
           const lastRun = yield* Read.lastDigestRun(conversation.id);
           const lite = yield* Read.itemsLite(conversation.id);
+          const open = yield* Read.openTarget(conversation.id);
           const ranges =
             config.digest === undefined ? null : gaps(lite, digests, config.digest.max_input);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
             tags,
+            open: Option.getOrNull(open),
             state: {
               seen_seq: state.seenSeq,
               cleared_seq: state.clearedSeq,

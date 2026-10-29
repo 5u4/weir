@@ -143,6 +143,23 @@ export const getConversation = Effect.fnUntraced(function* (id: ConversationId) 
   });
 });
 
+const decodeOpenTargets = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ label: Schema.String, link: Schema.String })),
+);
+
+export const openTarget = Effect.fnUntraced(function* (conversationId: ConversationId) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeOpenTargets(
+      yield* sql`SELECT stream.open_label AS label, item.link AS link FROM item
+        JOIN stream ON stream.id = item.stream_id
+        WHERE item.conversation_id = ${conversationId}
+          AND item.deleted_at IS NULL AND item.link IS NOT NULL
+        ORDER BY item.seq DESC LIMIT 1`,
+    ),
+  );
+});
+
 export const getItem = Effect.fnUntraced(function* (seq: Seq) {
   const sql = yield* SqlClient.SqlClient;
   return Arr.head(yield* decodeItems(yield* sql`SELECT * FROM item WHERE seq = ${seq}`));

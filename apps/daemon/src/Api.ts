@@ -189,6 +189,7 @@ export const Conversation = Schema.Struct({
   first_at: Schema.String,
   last_at: Schema.String,
   tags: Schema.Array(Schema.String),
+  open: Schema.NullOr(Schema.Struct({ label: Schema.String, link: Schema.String })),
   state: Schema.Struct({
     seen_seq: Schema.Int,
     cleared_seq: Schema.Int,

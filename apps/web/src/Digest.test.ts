@@ -49,6 +49,7 @@ const detail = (
   first_at: "2026-10-20T09:00:00.000Z",
   last_at: "2026-10-20T09:59:00.000Z",
   tags: [],
+  open: null,
   state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "unread" },
   items: seqs.map(item),
   digests: digests.map(([id, from_seq, to_seq]) => ({
