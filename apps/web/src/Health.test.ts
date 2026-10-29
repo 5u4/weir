@@ -3,7 +3,7 @@ import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { describe, expect, it } from "vitest";
-import { ago, configState, health } from "./Health.ts";
+import { ago, configState, dayLabel, health } from "./Health.ts";
 
 const stream = (overrides: Partial<Status["sources"][number]["streams"][number]> = {}) => ({
   name: "robin@example.com",
@@ -150,6 +150,17 @@ describe("relative time", () => {
     [86400 * 3, "3d ago"],
   ])("%ds later reads %s", (seconds, expected) => {
     expect(ago(at, DateTime.add(at, { seconds }))).toBe(expected);
+  });
+});
+
+describe("day label", () => {
+  const at = DateTime.makeUnsafe(new Date(2026, 9, 15, 12));
+  it.each([
+    [0, "Today"],
+    [1, "Yesterday"],
+    [5, "Thu, Oct 15"],
+  ])("%d days later reads %s", (days, expected) => {
+    expect(dayLabel(at, DateTime.add(at, { days }))).toBe(expected);
   });
 });
 

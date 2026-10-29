@@ -1,5 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
-import { visible } from "@weir/daemon/Markdown";
+import { type Visible, visible } from "@weir/daemon/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -8,7 +8,9 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type UIEvent,
+  useCallback,
   useRef,
+  useState,
 } from "react";
 import { Avatar } from "./Avatar.tsx";
 import {
@@ -41,7 +43,7 @@ import {
   within,
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
-import { clockTime, dayAndTime, plural } from "./Health.ts";
+import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
@@ -70,12 +72,12 @@ type Failed = Extract<Run, { readonly _tag: "Failed" }>;
 
 const previewing = (set: (preview: Preview) => void, range: Range) => ({
   onPointerEnter: (event: PointerEvent) => {
-    if (event.pointerType !== "touch") set({ range, tapped: false });
+    if (event.pointerType !== "touch") set({ _tag: "Hover", range });
   },
   onPointerLeave: (event: PointerEvent) => {
     if (event.pointerType !== "touch") set(null);
   },
-  onFocus: () => set({ range, tapped: false }),
+  onFocus: () => set({ _tag: "Hover", range }),
   onBlur: () => set(null),
 });
 
@@ -219,7 +221,91 @@ function End({ seq, watch }: { seq: number; watch: Watch }) {
   return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
 }
 
+function DayLine({ at }: { at: string }) {
+  return (
+    <div className="day" role="separator">
+      <span>{dayLabel(DateTime.makeUnsafe(at), useAtomValue(now))}</span>
+    </div>
+  );
+}
+
+function Long({
+  id,
+  seq,
+  tree,
+  pattern,
+}: {
+  id: ConversationId;
+  seq: number;
+  tree: Visible;
+  pattern: RegExp | null;
+}) {
+  const [ui, setUi] = useAtom(readerUi(id));
+  const [over, setOver] = useState(false);
+  const measure = useCallback(
+    (body: HTMLDivElement) => {
+      const overflows = () =>
+        body.scrollHeight >
+        Number.parseFloat(getComputedStyle(body).getPropertyValue("--clip")) + 2;
+      const observer = new ResizeObserver(() => setOver(overflows()));
+      observer.observe(body);
+      const reveal = (event: FocusEvent) => {
+        if (body.classList.contains("open") || !overflows()) return;
+        setUi((current) => ({ ...current, long: new Set(current.long).add(seq) }));
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+          requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
+        }
+      };
+      body.addEventListener("focusin", reveal);
+      return () => {
+        observer.disconnect();
+        body.removeEventListener("focusin", reveal);
+      };
+    },
+    [seq, setUi],
+  );
+  const open = ui.long.has(seq);
+  return (
+    <>
+      <Body
+        tree={tree}
+        pattern={pattern}
+        className={["body clip", open && "open", over && "over"].filter(Boolean).join(" ")}
+        ref={measure}
+      />
+      <button
+        type="button"
+        className="more"
+        aria-expanded={open}
+        onClick={(event) => {
+          const bubble = event.currentTarget.closest(".bl");
+          setUi((current) => {
+            const long = new Set(current.long);
+            if (open) long.delete(seq);
+            else long.add(seq);
+            return { ...current, long };
+          });
+          if (open) {
+            requestAnimationFrame(() =>
+              bubble?.scrollIntoView({
+                block: "nearest",
+                behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+                  ? "auto"
+                  : "smooth",
+              }),
+            );
+          }
+        }}
+      >
+        {open ? "Show less" : "Show all"}
+      </button>
+    </>
+  );
+}
+
 function Bubble({
+  id,
   item,
   here,
   controls,
@@ -227,6 +313,7 @@ function Bubble({
   mark,
   found,
 }: {
+  id: ConversationId;
   item: ItemSummary;
   here: Here | undefined;
   controls: Controls | null;
@@ -242,12 +329,12 @@ function Bubble({
   const action: Action = { _tag: "From", seq: item.seq };
   const digestible = here !== undefined && controls !== null;
   const failed = digestible && run !== undefined ? failedAt(run, action) : undefined;
-  const tapped = shown?.tapped === true && shown.range.from === item.seq;
+  const tapped = shown?._tag === "Tap" && shown.seq === item.seq;
   const classes = [
     "bl",
     digestible && "dg",
     digestible && run?._tag === "Running" && within(run.range, item.seq) && "busy",
-    digestible && shown !== null && within(shown.range, item.seq) && "pv",
+    digestible && shown !== null && shown.range !== null && within(shown.range, item.seq) && "pv",
     tapped && "tap",
   ];
   return (
@@ -256,17 +343,20 @@ function Bubble({
         className={classes.filter(Boolean).join(" ")}
         {...hitProps(found, key)}
         onClick={(event) => {
-          if (!digestible || !(event.nativeEvent instanceof globalThis.PointerEvent)) return;
+          if (!(digestible || item.seq <= mark.seen)) return;
+          if (!(event.nativeEvent instanceof globalThis.PointerEvent)) return;
           if (event.nativeEvent.pointerType !== "touch") return;
           if (event.target instanceof Element && event.target.closest("button, a") !== null) return;
-          setPreview(tapped ? null : { range: here.range, tapped: true });
+          setPreview(
+            tapped ? null : { _tag: "Tap", seq: item.seq, range: digestible ? here.range : null },
+          );
         }}
       >
         <div className="bb">
           {tree.length === 0 ? (
             <p className="body b-none">(no text)</p>
           ) : (
-            <Body tree={tree} pattern={found.pattern} />
+            <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} />
           )}
         </div>
         {hit?._tag === "Item" && hit.field !== "body" && (
@@ -305,12 +395,14 @@ function Bubble({
 }
 
 function Group({
+  id,
   group,
   mark,
   found,
   watch,
   controls = null,
 }: {
+  id: ConversationId;
   group: Bubbles;
   mark: Mark;
   found: Found;
@@ -335,6 +427,7 @@ function Group({
       {group.items.map((item, index) => (
         <Bubble
           key={item.seq}
+          id={id}
           item={item}
           here={group.heres?.[index]}
           controls={controls}
@@ -380,12 +473,14 @@ const flipped =
   };
 
 function Originals({
+  id,
   fold,
   noun,
   toggle,
   mark,
   found,
 }: {
+  id: ConversationId;
   fold: AnyFold;
   noun: string;
   toggle: () => void;
@@ -415,9 +510,13 @@ function Originals({
       </button>
       {fold.open && (
         <div className="unf">
-          {fold.groups.map((group) => (
-            <Group key={group.items[0]?.seq} group={group} mark={mark} found={found} />
-          ))}
+          {fold.groups.map((group) =>
+            group._tag === "Day" ? (
+              <DayLine key={blockKey(group)} at={group.at} />
+            ) : (
+              <Group key={blockKey(group)} id={id} group={group} mark={mark} found={found} />
+            ),
+          )}
         </div>
       )}
     </>
@@ -463,7 +562,7 @@ function Topic({
       <p className="tp-b">
         <Highlighted text={view.topic.body} pattern={found.pattern} />
       </p>
-      <Originals fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
+      <Originals id={id} fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
     </section>
   );
 }
@@ -564,6 +663,7 @@ function DigestCard({
         {uncited !== null && (
           <section className={`tp uncited${solo ? " solo" : ""}`}>
             <Originals
+              id={id}
               fold={uncited}
               noun="other original"
               toggle={() => setUi(flipped(uncited))}
@@ -726,8 +826,12 @@ export function BlockView({
     }
     case "Skeleton":
       return <Skeleton items={block.items} />;
+    case "Day":
+      return <DayLine at={block.at} />;
     case "Bubbles":
-      return <Group group={block} watch={watch} mark={mark} found={found} controls={controls} />;
+      return (
+        <Group id={id} group={block} watch={watch} mark={mark} found={found} controls={controls} />
+      );
   }
 }
 
@@ -744,6 +848,8 @@ const blockKey = (block: Block) => {
       return `d-${block.digest.id}`;
     case "GapBar":
       return `gap-${block.first}`;
+    case "Day":
+      return `day-${block.at}`;
     case "Bubbles":
       return `g-${block.items[0]?.seq}`;
   }

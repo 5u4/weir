@@ -545,7 +545,7 @@ flowchart TD
 <thead><tr><th>入口</th><th>范围</th></tr></thead>
 <tbody>
 <tr><td>Digest now</td><td><code>(floor, last_seq]</code>，也就是最后一份 digest 之后还没 digest 的尾巴，不管字数够不够。范围是整段尾巴，超过一次调用的上限时按段写。阅读区从 <code>digest.now</code> 读这段：<code>{from_seq, to_seq, items, run_items}</code>，尾巴为空时是 <code>null</code>。</td></tr>
-<tr><td>Digest from here</td><td>还没 digest 的每条原文气泡，不管是排在某份 digest 前面的一段，还是最后的尾巴，悬停或聚焦时都显示这个按钮，按钮上写它覆盖几条。窄屏上点一下气泡显示它。范围从这条到下一份 digest 的 <code>from_seq - 1</code>，后面没有 digest 时到 <code>last_seq</code>。</td></tr>
+<tr><td>Digest from here</td><td>还没 digest 的每条原文气泡，不管是排在某份 digest 前面的一段，还是最后的尾巴，悬停或聚焦时都显示这个按钮，按钮上写它覆盖几条。触屏上点一下气泡显示它。范围从这条到下一份 digest 的 <code>from_seq - 1</code>，后面没有 digest 时到 <code>last_seq</code>。</td></tr>
 <tr><td>Digest earlier</td><td>Digest now 的反方向。排在某份 digest 前面的一段原文，底部紧挨着那份 digest 的地方有一条 <code>Not digested</code>、<code>N messages above</code> 和这个按钮。范围从这段的最后一条往前数，正文累计到一次调用的上限 24000 字符为止，至少一条，不越过上一份 digest。一次装不下整段时，按钮写成 <code>Digest K earlier</code>。写完后条子留在新卡片上面，数字变小，再点就继续往前。这段原文全部 digest 完，条子就消失。阅读区从 <code>digest.earlier</code> 读这些条子：每份前面有未 digest 原文的 digest 对应一项 <code>{before_digest, from_seq, to_seq, items, run_items}</code>。<code>before_digest</code> 是紧挨着的那份 digest 的 id，<code>from_seq</code>–<code>to_seq</code> 是点一次要写的范围，<code>items</code> 是 K，<code>run_items</code> 是 N。</td></tr>
 <tr><td>Redo</td><td>在 digest 卡片上点它。用当前的 prompt 和模型重写同一个范围，替换原来那一行：同一个事务里先插入新行，再删掉旧行和它的搜索索引行。新行拿新的 id，id 不复用，旧 id 之后返回 404。原来的范围按当前的 <code>max_input</code> 一次装不下时，不调用 AI，直接返回 409 <code>DigestConflict</code>，消息是 <code>#a-#b is over max_input N; raise max_input to redo it</code>。</td></tr>
 </tbody></table></div>
@@ -618,7 +618,7 @@ flowchart TD
 <li>不要求每条停留多久。</li>
 <li>界面立刻更新。daemon 在最后一次变化后 250 到 500 ms 收到一次 <code>POST /conversations/:id/read {seq}</code>。读完整个 conversation、切换 conversation、标签页隐藏时立即发送。daemon 取 <code>max</code>，迟到的小 seq 不会让已读倒退。</li>
 <li>Last read 标记在打开时按 <code>seen_seq</code> 定下，这次打开期间不随阅读移动。</li>
-<li>「标为未读」之后，这个 conversation 暂停自动已读，直到你离开它。「从这里标为未读」发送那条 item 的 seq。</li>
+<li>「标为未读」之后，这个 conversation 暂停自动已读，直到你离开它。「从这里标为未读」发送那条 item 的 seq。它在已读的原文气泡上悬停或聚焦时显示，包括这次打开后才读到的，触屏上点一下气泡显示，包括 topic 下展开的原文。</li>
 <li>打开 conversation 本身不标记任何消息，按 URL 打开（刷新、前进后退、粘贴链接）或从搜索打开都一样。后台标签页在获得焦点前什么都不标。</li>
 </ol>
 <p>否决过的做法：每条消息要求最短停留时间（Outlook 的做法）、打开即已读、部分可见就算、按 topic 前进、每条消息单独存已读标记。</p>
@@ -799,6 +799,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <tr><td>灵动岛那句话，全部读完时</td><td><code>All caught up.</code></td></tr>
 <tr><td>灵动岛尾句，已读未完成</td><td><code>Read but not done:</code></td></tr>
 <tr><td>时间和日期</td><td><code>14:03</code>、<code>Yesterday</code>、<code>Oct 21</code></td></tr>
+<tr><td>原文之间的日期分隔</td><td><code>Today</code>、<code>Yesterday</code>、<code>Thu, Oct 15</code></td></tr>
 <tr><td>搜索（按钮和输入框占位文字）</td><td>Search</td></tr>
 <tr><td>搜索结果那句话</td><td><code>“freeze” appears in 1 Work and 2 Untagged.</code></td></tr>
 <tr><td>没有结果</td><td><code>Nothing matches “q”.</code></td></tr>
@@ -847,9 +848,10 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li>点 <code>N originals</code>，这个 topic 涉及的原文在它下面展开。展开时 topic 头吸顶，显示你读到第几条 <code>n of N</code> 和 Fold 按钮。</li>
 <li>只有一个 topic 的 digest，卡片上不显示 topic 标题和状态 chip，headline、正文和 <code>1 original</code> 照常显示。</li>
 <li>最后一份 digest 之后还没 digest 的尾巴，是原文气泡。尾巴存在时显示 Digest now。conversation 开着 AI 时，旁边还显示离阈值还差多少。</li>
-<li>原文气泡里，你自己的消息靠右。换人或者停顿 5 分钟及以上就开一个新组。每组都有头像和组头，组头是名字和时间，比如「Jacky Ng 14:03」，和 Slack、Teams 一样。你自己的组和别人的组用同一套头像和名字，只是左右镜像，头像在右边。气泡里不放时间。</li>
+<li>原文气泡里，你自己的消息靠右。换人、停顿 5 分钟及以上、或者跨过本地日期就开一个新组。跨日的组前面有一条日期分隔，比如 <code>Thu, Oct 15</code>，同一条消息上的 Last read 排在分隔下面；一段原文的第一组前面不放。展开的 topic 原文也一样。每组都有头像和组头，组头是名字和时间，比如「Jacky Ng 14:03」，和 Slack、Teams 一样。你自己的组和别人的组用同一套头像和名字，只是左右镜像，头像在右边。气泡里不放时间。</li>
+<li>原文气泡的正文超过大约 12 行的高度时，只显示这一段，底部淡出，下面有 Show all。点了在原处展开全文，按钮变成 Show less，收起时把这条气泡滚回视口。搜索跳到某条原文正文里的命中时，那条气泡先展开，命中词会落在视口里。</li>
 <li>某份 digest 前面还没 digest 的一段原文，底部紧挨着那份 digest 有一条 <code>Not digested</code>、<code>N messages above</code> 和 Digest earlier。从新往旧翻的时候先碰到它，往前补 digest 就靠它，一次补一次调用的量。</li>
-<li>还没 digest 的每条原文气泡，悬停或聚焦时显示 Digest from here，从这条往后补到下一份 digest 之前。窄屏上点一下气泡显示。</li>
+<li>还没 digest 的每条原文气泡，悬停或聚焦时显示 Digest from here，从这条往后补到下一份 digest 之前。触屏上点一下气泡显示，再点一下收起，点别的气泡就换到那条。已读的气泡点一下同样显示「从这里标为未读」。</li>
 <li>阅读区只有这一种视图，没有全部原文的开关。</li>
 <li>打开时有未读就落在 Last read，全部读过就落在最底部。Last read 按打开时的 <code>seen_seq</code> 定下，读的过程中不移动，下次打开才更新。界面上不出现任何语言名。</li>
 </ul>

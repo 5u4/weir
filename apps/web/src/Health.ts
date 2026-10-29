@@ -151,7 +151,7 @@ export const dayAndTime = (at: DateTime.Utc) =>
     hourCycle: "h23",
   });
 
-const calendarDay = (at: DateTime.Utc) => {
+export const calendarDay = (at: DateTime.Utc) => {
   const local = DateTime.toDate(at);
   return Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()) / 86_400_000;
 };
@@ -165,6 +165,13 @@ export const shortTime = (at: DateTime.Utc, current: DateTime.Utc) => {
   if (days === 1) return "Yesterday";
   if (days < 7) return DateTime.formatLocal(at, { weekday: "short" });
   return DateTime.formatLocal(at, { month: "short", day: "numeric" });
+};
+
+export const dayLabel = (at: DateTime.Utc, current: DateTime.Utc) => {
+  const days = calendarDay(current) - calendarDay(at);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return DateTime.formatLocal(at, { weekday: "short", month: "short", day: "numeric" });
 };
 
 export const plural = (n: number, one: string, many = `${one}s`) =>

@@ -71,6 +71,8 @@ const shape = (blocks: ReadonlyArray<Block>) =>
         return `Tail(${block.items.length})`;
       case "Skeleton":
         return `Skeleton(${block.items})`;
+      case "Day":
+        return `Day(${block.at})`;
       default:
         return `${block.me ? "me" : block.from.name}[${block.items.map(({ seq }) => seq).join(",")}]`;
     }
@@ -214,6 +216,47 @@ describe("reader blocks", () => {
       "me[10]",
       "Ada Lovelace[11]",
     ]);
+  });
+
+  describe("day separators", () => {
+    const nextDay = "2026-10-13T12:00:00.000Z";
+    const days = [
+      { ...item(1, 0), occurred_at: "2026-10-12T12:00:00.000Z" },
+      { ...item(2, 0), occurred_at: nextDay },
+      { ...item(3, 0), occurred_at: "2026-10-13T12:01:00.000Z" },
+    ];
+
+    it("a new day splits one sender's run under exactly one separator", () => {
+      expect(shape(reader(detail(days), 3, closedUi, null))).toEqual([
+        "Tail(3)",
+        "Ada Lovelace[1]",
+        `Day(${nextDay})`,
+        "Ada Lovelace[2,3]",
+      ]);
+    });
+
+    it("the separator comes before Last read on the same message", () => {
+      expect(shape(reader(detail(days), 1, closedUi, null))).toEqual([
+        "Tail(3)",
+        "Ada Lovelace[1]",
+        `Day(${nextDay})`,
+        "last-read(2)",
+        "Ada Lovelace[2,3]",
+      ]);
+    });
+
+    it("a topic's unfolded originals get separators too", () => {
+      const digested = detail(days, [digest(1, 1, 3, [1, 2, 3])]);
+      const key = topicKey(digested.digests[0] as Digest, 0);
+      const card = reader(digested, 0, { ...closedUi, originals: new Set([key]) }, null).find(
+        (block) => block._tag === "DigestCard",
+      );
+      expect(card?._tag === "DigestCard" && shape(card.topics[0]?.groups ?? [])).toEqual([
+        "Ada Lovelace[1]",
+        `Day(${nextDay})`,
+        "Ada Lovelace[2,3]",
+      ]);
+    });
   });
 
   it("counts me once among the participants", () => {

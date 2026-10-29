@@ -209,7 +209,10 @@ export const pins = Atom.family((_: ConversationId) =>
   Atom.make<ReadonlyMap<TopicKey, number>>(new Map()).pipe(Atom.setIdleTTL(0)),
 );
 
-export type Preview = { readonly range: Range; readonly tapped: boolean } | null;
+export type Preview =
+  | { readonly _tag: "Hover"; readonly range: Range }
+  | { readonly _tag: "Tap"; readonly seq: number; readonly range: Range | null }
+  | null;
 
 export const preview = Atom.make<Preview>(null);
 
@@ -260,13 +263,19 @@ const scrollToHit = (key: string, smooth: boolean) =>
       : target.previousElementSibling?.matches(".g-head")
         ? (target.closest(".sg") ?? target)
         : target;
+    const view = scroller.getBoundingClientRect();
+    const top =
+      anchor.getBoundingClientRect().top -
+      view.top -
+      (pin?.getBoundingClientRect().height ?? 0) -
+      24;
+    const mark = target.querySelector("mark")?.getBoundingClientRect();
     scroller.scrollTo({
       top:
         scroller.scrollTop +
-        anchor.getBoundingClientRect().top -
-        scroller.getBoundingClientRect().top -
-        (pin?.getBoundingClientRect().height ?? 0) -
-        24,
+        (mark !== undefined && mark.bottom - top > view.bottom - 24
+          ? mark.top - view.top - view.height / 2
+          : top),
       behavior:
         smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto",
     });

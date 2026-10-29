@@ -95,13 +95,17 @@ const holding = (detail: Detail, hit: Hit): Digest | undefined => {
 };
 
 export const reveal = (ui: ReaderUi, detail: Detail, hit: Hit): ReaderUi => {
+  const opened =
+    hit._tag === "Item" && hit.field === "body" && !ui.long.has(hit.seq)
+      ? { ...ui, long: new Set(ui.long).add(hit.seq) }
+      : ui;
   const digest = holding(detail, hit);
-  if (digest === undefined) return ui;
+  if (digest === undefined) return opened;
   const shapes = new Map(ui.shapes).set(digest.id, "card");
-  if (hit._tag !== "Item") return { ...ui, shapes };
+  if (hit._tag !== "Item") return { ...opened, shapes };
   const topic = digest.topics.findIndex(({ seqs }) => seqs.includes(hit.seq));
   return {
-    ...ui,
+    ...opened,
     shapes,
     originals: new Set(ui.originals).add(
       topic === -1 ? uncitedKey(digest) : topicKey(digest, topic),
