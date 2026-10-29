@@ -209,7 +209,10 @@ export const pins = Atom.family((_: ConversationId) =>
   Atom.make<ReadonlyMap<TopicKey, number>>(new Map()).pipe(Atom.setIdleTTL(0)),
 );
 
-export type Preview = { readonly range: Range; readonly tapped: boolean } | null;
+export type Preview =
+  | { readonly _tag: "Hover"; readonly range: Range }
+  | { readonly _tag: "Tap"; readonly seq: number; readonly range: Range | null }
+  | null;
 
 export const preview = Atom.make<Preview>(null);
 

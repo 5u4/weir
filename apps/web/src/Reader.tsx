@@ -72,12 +72,12 @@ type Failed = Extract<Run, { readonly _tag: "Failed" }>;
 
 const previewing = (set: (preview: Preview) => void, range: Range) => ({
   onPointerEnter: (event: PointerEvent) => {
-    if (event.pointerType !== "touch") set({ range, tapped: false });
+    if (event.pointerType !== "touch") set({ _tag: "Hover", range });
   },
   onPointerLeave: (event: PointerEvent) => {
     if (event.pointerType !== "touch") set(null);
   },
-  onFocus: () => set({ range, tapped: false }),
+  onFocus: () => set({ _tag: "Hover", range }),
   onBlur: () => set(null),
 });
 
@@ -311,12 +311,12 @@ function Bubble({
   const action: Action = { _tag: "From", seq: item.seq };
   const digestible = here !== undefined && controls !== null;
   const failed = digestible && run !== undefined ? failedAt(run, action) : undefined;
-  const tapped = shown?.tapped === true && shown.range.from === item.seq;
+  const tapped = shown?._tag === "Tap" && shown.seq === item.seq;
   const classes = [
     "bl",
     digestible && "dg",
     digestible && run?._tag === "Running" && within(run.range, item.seq) && "busy",
-    digestible && shown !== null && within(shown.range, item.seq) && "pv",
+    digestible && shown !== null && shown.range !== null && within(shown.range, item.seq) && "pv",
     tapped && "tap",
   ];
   return (
@@ -325,10 +325,13 @@ function Bubble({
         className={classes.filter(Boolean).join(" ")}
         {...hitProps(found, key)}
         onClick={(event) => {
-          if (!digestible || !(event.nativeEvent instanceof globalThis.PointerEvent)) return;
+          if (!(digestible || item.seq <= mark.seen)) return;
+          if (!(event.nativeEvent instanceof globalThis.PointerEvent)) return;
           if (event.nativeEvent.pointerType !== "touch") return;
           if (event.target instanceof Element && event.target.closest("button, a") !== null) return;
-          setPreview(tapped ? null : { range: here.range, tapped: true });
+          setPreview(
+            tapped ? null : { _tag: "Tap", seq: item.seq, range: digestible ? here.range : null },
+          );
         }}
       >
         <div className="bb">
