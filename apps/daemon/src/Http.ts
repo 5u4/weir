@@ -368,7 +368,10 @@ const hitLines = (
       },
     ];
   });
-  return [...topicLines, ...itemLines, ...headlineLines].slice(0, hitLinesPerConversation);
+  return [...topicLines, ...itemLines]
+    .toSorted((left, right) => (right.seq ?? 0) - (left.seq ?? 0))
+    .concat(headlineLines)
+    .slice(0, hitLinesPerConversation);
 };
 
 const sendersPerView = 3;
