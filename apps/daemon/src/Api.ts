@@ -50,6 +50,7 @@ export const StreamStatus = Schema.Struct({
   last_sync_at: Schema.NullOr(Schema.String),
   last_error: Schema.NullOr(Schema.String),
   backfill: Schema.Literals(["running", "done"]),
+  items: Schema.Int,
 });
 
 export const SourceStatus = Schema.Struct({
@@ -73,15 +74,17 @@ export const TagStatus = Schema.Struct({
   ...ViewCounts,
 });
 
-export const DigestJob = Schema.Struct({
+const JobRange = {
   conversation_id: Schema.Int,
   from_seq: Schema.Int,
   to_seq: Schema.Int,
   trigger: Trigger,
-});
+};
+
+export const DigestJob = Schema.Struct({ ...JobRange, title: Schema.String });
 
 export const DigestRun = Schema.Struct({
-  ...DigestJob.fields,
+  ...JobRange,
   at: Schema.String,
   ms: Schema.Int,
   ok: Schema.Boolean,

@@ -205,11 +205,30 @@ export const streamId = Effect.fnUntraced(function* (sourceId: string, externalI
   ).pipe(Option.map(({ id }) => id));
 });
 
-const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamRow));
+const decodeStreams = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ ...StreamRow.fields, items: Schema.Int })),
+);
 
 export const streams = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
-  return yield* decodeStreams(yield* sql`SELECT * FROM stream ORDER BY source_id, id`);
+  return yield* decodeStreams(
+    yield* sql`SELECT stream.*, coalesce(live.items, 0) AS items FROM stream
+      LEFT JOIN (SELECT stream_id, count(*) AS items FROM item WHERE deleted_at IS NULL
+        GROUP BY stream_id) live ON live.stream_id = stream.id
+      ORDER BY stream.source_id, stream.id`,
+  );
+});
+
+const decodeConversationTitles = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ id: ConversationId, title: Schema.String })),
+);
+
+export const conversationTitles = Effect.fnUntraced(function* (ids: ReadonlyArray<ConversationId>) {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* decodeConversationTitles(
+    yield* sql`SELECT id, title FROM conversation WHERE ${sql.in("id", ids)}`,
+  );
+  return new Map(rows.map(({ id, title }) => [id, title]));
 });
 
 const decodeTagStates = Schema.decodeUnknownEffect(Schema.Array(TagStateRow));

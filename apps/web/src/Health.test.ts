@@ -11,6 +11,7 @@ const stream = (overrides: Partial<Status["sources"][number]["streams"][number]>
   last_sync_at: "2026-10-25T16:00:00.000Z",
   last_error: null,
   backfill: "done" as const,
+  items: 12,
   ...overrides,
 });
 

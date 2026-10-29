@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "@effect/vitest";
+import type { RawItem, SourcePlugin } from "@weir/contract/Source";
+import * as Database from "@weir/store/Database";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Http from "../src/Http.ts";
 import {
   adjustableClock,
@@ -240,7 +244,73 @@ describe("reload", () => {
   );
 });
 
+const twoStreams = () => {
+  const streams = {
+    "me@example.com": [rawItem("m1", {}), rawItem("m2", {}), rawItem("m3", {})],
+    "team@example.com": [rawItem("t1", {}), rawItem("t2", {})],
+  };
+  const deletions = new Map<string, Array<string>>();
+  const plugin: SourcePlugin<unknown> = {
+    id: "fake",
+    configSchema: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.String)),
+    create: () => ({
+      streams: async () =>
+        Object.keys(streams).map((id) => ({ ...mailStream, id, name: id, me: [id] })),
+      sync: async (streamId, cursor) => {
+        const items: ReadonlyArray<RawItem> = streams[streamId as keyof typeof streams];
+        const deleted = deletions.get(streamId) ?? [];
+        deletions.delete(streamId);
+        return {
+          upserts: cursor === null ? items : [],
+          deletions: deleted,
+          cursor: "done",
+          more: false,
+        };
+      },
+    }),
+  };
+  return { plugin, deletions };
+};
+
 describe("status", () => {
+  it.live("each stream counts its own live items, and a deletion lowers only its stream", () =>
+    Effect.gen(function* () {
+      const { plugin, deletions } = twoStreams();
+      const { home, port } = makeHome(sourceConfig());
+      yield* Layer.build(Http.layer(home, { fake: plugin }));
+      const client = yield* apiClient(port);
+      const liveCounts = Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ name: string; items: number }>`SELECT stream.name,
+            (SELECT count(*) FROM item WHERE item.stream_id = stream.id AND item.deleted_at IS NULL)
+              AS items
+          FROM stream ORDER BY stream.name`;
+        return Object.fromEntries(rows.map(({ name, items }) => [name, items]));
+      }).pipe(Effect.provide(Database.layer(home.db)));
+      const statusCounts = client
+        .status()
+        .pipe(
+          Effect.map(({ sources }) =>
+            Object.fromEntries(
+              sources.flatMap(({ streams }) => streams.map(({ name, items }) => [name, items])),
+            ),
+          ),
+        );
+
+      const before = yield* eventually(
+        statusCounts,
+        (counts) => counts["me@example.com"] === 3 && counts["team@example.com"] === 2,
+      );
+      expect(before).toEqual({ "me@example.com": 3, "team@example.com": 2 });
+      expect(before).toEqual(yield* liveCounts);
+
+      deletions.set("team@example.com", ["t1"]);
+      const after = yield* eventually(statusCounts, (counts) => counts["team@example.com"] === 1);
+      expect(after).toEqual({ "me@example.com": 3, "team@example.com": 1 });
+      expect(after).toEqual(yield* liveCounts);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("a source whose first listing fails shows the error until a listing succeeds", () =>
     Effect.gen(function* () {
       const source = fakeSource(mailbox);
