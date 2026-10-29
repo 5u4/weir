@@ -304,9 +304,7 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
       latest AS (
         SELECT listed.id AS conversation_id, item.from_name AS name,
           item.from_address AS address, item.occurred_at AS at,
-          row_number() OVER (
-            PARTITION BY listed.id ORDER BY item.occurred_at DESC, item.seq DESC
-          ) AS position
+          row_number() OVER (PARTITION BY listed.id ORDER BY item.seq DESC) AS position
         FROM listed
         JOIN item ON item.conversation_id = listed.id AND item.deleted_at IS NULL
           AND item.from_me = 0
