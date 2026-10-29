@@ -3,7 +3,7 @@ import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
 import { type Config, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
-import { backlog } from "@weir/digest/Range";
+import { backlog, type Gap, gaps } from "@weir/digest/Range";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import {
@@ -37,6 +37,7 @@ import {
   type Counts,
   DigestConflict,
   DigestFailed,
+  type DigestGap,
   DigestInterrupted,
   type DigestRun,
   type Line,
@@ -74,6 +75,13 @@ const digestJson = (digest: DigestRow): Digest => ({
   trigger: digest.trigger,
   ai_profile: digest.aiProfile,
   created_at: DateTime.formatIso(digest.createdAt),
+});
+
+const gapJson = (gap: Gap): DigestGap => ({
+  from_seq: gap.fromSeq,
+  to_seq: gap.toSeq,
+  items: gap.items,
+  run_items: gap.runItems,
 });
 
 const runJson = (run: DigestRunRow): DigestRun => ({
@@ -557,6 +565,9 @@ const weirHandlers = HttpApiBuilder.group(
           const { config } = yield* daemon.state;
           const since = yield* Read.aiSince(conversation.id);
           const lastRun = yield* Read.lastDigestRun(conversation.id);
+          const lite = yield* Read.itemsLite(conversation.id);
+          const ranges =
+            config.digest === undefined ? null : gaps(lite, digests, config.digest.max_input);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
@@ -581,17 +592,17 @@ const weirHandlers = HttpApiBuilder.group(
                 config.digest === undefined || Option.isNone(since)
                   ? null
                   : {
-                      chars: backlog(
-                        items.map(({ seq, occurredAt, bodyNew }) => ({
-                          seq,
-                          occurredAt,
-                          chars: [...bodyNew].length,
-                        })),
-                        digests,
-                        since.value,
-                      ).chars,
+                      chars: backlog(lite, digests, since.value).chars,
                       threshold: config.digest.threshold,
                     },
+              earlier:
+                ranges === null
+                  ? null
+                  : ranges.earlier.map((earlier) => ({
+                      before_digest: earlier.beforeDigest,
+                      ...gapJson(earlier),
+                    })),
+              now: ranges === null || ranges.now === null ? null : gapJson(ranges.now),
               last_failure: Option.getOrNull(
                 Option.map(
                   Option.filter(lastRun, ({ ok }) => !ok),

@@ -133,8 +133,12 @@ describe("auto digest", () => {
         item("w2", "Work plan", 400, 3),
       ]);
       const work = yield* conversationOf("Work plan");
-      expect((yield* detail(work)).digest).toEqual({
+      const before = yield* detail(work);
+      const [w1, w2] = before.items.map(({ seq }) => seq);
+      expect(before.digest).toEqual({
         backlog: { chars: 800, threshold: 1000 },
+        earlier: [],
+        now: { from_seq: w1, to_seq: w2, items: 2, run_items: 2 },
         last_failure: null,
       });
       expect((yield* detail(yield* conversationOf("List news"))).digest.backlog).toBeNull();
@@ -147,6 +151,8 @@ describe("auto digest", () => {
       expect(ranges(digested.digests)).toEqual([[s1, s3, "auto"]]);
       expect(digested.digest).toEqual({
         backlog: { chars: 0, threshold: 1000 },
+        earlier: [],
+        now: null,
         last_failure: null,
       });
       expect(
@@ -583,6 +589,96 @@ describe("cancellation", () => {
       const retried = yield* client.digest({ params: { id }, payload: {} });
       expect(ranges(retried.digests)).toEqual([[seq, seq, "manual"]]);
       expect(yield* storedDigests(home)).toEqual({ digests: 1, fts: 1 });
+    }).pipe(Effect.scoped),
+  );
+});
+
+const astral = (externalId: string, chars: number, minute: number): RawItem => {
+  const text = "😀".repeat(chars);
+  return rawItem(externalId, {
+    threadId: "List news",
+    title: "List news",
+    occurredAt: `2030-01-01T09:${String(minute).padStart(2, "0")}:00Z`,
+    body: text,
+    bodyNew: text,
+  });
+};
+
+describe("detail digest ranges", () => {
+  it.live("earlier is the range Digest earlier writes; it shrinks, then disappears", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail, calls } = yield* start({ maxInput: 250 });
+      yield* deliver([1, 2, 3, 4, 5, 6].map((n) => astral(`l${n}`, 100, n)));
+      const id = yield* conversationOf("List news");
+      const [s1, s2, s3, s4, s5] = (yield* detail(id)).items.map(({ seq }) => seq);
+      if (s2 === undefined || s5 === undefined) throw new Error("6 items");
+      const tail = yield* client.digest({ params: { id }, payload: { from: s5 } });
+
+      const first = (yield* detail(id)).digest;
+      expect(first.earlier).toEqual([
+        { before_digest: tail.digests[0]?.id, from_seq: s3, to_seq: s4, items: 2, run_items: 4 },
+      ]);
+      expect(first.now).toBeNull();
+      const entry = first.earlier?.[0];
+      if (entry === undefined) throw new Error("expected an earlier entry");
+
+      const written = yield* client.digest({ params: { id }, payload: { up_to: entry.to_seq } });
+      expect(ranges(written.digests)).toEqual([[entry.from_seq, entry.to_seq, "manual"]]);
+      expect(calls().at(-1)?.input.range).toEqual({
+        from_seq: entry.from_seq,
+        to_seq: entry.to_seq,
+      });
+      expect((yield* detail(id)).digest.earlier).toEqual([
+        { before_digest: written.digests[0]?.id, from_seq: s1, to_seq: s2, items: 2, run_items: 2 },
+      ]);
+
+      yield* client.digest({ params: { id }, payload: { up_to: s2 } });
+      expect((yield* detail(id)).digest).toMatchObject({ earlier: [], now: null });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("now is the whole tail Digest now writes, and covers only what arrives after it", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail, calls } = yield* start({ maxInput: 250 });
+      yield* deliver([1, 2, 3].map((n) => astral(`l${n}`, 100, n)));
+      const id = yield* conversationOf("List news");
+      const [s1, s2, s3] = (yield* detail(id)).items.map(({ seq }) => seq);
+
+      const now = (yield* detail(id)).digest.now;
+      expect(now).toEqual({ from_seq: s1, to_seq: s3, items: 3, run_items: 3 });
+      const written = yield* client.digest({ params: { id }, payload: {} });
+      expect(ranges(written.digests)).toEqual([
+        [now?.from_seq, s2, "manual"],
+        [s3, now?.to_seq, "manual"],
+      ]);
+      expect(calls().map(({ input }) => input.range)).toEqual([
+        { from_seq: s1, to_seq: s2 },
+        { from_seq: s3, to_seq: s3 },
+      ]);
+      expect((yield* detail(id)).digest).toMatchObject({ earlier: [], now: null });
+
+      yield* deliver([astral("l4", 100, 4)]);
+      const next = yield* detail(id);
+      const s4 = next.items.at(-1)?.seq;
+      expect(next.digest).toMatchObject({
+        earlier: [],
+        now: { from_seq: s4, to_seq: s4, items: 1, run_items: 1 },
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("without a [digest] section earlier and now are null", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      writeConfig(sourceConfig() + tags);
+      const { deliver, conversationOf, detail } = yield* serve(home, port, fakeSource([]));
+      yield* deliver([item("l1", "List news", 100, 1)]);
+      expect((yield* detail(yield* conversationOf("List news"))).digest).toEqual({
+        backlog: null,
+        earlier: null,
+        now: null,
+        last_failure: null,
+      });
     }).pipe(Effect.scoped),
   );
 });

@@ -119,6 +119,64 @@ export const manualRange = (
   return Result.succeed({ fromSeq: items[from]?.seq ?? request.seq, toSeq: request.seq });
 };
 
+export interface Gap extends Range {
+  readonly items: number;
+  readonly runItems: number;
+}
+
+export interface EarlierGap extends Gap {
+  readonly beforeDigest: DigestId;
+}
+
+export interface Gaps {
+  readonly earlier: ReadonlyArray<EarlierGap>;
+  readonly now: Gap | null;
+}
+
+const gap = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  run: ReadonlyArray<ItemLite>,
+  request: Request,
+  maxInput: number,
+): Gap | null => {
+  if (run.length === 0) return null;
+  const range = manualRange(items, spans, request, maxInput);
+  if (Result.isFailure(range)) return null;
+  const { fromSeq, toSeq } = range.success;
+  return {
+    fromSeq,
+    toSeq,
+    items: run.filter(({ seq }) => fromSeq <= seq && seq <= toSeq).length,
+    runItems: run.length,
+  };
+};
+
+export const gaps = (
+  items: ReadonlyArray<ItemLite>,
+  spans: ReadonlyArray<Span>,
+  maxInput: number,
+): Gaps => {
+  const earlier: Array<EarlierGap> = [];
+  let cursor = 0;
+  let reach = 0;
+  for (const span of spans.toSorted((a, b) => a.fromSeq - b.fromSeq)) {
+    while (cursor < items.length && (items[cursor]?.seq ?? 0) <= reach) cursor++;
+    const start = cursor;
+    while (cursor < items.length && (items[cursor]?.seq ?? 0) < span.fromSeq) cursor++;
+    const run = items.slice(start, cursor);
+    const last = run.at(-1);
+    if (last !== undefined) {
+      const found = gap(run, [], run, { _tag: "UpTo", seq: last.seq }, maxInput);
+      if (found !== null) earlier.push({ ...found, beforeDigest: span.id });
+    }
+    reach = Math.max(reach, span.toSeq);
+  }
+  const floor = floorOf(spans);
+  const tail = items.filter(({ seq }) => seq > floor);
+  return { earlier, now: gap(items, spans, tail, { _tag: "Now" }, maxInput) };
+};
+
 export const chunks = (
   items: ReadonlyArray<ItemLite>,
   range: Range,
