@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type RawItem, type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
-import { deliver, expireHistory, relabel, remove, seedMailbox } from "@weir/fixtures";
+import { deliver, expireHistory, relabel, remove, seedMailbox, setDelay } from "@weir/fixtures";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
@@ -240,6 +240,25 @@ describe("gws plugin against fake-gws", () => {
     const source = sourceFor(seeded());
     await expect(source.sync("someone@example.com", null, running)).rejects.toThrow(/no stream/);
     await expect(source.sync(ME, "historyId-42", running)).rejects.toThrow();
+  });
+
+  it("kills the in-flight gws child and rejects when the signal aborts", async () => {
+    const dir = seeded();
+    setDelay(dir, { "messages list": 20_000 });
+    const running = () =>
+      new TextDecoder()
+        .decode(Bun.spawnSync(["ps", "-axo", "command="]).stdout)
+        .split("\n")
+        .filter((line) => line.includes(dir) && line.includes("messages list"));
+    const controller = new AbortController();
+    const started = performance.now();
+    const page = sourceFor(dir).sync(ME, null, controller.signal);
+    while (running().length === 0 && performance.now() - started < 10_000) await Bun.sleep(25);
+    expect(running()).toHaveLength(1);
+    controller.abort();
+    await expect(page).rejects.toThrow(/abort/i);
+    expect(performance.now() - started).toBeLessThan(20_000);
+    expect(running()).toEqual([]);
   });
 
   it("surfaces gws failures as GwsError", async () => {
