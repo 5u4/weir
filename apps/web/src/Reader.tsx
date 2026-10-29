@@ -30,8 +30,9 @@ import {
 import { clockTime, dayAndTime, plural } from "./Health.ts";
 import { monogram } from "./Notch.ts";
 import { type Preview, pins, preview, readerUi, reading } from "./Reading.ts";
-import type { ConversationId } from "./Route.ts";
-import { conversation, digestRun, runDigest } from "./Weir.ts";
+import { type ConversationId, route } from "./Route.ts";
+import { homeTag, tagHue } from "./Rows.ts";
+import { conversation, digestRun, runDigest, tagOrder } from "./Weir.ts";
 
 type Controls = {
   readonly run: Run;
@@ -634,6 +635,8 @@ function Conversation({
   watch: Watch;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
+  const { view } = useAtomValue(route);
+  const hue = tagHue(useAtomValue(tagOrder), view, detail);
   const run = useAtomValue(digestRun(id));
   const start = useAtomSet(runDigest);
   const setPreview = useAtomSet(preview);
@@ -663,9 +666,15 @@ function Conversation({
           },
         };
   const newCount = detail.items.filter(({ seq }) => seq > frozen).length;
-  const [home, ...tags] = detail.tags;
+  const home = homeTag(view, detail.tags);
+  const tags = detail.tags.filter((tag) => tag !== home);
   return (
-    <article className="conv" ref={land} aria-label={detail.title}>
+    <article
+      className="conv"
+      ref={land}
+      aria-label={detail.title}
+      style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
+    >
       <header className="r-head">
         <p className="r-crumb">
           {home !== undefined && <b>{home}</b>}

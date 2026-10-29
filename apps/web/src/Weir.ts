@@ -51,6 +51,13 @@ export const searchOpen = Atom.make(false);
 
 export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
 
+export const tagOrder = Atom.make((get) =>
+  AsyncResult.getOrElse(
+    AsyncResult.map(get(counts), (value) => value.tags.map(({ name }) => name)),
+    (): ReadonlyArray<string> => [],
+  ),
+);
+
 const toApiView = Schema.decodeSync(ApiView);
 const toClearableView = Schema.decodeSync(ClearableView);
 

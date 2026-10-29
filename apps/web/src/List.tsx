@@ -10,7 +10,7 @@ import { Link } from "./Link.tsx";
 import { reading } from "./Reading.ts";
 import { ConversationId, route, type View } from "./Route.ts";
 import { face, neighbor, shown, tagHue } from "./Rows.ts";
-import { clearAll, counts, dismiss, intents, viewList } from "./Weir.ts";
+import { clearAll, dismiss, intents, tagOrder, viewList } from "./Weir.ts";
 
 const viewLabel = (view: View) =>
   view === "untagged" ? "Untagged" : view === "cleared" ? "Cleared" : view.slice("tag:".length);
@@ -112,10 +112,7 @@ export function List() {
   const { view } = current;
   const result = useAtomValue(viewList(view));
   const pending = useAtomValue(intents);
-  const tags = AsyncResult.getOrElse(
-    AsyncResult.map(useAtomValue(counts), (value) => value.tags.map(({ name }) => name)),
-    () => [],
-  );
+  const tags = useAtomValue(tagOrder);
   const runDismiss = useAtomSet(dismiss);
   const runClear = useAtomSet(clearAll);
   const loaded = AsyncResult.getOrElse(AsyncResult.map(result, Option.some), () => Option.none());

@@ -687,7 +687,8 @@ button {
   align-self: start;
   position: relative;
 }
-.row[style*="--bh"] {
+.row[style*="--bh"],
+.conv[style*="--bh"] {
   --cl: oklch(var(--cl-l) var(--cl-c) var(--bh));
 }
 .row.unread .row-av::after {

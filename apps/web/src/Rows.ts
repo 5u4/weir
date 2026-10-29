@@ -59,11 +59,17 @@ export const face = (row: Row): Face => {
 
 const tagHues = [262, 200, 150, 75, 330, 20];
 
-export const tagHue = (tags: ReadonlyArray<string>, view: View, row: Row) => {
-  const home =
-    view.startsWith("tag:") && row.tags.includes(view.slice("tag:".length))
-      ? view.slice("tag:".length)
-      : row.tags[0];
-  const index = home === undefined ? -1 : tags.indexOf(home);
+export const homeTag = (view: View, tags: ReadonlyArray<string>) =>
+  view.startsWith("tag:") && tags.includes(view.slice("tag:".length))
+    ? view.slice("tag:".length)
+    : tags[0];
+
+export const tagHue = (
+  order: ReadonlyArray<string>,
+  view: View,
+  conversation: { readonly tags: ReadonlyArray<string> },
+) => {
+  const home = homeTag(view, conversation.tags);
+  const index = home === undefined ? -1 : order.indexOf(home);
   return index < 0 ? undefined : tagHues[index % tagHues.length];
 };
