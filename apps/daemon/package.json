@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./Api": "./src/Api.ts",
+    "./ConfigFile": "./src/ConfigFile.ts",
     "./Daemon": "./src/Daemon.ts",
     "./Home": "./src/Home.ts",
     "./Http": "./src/Http.ts",
