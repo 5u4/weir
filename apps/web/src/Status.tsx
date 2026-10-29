@@ -1,11 +1,11 @@
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import type { Status } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
-import * as AsyncResult from "effect/reactivity/AsyncResult";
 import type { CSSProperties, KeyboardEvent } from "react";
 import {
   ago,
   clockTime,
+  configState,
   dayAndTime,
   type Health,
   now,
@@ -134,10 +134,10 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
 }
 
 function ConfigSection({ config }: { config: Status["config"] }) {
-  const reloadResult = useAtomValue(reload);
+  const state = configState(useAtomValue(reload), config);
   const runReload = useAtomSet(reload, { mode: "promiseExit" });
   const refreshStatus = useAtomRefresh(status);
-  const reloading = AsyncResult.isWaiting(reloadResult);
+  const reloading = state._tag === "Reloading";
   return (
     <section className="sv-sec" aria-labelledby="sv-h-cfg">
       <h3 className="sv-h" id="sv-h-cfg">
@@ -154,33 +154,33 @@ function ConfigSection({ config }: { config: Status["config"] }) {
           <dt>State</dt>
           <dd>
             <span className="sv-state" role="status" aria-live="polite">
-              {reloading ? (
+              {state._tag === "Reloading" ? (
                 <span className="sv-busy">Reloading…</span>
-              ) : config.error !== null ? (
+              ) : state._tag === "Invalid" ? (
                 <span className="sv-bad">Reload failed</span>
+              ) : state._tag === "RequestFailed" ? (
+                <span className="sv-bad">Reload request failed</span>
               ) : (
                 <>
                   <span className="sv-good">Config loaded</span>
-                  <time dateTime={config.loaded_at}>
-                    {clockTime(DateTime.makeUnsafe(config.loaded_at))}
-                  </time>
+                  <time dateTime={DateTime.formatIso(state.at)}>{clockTime(state.at)}</time>
                 </>
               )}
             </span>
           </dd>
         </div>
       </dl>
-      {config.error !== null && !reloading && (
+      {state._tag === "Invalid" && (
         <ul className="sv-errs" aria-label="Config errors">
-          {config.error.issues.length === 0 ? (
+          {state.problem.issues.length === 0 ? (
             <li>
-              <code className="sv-errs-file">{config.error.file}</code>
-              <span>{config.error.message}</span>
+              <code className="sv-errs-file">{state.problem.file}</code>
+              <span>{state.problem.message}</span>
             </li>
           ) : (
-            config.error.issues.map((issue) => (
+            state.problem.issues.map((issue) => (
               <li key={`${issue.path}\n${issue.message}`}>
-                <code className="sv-errs-file">{config.error?.file}</code>
+                <code className="sv-errs-file">{state.problem.file}</code>
                 <span>
                   {issue.path !== "" && (
                     <>
@@ -192,6 +192,14 @@ function ConfigSection({ config }: { config: Status["config"] }) {
               </li>
             ))
           )}
+        </ul>
+      )}
+      {state._tag === "RequestFailed" && (
+        <ul className="sv-errs" aria-label="Reload error">
+          <li>
+            <code className="sv-errs-file">POST /reload</code>
+            <span>{state.reason}</span>
+          </li>
         </ul>
       )}
       <div className="sv-reload-row">

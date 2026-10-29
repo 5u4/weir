@@ -1,6 +1,9 @@
-import type { Status } from "@weir/daemon/Api";
+import type { ConfigInvalid, Reloaded, Status } from "@weir/daemon/Api";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
+import * as Option from "effect/Option";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 
 export type SourceState =
@@ -74,6 +77,43 @@ export const health = (status: Status): Health => {
           ),
         };
   return { sources, stopped, verdict, alert: verdict._tag !== "Running" };
+};
+
+type ConfigProblem = NonNullable<Status["config"]["error"]>;
+
+export type ConfigState =
+  | { readonly _tag: "Reloading" }
+  | { readonly _tag: "Loaded"; readonly at: DateTime.Utc }
+  | { readonly _tag: "Invalid"; readonly problem: ConfigProblem }
+  | { readonly _tag: "RequestFailed"; readonly reason: string };
+
+export const configState = (
+  reload: AsyncResult.AsyncResult<typeof Reloaded.Type, ConfigInvalid>,
+  config: Status["config"],
+): ConfigState => {
+  if (AsyncResult.isWaiting(reload)) return { _tag: "Reloading" };
+  switch (reload._tag) {
+    case "Initial":
+      return config.error === null
+        ? { _tag: "Loaded", at: DateTime.makeUnsafe(config.loaded_at) }
+        : { _tag: "Invalid", problem: config.error };
+    case "Success":
+      return { _tag: "Loaded", at: DateTime.makeUnsafe(reload.value.loaded_at) };
+    case "Failure":
+      return Option.match(AsyncResult.error(reload), {
+        onSome: ({ file, message, issues }): ConfigState => ({
+          _tag: "Invalid",
+          problem: { file, message, issues },
+        }),
+        onNone: (): ConfigState => {
+          const error = Cause.squash(reload.cause);
+          return {
+            _tag: "RequestFailed",
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        },
+      });
+  }
 };
 
 export const now = Atom.make((get) => {

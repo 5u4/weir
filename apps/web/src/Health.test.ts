@@ -1,7 +1,9 @@
-import type { Status } from "@weir/daemon/Api";
+import { ConfigInvalid, type Status } from "@weir/daemon/Api";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { describe, expect, it } from "vitest";
-import { ago, health } from "./Health.ts";
+import { ago, configState, health } from "./Health.ts";
 
 const stream = (overrides: Partial<Status["sources"][number]["streams"][number]> = {}) => ({
   name: "robin@example.com",
@@ -107,5 +109,53 @@ describe("relative time", () => {
     [86400 * 3, "3d ago"],
   ])("%ds later reads %s", (seconds, expected) => {
     expect(ago(at, DateTime.add(at, { seconds }))).toBe(expected);
+  });
+});
+
+describe("config state after Reload", () => {
+  const loaded = { path: "/h/config.toml", loaded_at: "2026-10-25T16:00:00.000Z", error: null };
+  const problem = { file: "/h/config.toml", message: "invalid config", issues: [] };
+  const invalid = { ...loaded, error: problem };
+  const reloaded = { loaded_at: "2026-10-25T17:00:00.000Z", sources: [], tags: [] };
+
+  it("before any Reload, follows the status snapshot", () => {
+    expect(configState(AsyncResult.initial(), loaded)).toEqual({
+      _tag: "Loaded",
+      at: DateTime.makeUnsafe("2026-10-25T16:00:00.000Z"),
+    });
+    expect(configState(AsyncResult.initial(), invalid)).toEqual({
+      _tag: "Invalid",
+      problem,
+    });
+  });
+
+  it("is reloading while the request is in flight, whatever came before", () => {
+    expect(configState(AsyncResult.initial(true), loaded)).toEqual({ _tag: "Reloading" });
+    expect(configState(AsyncResult.success(reloaded, { waiting: true }), invalid)).toEqual({
+      _tag: "Reloading",
+    });
+  });
+
+  it("a successful Reload is loaded at its own time, ahead of a stale snapshot", () => {
+    expect(configState(AsyncResult.success(reloaded), invalid)).toEqual({
+      _tag: "Loaded",
+      at: DateTime.makeUnsafe("2026-10-25T17:00:00.000Z"),
+    });
+  });
+
+  it("a Reload rejected for config errors shows those errors, ahead of a stale snapshot", () => {
+    expect(configState(AsyncResult.fail(new ConfigInvalid(problem)), loaded)).toEqual({
+      _tag: "Invalid",
+      problem,
+    });
+  });
+
+  it("a Reload request that fails is a request failure, not loaded, even when the snapshot is fine", () => {
+    expect(
+      configState(
+        AsyncResult.failure(Cause.die(new Error("Transport error (POST /reload)"))),
+        loaded,
+      ),
+    ).toEqual({ _tag: "RequestFailed", reason: "Transport error (POST /reload)" });
   });
 });
