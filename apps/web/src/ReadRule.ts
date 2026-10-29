@@ -1,6 +1,8 @@
+export type Pause = { readonly id: number; readonly seen: number };
+
 export type Mode =
   | { readonly _tag: "Reading" }
-  | { readonly _tag: "Paused"; readonly seen: number };
+  | { readonly _tag: "Paused"; readonly pauses: readonly [Pause, ...Array<Pause>] };
 
 export type State = {
   readonly candidate: number;
@@ -12,6 +14,7 @@ export type State = {
   readonly focused: boolean;
   readonly visible: boolean;
   readonly mode: Mode;
+  readonly issued: number;
 };
 
 export type Event =
@@ -25,13 +28,13 @@ export type Event =
   | { readonly _tag: "Acked"; readonly seq: number }
   | { readonly _tag: "Failed"; readonly seq: number }
   | { readonly _tag: "Pause"; readonly from: number | null }
-  | { readonly _tag: "Resume" };
+  | { readonly _tag: "Resume"; readonly pause: number };
 
 export type Command =
   | { readonly _tag: "Idle" }
   | { readonly _tag: "Debounce" }
   | { readonly _tag: "Send"; readonly seq: number }
-  | { readonly _tag: "Unread"; readonly from: number };
+  | { readonly _tag: "Unread"; readonly from: number; readonly pause: number };
 
 export const open = (opened: {
   readonly seen: number;
@@ -48,6 +51,7 @@ export const open = (opened: {
   focused: opened.focused,
   visible: opened.visible,
   mode: { _tag: "Reading" },
+  issued: 0,
 });
 
 const apply = (state: State, event: Event): State => {
@@ -75,16 +79,27 @@ const apply = (state: State, event: Event): State => {
       };
     case "Failed":
       return { ...state, pending: state.pending === event.seq ? 0 : state.pending };
-    case "Pause":
+    case "Pause": {
+      const pause = {
+        id: state.issued,
+        seen: Math.max(0, Math.min(event.from ?? state.last, state.last) - 1),
+      };
+      const held = state.mode._tag === "Paused" ? state.mode.pauses : [];
       return {
         ...state,
-        mode: {
-          _tag: "Paused",
-          seen: Math.max(0, Math.min(event.from ?? state.last, state.last) - 1),
-        },
+        issued: state.issued + 1,
+        mode: { _tag: "Paused", pauses: [pause, ...held] },
       };
-    case "Resume":
-      return { ...state, mode: { _tag: "Reading" } };
+    }
+    case "Resume": {
+      if (state.mode._tag === "Reading") return state;
+      const [first, ...rest] = state.mode.pauses.filter(({ id }) => id !== event.pause);
+      return {
+        ...state,
+        mode:
+          first === undefined ? { _tag: "Reading" } : { _tag: "Paused", pauses: [first, ...rest] },
+      };
+    }
     case "Elapsed":
     case "Leave":
       return state;
@@ -99,7 +114,7 @@ const flushes = (event: Event) =>
 export const step = (state: State, event: Event): readonly [State, Command] => {
   const applied = apply(state, event);
   if (event._tag === "Pause") {
-    return [applied, { _tag: "Unread", from: event.from ?? applied.last }];
+    return [applied, { _tag: "Unread", from: event.from ?? applied.last, pause: state.issued }];
   }
   if (event._tag === "Acked" || event._tag === "Failed" || applied.mode._tag === "Paused") {
     return [applied, { _tag: "Idle" }];
@@ -119,4 +134,4 @@ export const step = (state: State, event: Event): readonly [State, Command] => {
 };
 
 export const seen = (state: State) =>
-  state.mode._tag === "Paused" ? state.mode.seen : state.candidate;
+  state.mode._tag === "Paused" ? state.mode.pauses[0].seen : state.candidate;

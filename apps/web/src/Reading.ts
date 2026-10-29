@@ -92,7 +92,7 @@ export const reading = Atom.family((id: ConversationId) =>
           get.registry.set(markUnread, {
             id,
             from: command.from,
-            failed: () => dispatch({ _tag: "Resume" }),
+            failed: () => dispatch({ _tag: "Resume", pause: command.pause }),
           });
           break;
         case "Idle":

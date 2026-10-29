@@ -10,6 +10,7 @@ const daemon = vi.hoisted(() => {
   const state = { seen: 9, last: 25, cleared: 25, muted: false };
   const requests: Array<string> = [];
   const held: Array<() => void> = [];
+  const failing = new Set<string>();
   const party = { name: "Ada Lovelace", address: "ada@example.com", me: false };
   const standing = () =>
     state.muted
@@ -70,6 +71,10 @@ const daemon = vi.hoisted(() => {
       const hold = Promise.withResolvers<void>();
       held.push(hold.resolve);
       await hold.promise;
+      if (failing.has(label)) {
+        requests.push(`${label} failed`);
+        return new Response(null, { status: 500 });
+      }
       writes[write]?.(seq);
       requests.push(`${label} applied`);
       return Response.json(row());
@@ -130,13 +135,14 @@ const daemon = vi.hoisted(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   });
-  return { state, requests, held };
+  return { state, requests, held, failing };
 });
 
 afterEach(() => {
   Object.assign(daemon.state, { seen: 9, last: 25, cleared: 25, muted: false });
   daemon.requests.length = 0;
   daemon.held.length = 0;
+  daemon.failing.clear();
 });
 
 const id = ConversationId.make(1);
@@ -226,6 +232,35 @@ it("Mark unread after reopening still lands after a read from the earlier visit"
 
   await releaseNewestFirst(["read 25", "unread 12"]);
   expect(daemon.state.seen).toBe(11);
+  registry.dispose();
+});
+
+it.each([
+  ["the first Mark unread fails and the second lands", "unread 25", "unread 12 applied"],
+  ["the first Mark unread lands and the second fails", "unread 12", "unread 25 applied"],
+])("%s, so reading stays paused until the conversation closes", async (_, fails, landed) => {
+  const registry = await loaded();
+  registry.mount(reading(id));
+  const reader = registry.get(reading(id));
+  daemon.failing.add(fails);
+
+  reader.unread(null);
+  reader.unread(12);
+  await vi.waitFor(() => {
+    for (const release of daemon.held.splice(0)) release();
+    expect(daemon.requests).toContain(`${fails} failed`);
+    expect(daemon.requests).toContain(landed);
+  });
+  reader.dispatch({ _tag: "Input" });
+  reader.dispatch({ _tag: "Viewport", inView: 25 });
+  reader.dispatch({ _tag: "Leave" });
+  registry.set(dismiss, { act: "Mute", target });
+
+  await vi.waitFor(() => {
+    for (const release of daemon.held.splice(0)) release();
+    expect(daemon.requests).toContain("mute applied");
+  });
+  expect(daemon.requests.filter((request) => request.startsWith("read"))).toEqual([]);
   registry.dispose();
 });
 

@@ -27,7 +27,7 @@ const leave: Event = { _tag: "Leave" };
 const acked = (seq: number): Event => ({ _tag: "Acked", seq });
 const failed = (seq: number): Event => ({ _tag: "Failed", seq });
 const pause = (from: number | null = null): Event => ({ _tag: "Pause", from });
-const resume: Event = { _tag: "Resume" };
+const resume = (pause: number): Event => ({ _tag: "Resume", pause });
 const fetched = (last: number, seen: number): Event => ({ _tag: "Fetched", last, seen });
 
 describe("read rule", () => {
@@ -97,7 +97,7 @@ describe("read rule", () => {
     },
     {
       name: "paused never advances",
-      start: { mode: { _tag: "Paused", seen: 24 } },
+      start: { mode: { _tag: "Paused", pauses: [{ id: 0, seen: 24 }] }, issued: 1 },
       events: [input, viewport(25), focus(true), leave],
       commands: ["Idle", "Idle", "Idle", "Idle"],
     },
@@ -113,8 +113,13 @@ describe("read rule", () => {
     },
     {
       name: "a mark unread that fails resumes reading",
-      events: [input, pause(), viewport(25), resume],
+      events: [input, pause(), viewport(25), resume(0)],
       commands: ["Idle", "Unread", "Idle", 25],
+    },
+    {
+      name: "a failed Mark unread keeps reading paused while another one holds",
+      events: [input, pause(), pause(12), resume(0), viewport(25), leave],
+      commands: ["Idle", "Unread", "Unread", "Idle", "Idle", "Idle"],
     },
     {
       name: "scrolling back up never sends a lower seq",
@@ -186,7 +191,7 @@ describe("read rule", () => {
 
   it("Mark unread sends the last seq shown when clicked, not whatever is last when it lands", () => {
     const [, command] = step(run(opened(), [input, viewport(25)]).state, pause());
-    expect(command).toEqual({ _tag: "Unread", from: 25 });
+    expect(command).toEqual({ _tag: "Unread", from: 25, pause: 0 });
   });
 
   it("the daemon's read position counts as seen and is never sent again", () => {
@@ -201,7 +206,7 @@ describe("read rule", () => {
 
   it("Mark unread stays put when the daemon reports a higher read position", () => {
     const { state } = run(opened(), [input, viewport(25), pause(12), fetched(25, 25)]);
-    expect(state.mode).toEqual({ _tag: "Paused", seen: 11 });
+    expect(seen(state)).toBe(11);
   });
 
   it("seen follows reading until paused", () => {
