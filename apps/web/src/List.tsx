@@ -9,7 +9,7 @@ import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import { reading } from "./Reading.ts";
 import { ConversationId, route, type View } from "./Route.ts";
-import { face, neighbor, shown, tagHue } from "./Rows.ts";
+import { face, shown, tagHue } from "./Rows.ts";
 import { clearAll, dismiss, intents, tagOrder, viewList } from "./Weir.ts";
 
 const viewLabel = (view: View) =>
@@ -24,8 +24,8 @@ type RowProps = {
 };
 
 function OpenRow(props: RowProps) {
-  const { candidate } = useAtomValue(reading(ConversationId.make(props.row.id)));
-  return <ListRow {...props} seen={candidate} />;
+  const { seen } = useAtomValue(reading(ConversationId.make(props.row.id)));
+  return <ListRow {...props} seen={seen} />;
 }
 
 function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { seen: number }) {
@@ -160,20 +160,8 @@ export function List() {
                     view,
                     selected: open === row.id,
                     hue: tagHue(tags, view, row),
-                    onDismiss: () => {
-                      if (open === row.id) {
-                        navigate({
-                          _tag: "Replace",
-                          to: {
-                            ...current,
-                            conversation: Option.map(neighbor(list, row.id), (next) =>
-                              ConversationId.make(next.id),
-                            ),
-                          },
-                        });
-                      }
-                      runDismiss({ view, row });
-                    },
+                    onDismiss: () =>
+                      runDismiss({ act: view === "cleared" ? "Restore" : "Done", target: row }),
                   };
                   return props.selected ? (
                     <OpenRow key={row.id} {...props} />

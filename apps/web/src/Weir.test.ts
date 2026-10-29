@@ -236,7 +236,7 @@ it("Done hides the row until the server agrees, then defers to whatever the serv
 
   const target = daemon.rows.get(1);
   if (target === undefined) throw new Error("fixture row 1 missing");
-  registry.set(dismiss, { view: "untagged", row: target });
+  registry.set(dismiss, { act: "Done", target });
   await settled(registry, dismiss);
 
   expect(seen.length).toBeGreaterThan(0);
@@ -249,6 +249,35 @@ it("Done hides the row until the server agrees, then defers to whatever the serv
   expect(visible()).toEqual([1, 2]);
 
   for (const release of stop) release();
+  registry.dispose();
+});
+
+it("a Mute the daemon refuses puts the row back", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+
+  const visible = () =>
+    AsyncResult.getOrElse(
+      AsyncResult.map(registry.get(list), ({ conversations }) =>
+        shown("untagged", conversations, registry.get(intents)).map(({ id }) => id),
+      ),
+      () => [],
+    );
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+  daemon.requests.length = 0;
+  registry.set(dismiss, { act: "Mute", target });
+  expect(visible()).toEqual([2]);
+  await Effect.runPromise(
+    Effect.flip(AtomRegistry.getResult(registry, dismiss, { suspendOnWaiting: true })),
+  );
+
+  expect(daemon.requests).toContain("POST /conversations/1/mute");
+  expect(visible()).toEqual([1, 2]);
   registry.dispose();
 });
 

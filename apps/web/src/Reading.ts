@@ -3,11 +3,14 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
+import * as Reactivity from "effect/reactivity/Reactivity";
 import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./Blocks.ts";
 import type { Range } from "./Digest.ts";
+import { type DockAction, dockActions } from "./Dock.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
-import { conversation, Weir } from "./Weir.ts";
+import type { Target } from "./Rows.ts";
+import { conversation, inTurn, intents, Weir } from "./Weir.ts";
 
 const debounce = 300;
 
@@ -20,17 +23,35 @@ export const markRead = Weir.runtime
     ({ id, seq, settled }) =>
       Effect.gen(function* () {
         const client = yield* Weir;
-        yield* client.read({ params: { id }, payload: { seq } });
+        yield* inTurn(id)(client.read({ params: { id }, payload: { seq } }));
       }).pipe(Effect.onExit((exit) => Effect.sync(() => settled(Exit.isSuccess(exit))))),
+    { concurrent: true },
+  )
+  .pipe(Atom.keepAlive);
+
+export const markUnread = Weir.runtime
+  .fn<{
+    readonly id: ConversationId;
+    readonly from: number;
+    readonly failed: () => void;
+  }>()(
+    ({ id, from, failed }) =>
+      Effect.gen(function* () {
+        const client = yield* Weir;
+        yield* inTurn(id)(client.unread({ params: { id }, payload: { seq: from } }));
+        yield* Reactivity.invalidate(["counts", "list"]);
+        yield* Reactivity.invalidate({ conversation: [id] });
+      }).pipe(Effect.onError(() => Effect.sync(failed))),
     { concurrent: true },
   )
   .pipe(Atom.keepAlive);
 
 export type Reading = {
   readonly frozen: Option.Option<number>;
-  readonly candidate: number;
+  readonly seen: number;
   readonly dispatch: (event: ReadRule.Event) => void;
   readonly watch: (end: HTMLElement) => () => void;
+  readonly unread: (from: number | null) => void;
 };
 
 const visibleNow = () => document.visibilityState === "visible";
@@ -52,7 +73,7 @@ export const reading = Atom.family((id: ConversationId) =>
       if (Option.isNone(opened)) return;
       const current = opened.value;
       const [rule, command] = ReadRule.step(current.rule, event);
-      const advanced = rule.candidate !== current.rule.candidate;
+      const advanced = ReadRule.seen(rule) !== ReadRule.seen(current.rule);
       current.rule = rule;
       switch (command._tag) {
         case "Debounce":
@@ -67,11 +88,19 @@ export const reading = Atom.family((id: ConversationId) =>
             settled: (acked) => dispatch({ _tag: acked ? "Acked" : "Failed", seq: command.seq }),
           });
           break;
+        case "Unread":
+          get.registry.set(markUnread, {
+            id,
+            from: command.from,
+            failed: () => dispatch({ _tag: "Resume", pause: command.pause }),
+          });
+          break;
         case "Idle":
           break;
       }
-      if (advanced) publish({ candidate: rule.candidate });
+      if (advanced) publish({ seen: ReadRule.seen(rule) });
     };
+    const unread = (from: number | null) => dispatch({ _tag: "Pause", from });
 
     const observer = new IntersectionObserver((entries) => {
       for (const { target, isIntersecting } of entries) {
@@ -113,10 +142,15 @@ export const reading = Atom.family((id: ConversationId) =>
     get.subscribe(conversation(id), (result) => {
       if (!AsyncResult.isSuccess(result)) return;
       if (Option.isSome(opened)) {
-        dispatch({ _tag: "Grown", last: lastSeq(result.value) });
+        dispatch({
+          _tag: "Fetched",
+          last: lastSeq(result.value),
+          seen: result.value.state.seen_seq,
+        });
         return;
       }
-      publish({ frozen: Option.some(open(result.value)) });
+      const seen = open(result.value);
+      publish({ frozen: Option.some(seen), seen });
     });
 
     const onFocus = () => dispatch({ _tag: "Focus", focused: true });
@@ -134,8 +168,36 @@ export const reading = Atom.family((id: ConversationId) =>
       document.removeEventListener("visibilitychange", onVisibility);
     });
 
-    return { frozen, candidate: 0, dispatch, watch };
+    return { frozen, seen: Option.getOrElse(frozen, () => 0), dispatch, watch, unread };
   }).pipe(Atom.setIdleTTL(0)),
+);
+
+export type Dock = {
+  readonly actions: ReadonlyArray<DockAction>;
+  readonly target: Target;
+  readonly open: Detail["open"];
+};
+
+export const dock = Atom.family((id: ConversationId) =>
+  Atom.make((get): Option.Option<Dock> => {
+    const detail = get(conversation(id));
+    if (!AsyncResult.isSuccess(detail)) return Option.none();
+    const last = lastSeq(detail.value);
+    const intent = get(intents).get(id);
+    const state =
+      intent === undefined
+        ? detail.value.state.state
+        : intent._tag === "Done"
+          ? "done"
+          : intent._tag === "Mute"
+            ? "muted"
+            : "read";
+    return Option.some({
+      actions: dockActions({ state, read: get(reading(id)).seen >= last }),
+      target: { id, last_seq: last, cleared_seq: detail.value.state.cleared_seq },
+      open: detail.value.open,
+    });
+  }),
 );
 
 export const readerUi = Atom.family((_: ConversationId) =>

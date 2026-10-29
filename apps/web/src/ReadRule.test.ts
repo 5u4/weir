@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Command, type Event, open, type State, step } from "./ReadRule.ts";
+import { type Command, type Event, open, type State, seen, step } from "./ReadRule.ts";
 
 const opened = (overrides: Partial<State> = {}): State => ({
   ...open({ seen: 9, last: 25, focused: true, visible: true }),
@@ -26,6 +26,9 @@ const elapsed: Event = { _tag: "Elapsed" };
 const leave: Event = { _tag: "Leave" };
 const acked = (seq: number): Event => ({ _tag: "Acked", seq });
 const failed = (seq: number): Event => ({ _tag: "Failed", seq });
+const pause = (from: number | null = null): Event => ({ _tag: "Pause", from });
+const resume = (pause: number): Event => ({ _tag: "Resume", pause });
+const fetched = (last: number, seen: number): Event => ({ _tag: "Fetched", last, seen });
 
 describe("read rule", () => {
   it.each<{
@@ -94,9 +97,29 @@ describe("read rule", () => {
     },
     {
       name: "paused never advances",
-      start: { paused: true },
+      start: { mode: { _tag: "Paused", pauses: [{ id: 0, seen: 24 }] }, issued: 1 },
       events: [input, viewport(25), focus(true), leave],
       commands: ["Idle", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "marking unread drops a pending read and sends nothing until the conversation closes",
+      events: [input, viewport(12), pause(), viewport(25), elapsed, focus(true), leave],
+      commands: ["Idle", "Debounce", "Unread", "Idle", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "new messages that arrive after Mark unread are not read either",
+      events: [input, viewport(25), pause(), fetched(30, 9), viewport(30), leave],
+      commands: ["Idle", 25, "Unread", "Idle", "Idle", "Idle"],
+    },
+    {
+      name: "a mark unread that fails resumes reading",
+      events: [input, pause(), viewport(25), resume(0)],
+      commands: ["Idle", "Unread", "Idle", 25],
+    },
+    {
+      name: "a failed Mark unread keeps reading paused while another one holds",
+      events: [input, pause(), pause(12), resume(0), viewport(25), leave],
+      commands: ["Idle", "Unread", "Unread", "Idle", "Idle", "Idle"],
     },
     {
       name: "scrolling back up never sends a lower seq",
@@ -135,7 +158,7 @@ describe("read rule", () => {
     },
     {
       name: "new items make an earlier full read partial again",
-      events: [input, viewport(25), { _tag: "Grown", last: 30 }, viewport(30)],
+      events: [input, viewport(25), fetched(30, 9), viewport(30)],
       commands: ["Idle", 25, "Idle", 30],
     },
   ])("$name", ({ start, events, commands }) => {
@@ -155,5 +178,38 @@ describe("read rule", () => {
     const retried = run(failedOnce, [leave, acked(18)]);
     expect(retried.commands).toEqual([18, "Idle"]);
     expect(retried.state.sent).toBe(18);
+  });
+
+  it.each([
+    ["Mark unread leaves the last message unread", null, 24],
+    ["Mark unread from here leaves that message and later ones unread", 12, 11],
+    ["Mark unread from the first message leaves nothing read", 1, 0],
+  ])("%s", (_, from, expected) => {
+    const { state } = run(opened(), [input, viewport(25), pause(from)]);
+    expect(seen(state)).toBe(expected);
+  });
+
+  it("Mark unread sends the last seq shown when clicked, not whatever is last when it lands", () => {
+    const [, command] = step(run(opened(), [input, viewport(25)]).state, pause());
+    expect(command).toEqual({ _tag: "Unread", from: 25, pause: 0 });
+  });
+
+  it("the daemon's read position counts as seen and is never sent again", () => {
+    const { state, commands } = run(opened(), [fetched(25, 25), input, viewport(25), leave]);
+    expect(seen(state)).toBe(25);
+    expect(commands).toEqual(["Idle", "Idle", "Idle", "Idle"]);
+  });
+
+  it("an older daemon read position never lowers what was read", () => {
+    expect(seen(run(opened(), [input, viewport(25), fetched(25, 9)]).state)).toBe(25);
+  });
+
+  it("Mark unread stays put when the daemon reports a higher read position", () => {
+    const { state } = run(opened(), [input, viewport(25), pause(12), fetched(25, 25)]);
+    expect(seen(state)).toBe(11);
+  });
+
+  it("seen follows reading until paused", () => {
+    expect(seen(run(opened(), [input, viewport(18)]).state)).toBe(18);
   });
 });

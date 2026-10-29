@@ -3,6 +3,7 @@ import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { Cap } from "./Cap.tsx";
 import { health } from "./Health.ts";
+import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
 import { Reader } from "./Reader.tsx";
 import { route, statusOpen } from "./Route.ts";
@@ -14,6 +15,7 @@ export function App() {
   useAtomMount(theme);
   useAtomMount(tabTitle);
   useAtomMount(live);
+  useAtomMount(keys);
   const [current, navigate] = useAtom(route);
   const reading = Option.isSome(current.conversation);
   const searching = useAtomValue(searchOpen);
@@ -68,7 +70,7 @@ export function App() {
               <button
                 type="button"
                 className="r-x"
-                title="Close"
+                title="Close (Esc)"
                 aria-label="Close"
                 onClick={() =>
                   navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })

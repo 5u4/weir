@@ -1,6 +1,7 @@
 import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daemon/Api";
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Option from "effect/Option";
@@ -15,8 +16,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
 import { refetches } from "./Live.ts";
-import { type ConversationId, route, statusOpen, type View } from "./Route.ts";
-import { type Intents, intentFor } from "./Rows.ts";
+import { ConversationId, route, statusOpen, type View } from "./Route.ts";
+import { type Act, type Intents, intentFor, leaves, neighbor, shown, type Target } from "./Rows.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -225,6 +226,25 @@ export const runDigest = Weir.runtime
   )
   .pipe(Atom.keepAlive);
 
+const turns = new Map<number, Deferred.Deferred<void>>();
+
+export const inTurn =
+  (id: number) =>
+  <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.suspend(() => {
+      const ahead = turns.get(id);
+      const turn = Deferred.makeUnsafe<void>();
+      turns.set(id, turn);
+      return (ahead === undefined ? write : Effect.andThen(Deferred.await(ahead), write)).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            Deferred.doneUnsafe(turn, Effect.void);
+            if (turns.get(id) === turn) turns.delete(id);
+          }),
+        ),
+      );
+    });
+
 export const intents = Atom.make<Intents>(new Map()).pipe(Atom.keepAlive);
 
 const changed = <A>(map: ReadonlyMap<number, A>, id: number, value: A | undefined) => {
@@ -234,27 +254,72 @@ const changed = <A>(map: ReadonlyMap<number, A>, id: number, value: A | undefine
   return next;
 };
 
+export const visibleRows = Atom.family((view: View) =>
+  Atom.make((get) =>
+    AsyncResult.getOrElse(
+      AsyncResult.map(get(viewList(view)), ({ conversations }) =>
+        shown(view, conversations, get(intents)),
+      ),
+      (): ReadonlyArray<Row> => [],
+    ),
+  ),
+);
+
 export const dismiss = Weir.runtime
-  .fn<{ readonly view: View; readonly row: Row }>()(
-    ({ view, row }, get) =>
+  .fn<{ readonly act: Act; readonly target: Target }>()(
+    ({ act, target }, get) =>
       Effect.gen(function* () {
         const client = yield* Weir;
-        const before = get.registry.get(intents).get(row.id);
-        const intent = intentFor(view, row);
-        get.registry.update(intents, (map) => changed(map, row.id, intent));
+        const current = get.registry.get(route);
+        const { view } = current;
+        const open = Option.contains(current.conversation, target.id);
+        if (open && leaves(view, act)) {
+          get.registry.set(route, {
+            _tag: "Replace",
+            to: {
+              ...current,
+              conversation: Option.map(
+                neighbor(get.registry.get(visibleRows(view)), target.id),
+                (next) => ConversationId.make(next.id),
+              ),
+            },
+          });
+        }
+        const before = get.registry.get(intents).get(target.id);
+        const intent = intentFor(act, target);
+        get.registry.update(intents, (map) => changed(map, target.id, intent));
+        const params = { id: target.id };
         const request =
-          view === "cleared"
-            ? client.restore({ params: { id: row.id } })
-            : client.done({ params: { id: row.id }, payload: { seq: row.last_seq } });
-        yield* request.pipe(
+          act === "Done"
+            ? client.done({ params, payload: { seq: target.last_seq } })
+            : act === "Mute"
+              ? client.mute({ params })
+              : client.restore({ params });
+        yield* inTurn(target.id)(request).pipe(
           Effect.onError(() =>
-            Effect.sync(() => get.registry.update(intents, (map) => changed(map, row.id, before))),
+            Effect.sync(() =>
+              get.registry.update(intents, (map) =>
+                map.get(target.id) === intent ? changed(map, target.id, before) : map,
+              ),
+            ),
           ),
         );
         yield* Reactivity.invalidate(["counts", "list"]);
-        yield* Effect.ignore(get.result(viewList(view), { suspendOnWaiting: true }));
+        yield* Reactivity.invalidate({ conversation: [target.id] });
+        yield* Effect.ignore(
+          Effect.all([
+            get.result(viewList(view), { suspendOnWaiting: true }),
+            ...(Option.contains(get.registry.get(route).conversation, target.id)
+              ? [
+                  get.result(conversation(ConversationId.make(target.id)), {
+                    suspendOnWaiting: true,
+                  }),
+                ]
+              : []),
+          ]),
+        );
         get.registry.update(intents, (map) =>
-          map.get(row.id) === intent ? changed(map, row.id, undefined) : map,
+          map.get(target.id) === intent ? changed(map, target.id, undefined) : map,
         );
       }),
     { concurrent: true },
