@@ -11,13 +11,20 @@ export type SourceState =
   | { readonly _tag: "Synced"; readonly at: DateTime.Utc }
   | { readonly _tag: "Failed"; readonly error: string; readonly lastGood: DateTime.Utc | null };
 
+export type StreamState = Exclude<SourceState, { readonly _tag: "Starting" }>;
+
+export type StreamHealth = {
+  readonly name: string;
+  readonly state: StreamState;
+  readonly items: number;
+  readonly backfilling: boolean;
+};
+
 export type SourceHealth = {
   readonly id: string;
   readonly plugin: string;
   readonly state: SourceState;
-  readonly streams: number;
-  readonly items: number;
-  readonly backfilling: boolean;
+  readonly streams: ReadonlyArray<StreamHealth>;
 };
 
 export type Verdict =
@@ -52,15 +59,28 @@ const sourceState = (source: Status["sources"][number]): SourceState => {
   return lastSync === null ? { _tag: "NotSynced" } : { _tag: "Synced", at: lastSync };
 };
 
+const streamHealth = (stream: Status["sources"][number]["streams"][number]): StreamHealth => {
+  const lastGood = latest([stream.last_sync_at]);
+  return {
+    name: stream.name,
+    state:
+      stream.last_error !== null
+        ? { _tag: "Failed", error: stream.last_error, lastGood }
+        : lastGood === null
+          ? { _tag: "NotSynced" }
+          : { _tag: "Synced", at: lastGood },
+    items: stream.items,
+    backfilling: stream.backfill === "running",
+  };
+};
+
 export const health = (status: Status): Health => {
   const sources = status.sources.map(
     (source): SourceHealth => ({
       id: source.id,
       plugin: source.plugin,
       state: sourceState(source),
-      streams: source.streams.length,
-      items: source.streams.reduce((sum, { items }) => sum + items, 0),
-      backfilling: source.streams.some(({ backfill }) => backfill === "running"),
+      streams: source.streams.map(streamHealth),
     }),
   );
   const stopped = status.config.error !== null;

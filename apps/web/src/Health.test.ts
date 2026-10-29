@@ -100,6 +100,45 @@ describe("status health", () => {
     expect(result.sources.map(({ state }) => state._tag)).toEqual(["Starting", "NotSynced"]);
     expect(result.verdict).toEqual({ _tag: "Running", lastSync: null });
   });
+
+  it("keeps each stream's own sync time, items and error", () => {
+    const result = health(
+      status([
+        source("work", {
+          streams: [
+            stream({ name: "inbox", items: 12, backfill: "running" }),
+            stream({
+              name: "chat",
+              kind: "chat",
+              items: 3,
+              last_sync_at: "2026-10-25T10:00:00.000Z",
+              last_error: "rate limited",
+            }),
+            stream({ name: "drafts", items: 0, last_sync_at: null }),
+          ],
+        }),
+      ]),
+    );
+    expect(result.sources[0]?.streams).toEqual([
+      {
+        name: "inbox",
+        state: { _tag: "Synced", at: DateTime.makeUnsafe("2026-10-25T16:00:00.000Z") },
+        items: 12,
+        backfilling: true,
+      },
+      {
+        name: "chat",
+        state: {
+          _tag: "Failed",
+          error: "rate limited",
+          lastGood: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
+        },
+        items: 3,
+        backfilling: false,
+      },
+      { name: "drafts", state: { _tag: "NotSynced" }, items: 0, backfilling: false },
+    ]);
+  });
 });
 
 describe("relative time", () => {
