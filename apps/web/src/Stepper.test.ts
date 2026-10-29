@@ -146,6 +146,28 @@ it("keeps the selected hit when hits before it disappear", async () => {
   registry.dispose();
 });
 
+it("falls back next to where the selected hit last was after it moved", async () => {
+  const registry = await opened([
+    [1, "UAT starts Monday."],
+    [2, "UAT data loaded."],
+    [3, "UAT sign-off Friday."],
+    [4, "UAT passed."],
+    [5, "UAT closed."],
+  ]);
+  registry.set(jumpTo, { id, at: 2, smooth: false });
+  expect(selected(registry)).toBe("3 / 5 i:3");
+
+  daemon.state.bodies.set(1, "Kickoff Monday.");
+  await refreshed(registry, 4);
+  expect(selected(registry)).toBe("2 / 4 i:3");
+
+  daemon.state.bodies.set(3, "Signed off Friday.");
+  await refreshed(registry, 3);
+
+  await vi.waitFor(() => expect(selected(registry)).toBe("2 / 3 i:4"));
+  registry.dispose();
+});
+
 it("moves to the nearest remaining hit, revealed, when the selected one disappears", async () => {
   daemon.state.digests.push({ id: 9, from_seq: 1, to_seq: 2, seqs: [1, 2] });
   const registry = await opened([

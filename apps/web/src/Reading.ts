@@ -297,8 +297,13 @@ export const landing = Atom.family((id: ConversationId) =>
         if (Option.isNone(found)) return;
         const smooth = landed;
         landed = true;
-        const { key } = get.once(hitCursor(id));
-        if (found.value.length === 0 || found.value.some((hit) => hitKey(hit) === key)) return;
+        const { key, at } = get.once(hitCursor(id));
+        if (found.value.length === 0) return;
+        const kept = found.value.findIndex((hit) => hitKey(hit) === key);
+        if (kept !== -1) {
+          if (kept !== at) get.registry.set(hitCursor(id), { key, at: kept });
+          return;
+        }
         queueMicrotask(() =>
           get.registry.set(jumpTo, { id, at: get.registry.get(hitAt(id)), smooth }),
         );
