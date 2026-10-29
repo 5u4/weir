@@ -230,7 +230,81 @@ button {
   gap: 2px;
   min-width: 0;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
+  --fl: 0px;
+  --fr: 0px;
+  mask-image: linear-gradient(
+    90deg,
+    transparent calc(var(--fl) - 14px),
+    #000 var(--fl),
+    #000 calc(100% - var(--fr)),
+    transparent calc(100% - var(--fr) + 14px)
+  );
+}
+.cws::-webkit-scrollbar {
+  display: none;
+}
+.cws.fl {
+  --fl: 32px;
+}
+.cws.fr {
+  --fr: 32px;
+}
+.cws-w {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.cws-a {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 50%;
+  background: var(--capbg);
+  color: var(--cap-2);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 160ms,
+    visibility 0s 160ms,
+    background-color 160ms,
+    color 160ms;
+}
+.ch-i {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cws-a.prev {
+  left: 0;
+}
+.cws-a.next {
+  right: 0;
+}
+.cws.fl ~ .cws-a.prev,
+.cws.fr ~ .cws-a.next {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 160ms,
+    background-color 160ms,
+    color 160ms;
+}
+.cws-a:hover {
+  background: color-mix(in oklch, var(--capbg), var(--cap-1) 12%);
+  color: var(--cap-1);
+}
+.cws-a:active {
+  transform: scale(0.92);
 }
 .cw {
   flex: none;
