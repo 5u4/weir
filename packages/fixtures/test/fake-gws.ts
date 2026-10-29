@@ -23,19 +23,23 @@ export const gmail = (command: string, params: Record<string, unknown>, mailboxD
   return JSON.parse(run.stdout);
 };
 
-export const listAllIds = (q: string, mailboxDir?: string) => {
-  const messages: { id: string; threadId: string }[] = [];
+export const listAll = (params: Record<string, unknown>, mailboxDir?: string) => {
+  const threads: string[] = [];
   let pageToken: string | undefined;
   let pages = 0;
   do {
     const page = gmail(
-      "messages list",
-      { userId: "me", q, ...(pageToken ? { pageToken } : {}) },
+      "threads list",
+      { userId: "me", ...params, ...(pageToken ? { pageToken } : {}) },
       mailboxDir,
     );
-    messages.push(...(page.messages ?? []));
+    threads.push(...(page.threads ?? []).map((t: { id: string }) => t.id));
     pageToken = page.nextPageToken;
     pages++;
   } while (pageToken);
-  return { messages, pages };
+  const messages: { id: string; threadId: string; labelIds: string[]; payload: unknown }[] =
+    threads.flatMap(
+      (id) => gmail("threads get", { userId: "me", id, format: "full" }, mailboxDir).messages,
+    );
+  return { threads, messages, pages };
 };

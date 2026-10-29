@@ -115,6 +115,72 @@ const getMessage = (mailbox: Mailbox, p: Params): Message => {
   return message;
 };
 
+const labelIdOf = (mailbox: Mailbox, raw: unknown): string | undefined => {
+  const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  if (values.length > 1) {
+    throw validation(`fake-gws supports at most one labelIds value, got ${values.length}`);
+  }
+  const [id] = values;
+  if (id === undefined) return undefined;
+  if (typeof id !== "string" || !mailbox.labels.some((l) => l.id === id)) {
+    throw invalidArgument(`Invalid label: ${String(id)}`);
+  }
+  return id;
+};
+
+const listThreads = (mailbox: Mailbox, p: Params) => {
+  userOf(mailbox, p);
+  const cutoff = newerThanCutoff(mailbox, p.q);
+  const withSpamTrash = boolParam(p, "includeSpamTrash");
+  const labelId = labelIdOf(mailbox, p.labelIds);
+  const newest = new Map<string, Message>();
+  for (const m of Object.values(mailbox.messages)) {
+    if (
+      Number(m.internalDate) > cutoff &&
+      (withSpamTrash || !m.labelIds.some((l) => l === "SPAM" || l === "TRASH")) &&
+      (labelId === undefined || m.labelIds.includes(labelId))
+    ) {
+      const seen = newest.get(m.threadId);
+      if (seen === undefined || Number(m.internalDate) > Number(seen.internalDate)) {
+        newest.set(m.threadId, m);
+      }
+    }
+  }
+  const matching = [...newest.values()].sort(
+    (a, b) => Number(b.internalDate) - Number(a.internalDate) || b.id.localeCompare(a.id),
+  );
+  const size = Math.min(intParam(p, "maxResults", 100, 500), mailbox.pageSize);
+  const { items, nextPageToken } = page(matching, p, size);
+  return {
+    ...(items.length
+      ? {
+          threads: items.map((m) => ({ id: m.threadId, snippet: m.snippet })),
+        }
+      : {}),
+    ...(nextPageToken ? { nextPageToken } : {}),
+    resultSizeEstimate: matching.length,
+  };
+};
+
+const getThread = (mailbox: Mailbox, p: Params) => {
+  userOf(mailbox, p);
+  if (p.format !== undefined && p.format !== "full") {
+    throw validation(`fake-gws supports only format "full", got "${String(p.format)}"`);
+  }
+  if (typeof p.id !== "string") throw validation("Required path parameter 'id' is missing");
+  const messages = Object.values(mailbox.messages)
+    .filter((m) => m.threadId === p.id)
+    .sort((a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id));
+  if (!messages.length) throw notFound();
+  const historyId = String(Math.max(...messages.map((m) => Number(m.historyId))));
+  return { id: p.id, historyId, messages };
+};
+
+const listLabels = (mailbox: Mailbox, p: Params) => {
+  userOf(mailbox, p);
+  return { labels: mailbox.labels };
+};
+
 const historyTypesOf = (raw: unknown): HistoryType[] => {
   if (raw === undefined) return Object.keys(HISTORY_FIELDS) as HistoryType[];
   const values = Array.isArray(raw) ? raw : [raw];
@@ -179,6 +245,12 @@ const COMMANDS: Record<
     run: listMessages,
   },
   "gmail users messages get": { params: ["userId", "id", "format"], run: getMessage },
+  "gmail users threads list": {
+    params: ["userId", "labelIds", "q", "maxResults", "pageToken", "includeSpamTrash"],
+    run: listThreads,
+  },
+  "gmail users threads get": { params: ["userId", "id", "format"], run: getThread },
+  "gmail users labels list": { params: ["userId"], run: listLabels },
   "gmail users history list": {
     params: ["userId", "startHistoryId", "historyTypes", "maxResults", "pageToken"],
     run: listHistory,

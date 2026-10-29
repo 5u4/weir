@@ -21,7 +21,11 @@ it("decodes the fixtures config with its fake-ai profile, gmail source and four 
       id: "gmail",
       plugin: "gws",
       sync_every: Duration.minutes(5),
-      config: { command: ["fake-gws"], backfill: "newer_than:30d" },
+      config: {
+        command: ["fake-gws"],
+        backfill: "newer_than:30d",
+        labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
+      },
     },
   ]);
   expect(config.tag.map(({ name, ai }) => [name, ai])).toEqual([
@@ -39,5 +43,6 @@ it("decodes the fixtures config pointed at a mutable mailbox", () => {
   expect(config.source[0]?.config).toEqual({
     command: ["fake-gws", "--mailbox", '/tmp/mail "box"'],
     backfill: "newer_than:30d",
+    labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
   });
 });
