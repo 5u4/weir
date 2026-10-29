@@ -119,9 +119,18 @@ export function Cap({ compact, alert }: { compact: boolean; alert: boolean }) {
       role="region"
       aria-label="weir"
       ref={measureCap}
+      onBlur={({ currentTarget, relatedTarget }) => {
+        if (current.query === "" && !currentTarget.contains(relatedTarget)) setSearching(false);
+      }}
     >
       {compact ? (
-        <div className="cap-nav">
+        <div
+          className="cap-nav"
+          onMouseDown={(event) => {
+            // Safari does not focus links or buttons on click, so the input's blur would carry no relatedTarget.
+            if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+          }}
+        >
           <input
             className="cap-in"
             type="search"
@@ -130,9 +139,6 @@ export function Cap({ compact, alert }: { compact: boolean; alert: boolean }) {
             autoFocus={searching}
             value={current.query}
             onChange={({ target: { value } }) => navigate({ _tag: "Type", query: value })}
-            onBlur={() => {
-              if (current.query === "") setSearching(false);
-            }}
           />
           <span className="cap-div" />
           <nav className="cws" aria-label="Views">
