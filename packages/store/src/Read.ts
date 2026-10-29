@@ -8,8 +8,10 @@ import {
   ConversationId,
   ConversationRow,
   ConversationTagRow,
+  DigestRow,
   ItemRow,
-  type Seq,
+  ListedConversationRow,
+  Seq,
   SourcedItemRow,
   StreamId,
   StreamRow,
@@ -18,8 +20,12 @@ import {
 } from "./Rows.ts";
 
 export type TagFilter =
-  | { readonly _tag: "Named"; readonly name: string }
+  | { readonly _tag: "Tag"; readonly name: string }
   | { readonly _tag: "Untagged" };
+
+export type View = TagFilter | { readonly _tag: "Cleared" };
+
+export type RowQuery = View | { readonly _tag: "Ids"; readonly ids: ReadonlyArray<ConversationId> };
 
 export interface SearchQuery {
   readonly query: string;
@@ -43,6 +49,26 @@ const decodeTags = Schema.decodeUnknownEffect(Schema.Array(ConversationTagRow));
 const contains = (sql: SqlClient.SqlClient, column: string, value: string) =>
   sql`${sql.literal(column)} LIKE '%' || ${value.replace(/[\\%_]/g, "\\$&")} || '%' ESCAPE '\\'`;
 
+const tagCondition = (sql: SqlClient.SqlClient, tag: TagFilter) =>
+  tag._tag === "Tag"
+    ? sql`EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id AND conversation_tag.tag = ${tag.name})`
+    : sql`NOT EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id)`;
+
+const listed = (sql: SqlClient.SqlClient) => sql`listed AS (
+    SELECT c.*,
+      coalesce(s.seen_seq, 0) AS seen_seq,
+      coalesce(s.cleared_seq, 0) AS cleared_seq,
+      coalesce(s.muted, 0) AS muted,
+      CASE
+        WHEN coalesce(s.muted, 0) = 1 THEN 'muted'
+        WHEN c.last_seq <= coalesce(s.cleared_seq, 0) THEN 'done'
+        WHEN c.last_seq > coalesce(s.seen_seq, 0) THEN 'unread'
+        ELSE 'read'
+      END AS state
+    FROM conversation c LEFT JOIN conversation_state s ON s.conversation_id = c.id
+    WHERE EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
+  )`;
+
 export const search = Effect.fnUntraced(function* ({
   query,
   tag,
@@ -65,13 +91,7 @@ export const search = Effect.fnUntraced(function* ({
   const conditions = [
     sql`EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)`,
   ];
-  if (tag !== undefined) {
-    conditions.push(
-      tag._tag === "Named"
-        ? sql`EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id AND conversation_tag.tag = ${tag.name})`
-        : sql`NOT EXISTS (SELECT 1 FROM conversation_tag WHERE conversation_tag.conversation_id = c.id)`,
-    );
-  }
+  if (tag !== undefined) conditions.push(tagCondition(sql, tag));
   if (source !== undefined) conditions.push(sql`c.source_id = ${source}`);
   if (from !== undefined) {
     conditions.push(
@@ -192,18 +212,106 @@ const decodeTagCounts = Schema.decodeUnknownEffect(Schema.Array(TagCount));
 export const tagCounts = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeTagCounts(
-    yield* sql`WITH live AS (
-        SELECT c.id,
-          coalesce(s.muted, 0) = 0 AND c.last_seq > coalesce(s.cleared_seq, 0) AS open,
-          coalesce(s.muted, 0) = 0 AND c.last_seq > coalesce(s.cleared_seq, 0)
-            AND c.last_seq > coalesce(s.seen_seq, 0) AS unread
-        FROM conversation c LEFT JOIN conversation_state s ON s.conversation_id = c.id
-        WHERE EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
-      )
+    yield* sql`WITH ${listed(sql)}
       SELECT conversation_tag.tag, count(*) AS conversations,
-        sum(live.unread) AS unread, sum(live.open) AS open
-      FROM live LEFT JOIN conversation_tag ON conversation_tag.conversation_id = live.id
+        sum(listed.state = 'unread') AS unread,
+        sum(listed.state IN ('unread', 'read')) AS open
+      FROM listed LEFT JOIN conversation_tag ON conversation_tag.conversation_id = listed.id
       GROUP BY conversation_tag.tag
       ORDER BY conversation_tag.tag`,
   );
+});
+
+const decodeListed = Schema.decodeUnknownEffect(Schema.Array(ListedConversationRow));
+
+export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
+  const sql = yield* SqlClient.SqlClient;
+  const open = sql`c.state IN ('unread', 'read')`;
+  const condition =
+    query._tag === "Ids"
+      ? sql.in("c.id", query.ids)
+      : query._tag === "Cleared"
+        ? sql`c.state IN ('done', 'muted')`
+        : sql.and([open, tagCondition(sql, query)]);
+  return yield* decodeListed(
+    yield* sql`WITH ${listed(sql)}
+      SELECT c.*,
+        (SELECT json_group_array(tag) FROM
+          (SELECT tag FROM conversation_tag WHERE conversation_id = c.id ORDER BY tag)) AS tags,
+        (SELECT count(*) FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
+          AND item.seq > c.seen_seq) AS new_items,
+        (SELECT count(*) FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
+          AS items,
+        (SELECT count(DISTINCT lower(item.from_address)) FROM item
+          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants
+      FROM listed c
+      WHERE ${condition}
+      ORDER BY c.last_at DESC, c.id DESC`,
+  );
+});
+
+export const conversation = Effect.fnUntraced(function* (id: ConversationId) {
+  return Arr.head(yield* conversations({ _tag: "Ids", ids: [id] }));
+});
+
+export const StateTotals = Schema.Struct({ unread: Schema.Int, cleared: Schema.Int });
+
+const decodeStateTotals = Schema.decodeUnknownEffect(Schema.Tuple([StateTotals]));
+
+export const stateTotals = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [totals] = yield* decodeStateTotals(
+    yield* sql`WITH ${listed(sql)}
+      SELECT coalesce(sum(state = 'unread'), 0) AS unread,
+        coalesce(sum(state IN ('done', 'muted')), 0) AS cleared
+      FROM listed`,
+  );
+  return totals;
+});
+
+export const UnreadSender = Schema.Struct({
+  tag: Schema.NullOr(Schema.String),
+  name: Schema.String,
+  address: Schema.String,
+});
+export type UnreadSender = typeof UnreadSender.Type;
+
+const decodeUnreadSenders = Schema.decodeUnknownEffect(Schema.Array(UnreadSender));
+
+export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeUnreadSenders(
+    yield* sql`WITH ${listed(sql)},
+      sender AS (
+        SELECT conversation_tag.tag, item.from_name AS name, item.from_address AS address,
+          max(item.occurred_at) AS at
+        FROM listed
+        JOIN item ON item.conversation_id = listed.id AND item.deleted_at IS NULL
+          AND item.seq > listed.seen_seq AND item.from_me = 0
+        LEFT JOIN conversation_tag ON conversation_tag.conversation_id = listed.id
+        WHERE listed.state = 'unread'
+        GROUP BY conversation_tag.tag, lower(item.from_address)
+      ),
+      ranked AS (
+        SELECT *, row_number() OVER (PARTITION BY tag ORDER BY at DESC, address) AS rank FROM sender
+      )
+      SELECT tag, name, address FROM ranked WHERE rank <= ${perTag} ORDER BY tag, rank`,
+  );
+});
+
+const decodeDigests = Schema.decodeUnknownEffect(Schema.Array(DigestRow));
+
+export const digests = Effect.fnUntraced(function* (conversationId: ConversationId) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeDigests(
+    yield* sql`SELECT * FROM digest WHERE conversation_id = ${conversationId} ORDER BY from_seq, id`,
+  );
+});
+
+const decodeMaxSeq = Schema.decodeUnknownEffect(Schema.Tuple([Schema.Struct({ seq: Seq })]));
+
+export const maxSeq = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const [{ seq }] = yield* decodeMaxSeq(yield* sql`SELECT coalesce(max(seq), 0) AS seq FROM item`);
+  return seq;
 });

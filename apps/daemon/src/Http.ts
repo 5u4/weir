@@ -169,7 +169,7 @@ const handlers = HttpApiBuilder.group(
                   tag:
                     tag === untagged
                       ? { _tag: "Untagged" as const }
-                      : { _tag: "Named" as const, name: tag },
+                      : { _tag: "Tag" as const, name: tag },
                 }),
             ...(since === undefined
               ? {}

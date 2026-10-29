@@ -92,6 +92,22 @@ export const ConversationStateRow = Schema.Struct({
 });
 export type ConversationStateRow = typeof ConversationStateRow.Type;
 
+export const ConversationState = Schema.Literals(["unread", "read", "done", "muted"]);
+export type ConversationState = typeof ConversationState.Type;
+
+export const ListedConversationRow = Schema.Struct({
+  ...ConversationRow.fields,
+  seenSeq: Seq,
+  clearedSeq: Seq,
+  muted: Schema.BooleanFromBit,
+  state: ConversationState,
+  tags: Schema.fromJsonString(Schema.Array(Schema.String)),
+  newItems: Schema.Int,
+  items: Schema.Int,
+  participants: Schema.Int,
+});
+export type ListedConversationRow = typeof ListedConversationRow.Type;
+
 export const TagStateRow = Schema.Struct({
   name: Schema.String,
   aiSince: UtcIso,

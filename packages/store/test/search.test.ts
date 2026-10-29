@@ -177,7 +177,7 @@ describe("search", () => {
       expect(yield* matches({ query: "status" })).toEqual(
         new Set([ada?.conversationId, bob?.conversationId, carol?.conversationId]),
       );
-      expect(yield* matches({ query: "status", tag: { _tag: "Named", name: "urgent" } })).toEqual(
+      expect(yield* matches({ query: "status", tag: { _tag: "Tag", name: "urgent" } })).toEqual(
         new Set([bob?.conversationId]),
       );
       expect(yield* matches({ query: "status", source: "home" })).toEqual(

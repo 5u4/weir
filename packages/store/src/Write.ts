@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
+import * as Read from "./Read.ts";
 import {
   ConversationId,
   ConversationStateRow,
@@ -288,6 +289,60 @@ export const advanceSeenSeq = Effect.fnUntraced(function* (
   yield* sql`INSERT INTO conversation_state ${sql.insert(rows)}
     ON CONFLICT (conversation_id) DO UPDATE SET
       seen_seq = max(conversation_state.seen_seq, excluded.seen_seq)`;
+});
+
+export type StateChange =
+  | { readonly _tag: "Read"; readonly seq: Seq }
+  | { readonly _tag: "Unread"; readonly seq?: Seq }
+  | { readonly _tag: "Done"; readonly seq: Seq }
+  | { readonly _tag: "Mute" }
+  | { readonly _tag: "Restore" };
+
+const stateAssignments = (sql: SqlClient.SqlClient, change: StateChange) => {
+  const last = sql`conversation.last_seq`;
+  switch (change._tag) {
+    case "Read":
+      return sql`seen_seq = max(seen_seq, min(${change.seq}, ${last}))`;
+    case "Unread":
+      return sql`seen_seq = max(0, min(${change.seq ?? last}, ${last}) - 1)`;
+    case "Done":
+      return sql`cleared_seq = max(cleared_seq, min(${change.seq}, ${last}))`;
+    case "Mute":
+      return sql`muted = 1`;
+    case "Restore":
+      return sql`muted = 0, cleared_seq = 0, seen_seq = max(seen_seq, ${last})`;
+  }
+};
+
+export const changeState = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+  change: StateChange,
+) {
+  if (conversationIds.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`INSERT INTO conversation_state (conversation_id, seen_seq, cleared_seq, muted)
+        SELECT id, 0, 0, 0 FROM conversation WHERE ${sql.in("id", conversationIds)}
+        ON CONFLICT (conversation_id) DO NOTHING`;
+      yield* sql`UPDATE conversation_state SET ${stateAssignments(sql, change)}
+        FROM conversation
+        WHERE conversation.id = conversation_state.conversation_id
+          AND ${sql.in("conversation_state.conversation_id", conversationIds)}`;
+    }),
+  );
+});
+
+export const clear = Effect.fnUntraced(function* (view: Read.TagFilter, seq: Seq) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const ids = (yield* Read.conversations(view)).map(({ id }) => id);
+      yield* changeState(ids, { _tag: "Done", seq });
+      const after = yield* Read.conversations({ _tag: "Ids", ids });
+      return after.filter(({ state }) => state === "done").length;
+    }),
+  );
 });
 
 export const saveCursor = Effect.fnUntraced(function* (
