@@ -13,7 +13,7 @@ export type Widget = {
   readonly senders: ReadonlyArray<Sender>;
 };
 
-export type Group = { readonly lead: string; readonly widget: Widget; readonly end: string };
+export type Group<W = Widget> = { readonly lead: string; readonly widget: W; readonly end: string };
 export type Clause = ReadonlyArray<Group>;
 
 export type Sentence = {
@@ -46,8 +46,12 @@ const widget =
     senders: kind === "updates" ? summary.senders : [],
   });
 
-const enumerate = (widgets: ReadonlyArray<Widget>, lead: string, end: string): Clause =>
-  widgets.map((item, at): Group => {
+export const enumerate = <W>(
+  widgets: ReadonlyArray<W>,
+  lead: string,
+  end: string,
+): ReadonlyArray<Group<W>> =>
+  widgets.map((item, at) => {
     const last = at === widgets.length - 1;
     return {
       lead: `${at === 0 ? lead : ""}${last && widgets.length > 1 ? "and " : ""}`,

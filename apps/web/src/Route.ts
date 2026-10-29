@@ -9,6 +9,9 @@ export const View = Schema.Union([
 ]);
 export type View = typeof View.Type;
 
+export const viewLabel = (view: View) =>
+  view === "untagged" ? "Untagged" : view === "cleared" ? "Cleared" : view.slice("tag:".length);
+
 export const ConversationId = Schema.Int.check(Schema.isGreaterThan(0)).pipe(
   Schema.brand("ConversationId"),
 );

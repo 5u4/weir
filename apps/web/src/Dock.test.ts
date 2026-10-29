@@ -56,6 +56,11 @@ describe("keyboard shortcuts", () => {
     ],
     ["e under Status", key({ status: true }), null],
     ["j under Status", key({ key: "j", status: true }), null],
+    ["/ opens search", key({ key: "/" }), "Search"],
+    ["/ opens search from Status", key({ key: "/", status: true }), "Search"],
+    ["typing / in a field", key({ key: "/", editing: true }), null],
+    ["typing / in a field under Status", key({ key: "/", editing: true, status: true }), null],
+    ["a modifier with /", key({ key: "/", modified: true }), null],
   ])("%s", (_, pressed, expected) => {
     expect(shortcut(pressed)).toBe(expected);
   });

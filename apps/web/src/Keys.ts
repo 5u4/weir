@@ -4,7 +4,8 @@ import { shortcut } from "./Dock.ts";
 import { dock } from "./Reading.ts";
 import { ConversationId, route, statusOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
-import { dismiss, visibleRows } from "./Weir.ts";
+import { searching, searchRows } from "./Search.ts";
+import { dismiss, searchOpen, visibleRows } from "./Weir.ts";
 
 export const keys = Atom.make((get) => {
   const onKey = (event: KeyboardEvent) => {
@@ -21,6 +22,12 @@ export const keys = Atom.make((get) => {
     const current = get.registry.get(route);
     const open = current.conversation;
     switch (command) {
+      case "Search":
+        event.preventDefault();
+        get.registry.set(statusOpen, false);
+        get.registry.set(searchOpen, true);
+        document.querySelector<HTMLInputElement>(".cap .cap-in")?.focus();
+        return;
       case "CloseStatus":
         get.registry.set(statusOpen, false);
         return;
@@ -38,7 +45,9 @@ export const keys = Atom.make((get) => {
       }
       case "Next":
       case "Previous": {
-        const rows = get.registry.get(visibleRows(current.view));
+        const rows = get.registry.get(searching)
+          ? get.registry.get(searchRows)
+          : get.registry.get(visibleRows(current.view));
         const next = moved(rows, open, command === "Next" ? 1 : -1);
         if (Option.isSome(next)) {
           get.registry.set(route, {

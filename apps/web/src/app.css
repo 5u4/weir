@@ -2007,6 +2007,204 @@ button {
   transform: none;
   pointer-events: auto;
 }
+:root {
+  --mk: oklch(0.9 0.135 96);
+  --mk-ink: oklch(0.2 0.02 90);
+}
+:root[data-theme="dark"] {
+  --mk: oklch(0.5 0.105 62);
+  --mk-ink: oklch(0.97 0.025 85);
+}
+mark {
+  background: var(--mk);
+  color: var(--mk-ink);
+  border-radius: 3px;
+  padding: 0 0.1em;
+  margin: 0 -0.1em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.cap-q {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 14px 14px 0 26px;
+}
+.cap-q > .q-i {
+  flex: none;
+  margin-right: 10px;
+  color: var(--cap-2);
+}
+.q-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.cap.compact .q-field {
+  flex: none;
+}
+.cap.search .cap-in {
+  flex: 1;
+  width: auto;
+  min-width: 6em;
+}
+.q-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 3px 0 11px;
+  border-radius: 999px;
+  background: var(--cap-hover);
+  font: 600 14px / 1 var(--sans);
+  color: var(--cap-1);
+  white-space: nowrap;
+}
+.qc-k {
+  margin-right: 2px;
+  font-weight: 500;
+  color: var(--cap-2);
+}
+.qc-x,
+.q-x {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--cap-2);
+  transition:
+    background-color 140ms,
+    color 140ms;
+}
+.qc-x {
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+}
+.qc-x .x-i {
+  width: 10px;
+  height: 10px;
+}
+.q-x {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-left: 8px;
+}
+.qc-x:hover,
+.q-x:hover {
+  background: var(--cap-hover);
+  color: var(--cap-1);
+}
+.cap.search .cap-nav {
+  padding: 8px 28px 18px;
+}
+.q-hint code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--cap-hover);
+  font:
+    500 0.92em ui-monospace,
+    monospace;
+  color: var(--cap-1);
+}
+.w-group {
+  font: inherit;
+}
+.w-group .avs {
+  margin-right: 0.15em;
+}
+
+.rows.res .row-link {
+  grid-template-areas:
+    "av title time"
+    "av meta meta"
+    "av line line"
+    "av hits hits";
+}
+.row-b {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.row-st {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--g-line);
+}
+.row-b + .row-st,
+.row-b + .row-n,
+.row-st + .row-n {
+  margin-left: 0.6em;
+}
+.rows.res .row-link > .hits {
+  grid-area: hits;
+  display: grid;
+  gap: 10px;
+  margin: 9px 0 2px;
+  padding: 0;
+  list-style: none;
+  white-space: normal;
+}
+.hl {
+  min-width: 0;
+}
+.hl-k {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hl-k b {
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.hl-k i {
+  font-style: normal;
+}
+.hl-t {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.hl-t.hl-z {
+  font-size: 14px;
+  line-height: 1.62;
+  color: var(--ink);
+}
+.hl-g {
+  font-weight: 600;
+  color: var(--ink);
+}
+.calm-q {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  max-width: none;
+  padding: 0 var(--pad) 64px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.calm-q p {
+  margin: 0;
+  font-size: 15px;
+}
+
 @media (hover: hover) {
   .bl:hover .dfh,
   .bl:hover .mu {

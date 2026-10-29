@@ -1,12 +1,14 @@
 import { useAtom, useAtomMount, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { Cap } from "./Cap.tsx";
+import { Cap, type CapForm } from "./Cap.tsx";
 import { health } from "./Health.ts";
 import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
+import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
 import { route, statusOpen } from "./Route.ts";
+import { found, searching, searchQuery } from "./Search.ts";
 import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
 import { live, searchOpen, status, tabTitle } from "./Weir.ts";
@@ -18,7 +20,10 @@ export function App() {
   useAtomMount(keys);
   const [current, navigate] = useAtom(route);
   const reading = Option.isSome(current.conversation);
-  const searching = useAtomValue(searchOpen);
+  const opened = useAtomValue(searchOpen);
+  const looking = useAtomValue(searching);
+  const query = useAtomValue(searchQuery);
+  const results = useAtomValue(found);
   const [open, setOpen] = useAtom(statusOpen);
   const result = useAtomValue(status);
   const loaded = AsyncResult.getOrElse(
@@ -26,7 +31,8 @@ export function App() {
     Option.none,
   );
   const alert = Option.exists(loaded, ({ health }) => health.alert);
-  const compact = open || searching || current.query !== "" || reading;
+  const form: CapForm =
+    open || reading ? "compact" : opened || current.query !== "" ? "search" : "full";
   return (
     <>
       <div id="app" className={open || reading ? "reading" : undefined}>
@@ -41,6 +47,14 @@ export function App() {
               {AsyncResult.isFailure(result) && Option.isNone(loaded) ? (
                 <div className="calm es warn">
                   <p className="es-alert">Can't reach the weir daemon.</p>
+                </div>
+              ) : !open && looking ? (
+                <div className="calm calm-q">
+                  <p>
+                    {Option.exists(results, (list) => list.length === 0)
+                      ? `Nothing matches “${queryText(query)}”.`
+                      : "Pick a result to read it."}
+                  </p>
                 </div>
               ) : (
                 Option.match(loaded, {
@@ -82,7 +96,7 @@ export function App() {
           )}
         </section>
       </div>
-      <Cap compact={compact} alert={alert} />
+      <Cap form={form} alert={alert} />
     </>
   );
 }
