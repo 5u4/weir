@@ -26,25 +26,32 @@ describe("bun run demo", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const stderr = new Response(proc.stderr).text();
-    const decoder = new TextDecoder();
-    let stdout = "";
-    let url: string | undefined;
-    for await (const chunk of proc.stdout) {
-      stdout += decoder.decode(chunk, { stream: true });
-      url = stdout.match(/serving (http:\/\/\S+) until Ctrl-C/)?.[1];
-      if (url) break;
-    }
-    expect(url, stdout).toBeDefined();
-    const res = await fetch(new URL("status", url));
-    expect(res.status).toBe(200);
+    try {
+      const stderr = new Response(proc.stderr).text();
+      const decoder = new TextDecoder();
+      let stdout = "";
+      let url: string | undefined;
+      for await (const chunk of proc.stdout) {
+        stdout += decoder.decode(chunk, { stream: true });
+        url = stdout.match(/serving (http:\/\/\S+) until Ctrl-C/)?.[1];
+        if (url) break;
+      }
+      expect(url, stdout).toBeDefined();
+      const res = await fetch(new URL("status", url));
+      expect(res.status).toBe(200);
 
-    proc.kill("SIGINT");
-    const exitCode = await proc.exited;
-    const log = await stderr;
-    expect(exitCode, log).toBe(130);
-    const root = log.match(/WEIR_HOME=(\S+)/)?.[1];
-    expect(root, log).toBeDefined();
-    expect(existsSync(root as string)).toBe(false);
+      proc.kill("SIGINT");
+      const exitCode = await proc.exited;
+      const log = await stderr;
+      expect(exitCode, log).toBe(130);
+      const root = log.match(/WEIR_HOME=(\S+)/)?.[1];
+      expect(root, log).toBeDefined();
+      expect(existsSync(root as string)).toBe(false);
+    } finally {
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGINT");
+        await proc.exited;
+      }
+    }
   }, 60_000);
 });
