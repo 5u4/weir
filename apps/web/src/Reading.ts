@@ -85,6 +85,7 @@ export const reading = Atom.family((id: ConversationId) =>
       return () => {
         observer.unobserve(end);
         inView.delete(end);
+        dispatch({ _tag: "Viewport", inView: highest() });
       };
     };
 
