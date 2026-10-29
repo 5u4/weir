@@ -1,5 +1,10 @@
+import * as BunChildProcessSpawner from "@effect/platform-bun/BunChildProcessSpawner";
+import * as BunFileSystem from "@effect/platform-bun/BunFileSystem";
+import * as BunPath from "@effect/platform-bun/BunPath";
 import type { Config } from "@weir/contract/Config";
+import * as Digester from "@weir/digest/Digester";
 import { gws } from "@weir/plugin-gws";
+import * as Read from "@weir/store/Read";
 import * as Write from "@weir/store/Write";
 import * as Scheduler from "@weir/sync/Scheduler";
 import { recomputeAllTags } from "@weir/sync/Tags";
@@ -8,6 +13,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -36,13 +42,13 @@ export class Daemon extends Context.Service<
     readonly port: number;
     readonly state: Effect.Effect<State>;
     readonly reload: Effect.Effect<State, ConfigInvalid>;
+    readonly digester: Effect.Effect<Option.Option<Digester.Digester>>;
   }
 >()("@weir/daemon/Daemon") {}
 
-interface Loaded {
-  readonly config: Config;
-  readonly sources: ReadonlyArray<Scheduler.ScheduledSource>;
-}
+const platform = BunChildProcessSpawner.layer.pipe(
+  Layer.provideMerge(Layer.mergeAll(BunFileSystem.layer, BunPath.layer)),
+);
 
 export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
   Layer.effect(
@@ -56,6 +62,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
         configError: null,
         listings: new Map(),
       });
+      const digester = yield* Ref.make(Option.none<Digester.Digester>());
       const scheduler = yield* FiberHandle.make<void, never>();
       const reloading = yield* Semaphore.make(1);
 
@@ -68,7 +75,28 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           ),
         }));
 
-      const start = Effect.fnUntraced(function* ({ config, sources }: Loaded) {
+      const generation = ({ config, sources, digest }: ConfigFile.Loaded) =>
+        Effect.gen(function* () {
+          const current = digest === null ? null : yield* Digester.make(digest, home.digestLogs);
+          if (current !== null) {
+            yield* Effect.acquireRelease(Ref.set(digester, Option.some(current)), () =>
+              Ref.set(digester, Option.none()),
+            );
+            yield* Read.aiConversations().pipe(
+              Effect.flatMap(current.auto),
+              Effect.catch((error) => Effect.logError("startup digest check failed", error)),
+            );
+          }
+          yield* Scheduler.run(sources, config.tag, report, current?.auto ?? (() => Effect.void));
+          return yield* Effect.never;
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(platform),
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
+
+      const start = Effect.fnUntraced(function* (loaded: ConfigFile.Loaded) {
+        const { config, sources } = loaded;
         yield* sql.withTransaction(
           Write.reconcileTagState(config.tag.filter(({ ai }) => ai).map(({ name }) => name)).pipe(
             Effect.andThen(recomputeAllTags(config.tag)),
@@ -86,12 +114,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
             ]),
           ),
         }));
-        yield* FiberHandle.run(
-          scheduler,
-          Scheduler.run(sources, config.tag, report).pipe(
-            Effect.provideService(SqlClient.SqlClient, sql),
-          ),
-        );
+        yield* FiberHandle.run(scheduler, generation(loaded));
       });
 
       yield* start(initial).pipe(Effect.orDie);
@@ -117,6 +140,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           Effect.provideService(SqlClient.SqlClient, sql),
           Effect.uninterruptible,
         ),
+        digester: Ref.get(digester),
       });
     }),
   );

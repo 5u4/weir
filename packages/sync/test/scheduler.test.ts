@@ -95,7 +95,12 @@ describe("run", () => {
         failing: failingPlugin,
       });
       const fiber = yield* Effect.forkChild(
-        run(sources, parsed.tag, (id, error) => Effect.sync(() => reports.push([id, error]))),
+        run(
+          sources,
+          parsed.tag,
+          (id, error) => Effect.sync(() => reports.push([id, error])),
+          () => Effect.void,
+        ),
       );
       yield* awaitSyncRuns(1);
       yield* settle;

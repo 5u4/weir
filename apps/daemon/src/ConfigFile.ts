@@ -1,9 +1,22 @@
-import { decodeConfig } from "@weir/contract/Config";
-import { formatConfigPath, loadSources, type PluginRegistry } from "@weir/sync/Scheduler";
+import { dirname, resolve } from "node:path";
+import { type Config, decodeConfig } from "@weir/contract/Config";
+import type { Settings } from "@weir/digest/Digester";
+import {
+  formatConfigPath,
+  loadSources,
+  type PluginRegistry,
+  type ScheduledSource,
+} from "@weir/sync/Scheduler";
 import { errorMessage } from "@weir/sync/Sync";
 import * as Effect from "effect/Effect";
 import * as SchemaIssue from "effect/SchemaIssue";
 import { ConfigInvalid } from "./Api.ts";
+
+export interface Loaded {
+  readonly config: Config;
+  readonly sources: ReadonlyArray<ScheduledSource>;
+  readonly digest: Settings | null;
+}
 
 const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
 
@@ -37,10 +50,34 @@ export const read = Effect.fnUntraced(function* (file: string) {
   );
 });
 
-export const load = Effect.fnUntraced(function* (file: string, registry: PluginRegistry) {
+export const load = Effect.fnUntraced(function* (
+  file: string,
+  registry: PluginRegistry,
+): Effect.fn.Return<Loaded, ConfigInvalid> {
   const config = yield* read(file);
   const sources = yield* loadSources(config.source, registry).pipe(
     Effect.mapError((error) => ConfigInvalid.fromIssues(file, error.issues)),
   );
-  return { config, sources };
+  const { digest, ai } = config;
+  const profile = digest === undefined ? undefined : ai?.[digest.ai];
+  if (digest === undefined || profile === undefined) return { config, sources, digest: null };
+  const guidePath = digest.guide === undefined ? null : resolve(dirname(file), digest.guide);
+  const guide =
+    guidePath === null
+      ? null
+      : yield* Effect.tryPromise({
+          try: () => Bun.file(guidePath).text(),
+          catch: (cause) =>
+            ConfigInvalid.fromIssues(file, [
+              {
+                path: formatConfigPath(["digest", "guide"]),
+                message: `cannot read ${guidePath}: ${errorMessage(cause)}`,
+              },
+            ]),
+        });
+  return {
+    config,
+    sources,
+    digest: { ai: digest.ai, profile, digest, guide },
+  };
 });

@@ -5,7 +5,7 @@ import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
-import { errorMessage, syncSource } from "./Sync.ts";
+import { errorMessage, syncSource, type Written } from "./Sync.ts";
 import type { Tags } from "./Tags.ts";
 
 export type PluginRegistry = Readonly<Record<string, SourcePlugin<unknown>>>;
@@ -76,11 +76,12 @@ export const run = (
   sources: ReadonlyArray<ScheduledSource>,
   tags: Tags,
   report: (sourceId: string, listingError: string | null) => Effect.Effect<void>,
+  onWritten: Written,
 ) =>
   Effect.forEach(
     sources,
     ({ id, every, source }) =>
-      syncSource(id, source, tags).pipe(
+      syncSource(id, source, tags, onWritten).pipe(
         Effect.matchCauseEffect({
           onFailure: (cause) =>
             Effect.logError(`sync of ${id} failed`, cause).pipe(

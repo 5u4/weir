@@ -484,6 +484,43 @@ describe("search", () => {
       ]);
     }).pipe(Effect.scoped),
   );
+
+  it.live("a newer matching message outranks topics from an older digest", () =>
+    Effect.gen(function* () {
+      const { client, home, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("k1", "launch", 1, { title: "Launch", bodyNew: "kickoff" }),
+        item("k2", "launch", 2, { bodyNew: "draft" }),
+        item("k3", "launch", 3, { bodyNew: "review" }),
+        item("k4", "launch", 4, { bodyNew: "canary rolled back" }),
+      ]);
+      const id = yield* conversationOf("Launch");
+      const [s1, s2, s3, s4] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined || s3 === undefined || s4 === undefined) {
+        throw new Error("expected four items");
+      }
+      const topics = [
+        { title: "Canary scope", state: "fyi", body: "One region", seqs: [s1] },
+        { title: "Canary owner", state: "fyi", body: "Ops", seqs: [s2] },
+        { title: "Canary date", state: "open", body: "Friday", seqs: [s3] },
+      ];
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO digest
+          (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+          VALUES (8, ${id}, ${s1}, ${s3}, 'Launch planned', ${JSON.stringify(topics)},
+            'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+      }).pipe(Effect.provide(Database.layer(home.db)));
+
+      const { conversations } = yield* client.search({ query: { q: "canary" } });
+      const hits = conversations.find((conversation) => conversation.id === id)?.hits ?? [];
+      expect(hits.map(({ field, seq }) => [field, seq])).toEqual([
+        ["body", s4],
+        ["topic", s3],
+        ["topic", s2],
+      ]);
+    }).pipe(Effect.scoped),
+  );
 });
 
 describe("list rows", () => {

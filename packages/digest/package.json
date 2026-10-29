@@ -1,0 +1,21 @@
+{
+  "name": "@weir/digest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Decode": "./src/Decode.ts",
+    "./Digester": "./src/Digester.ts",
+    "./Prompt": "./src/Prompt.ts",
+    "./Range": "./src/Range.ts",
+    "./Run": "./src/Run.ts"
+  },
+  "dependencies": {
+    "@weir/contract": "workspace:*",
+    "@weir/store": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:"
+  }
+}

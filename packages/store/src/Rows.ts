@@ -136,8 +136,7 @@ export type SyncRunInsert = typeof SyncRunInsert.Type;
 export const SyncRunRow = Schema.Struct({ id: Schema.Int, ...syncRunFields });
 export type SyncRunRow = typeof SyncRunRow.Type;
 
-export const DigestRow = Schema.Struct({
-  id: DigestId,
+const digestFields = {
   conversationId: ConversationId,
   fromSeq: Seq,
   toSeq: Seq,
@@ -146,22 +145,35 @@ export const DigestRow = Schema.Struct({
   trigger: Trigger,
   aiProfile: Schema.String,
   createdAt: UtcIso,
-});
+};
+
+export const DigestInsert = Schema.Struct(digestFields);
+export type DigestInsert = typeof DigestInsert.Type;
+
+export const DigestRow = Schema.Struct({ id: DigestId, ...digestFields });
 export type DigestRow = typeof DigestRow.Type;
 
-export const DigestRunRow = Schema.Struct({
-  id: Schema.Int,
+const digestRunFields = {
   conversationId: ConversationId,
   fromSeq: Seq,
   toSeq: Seq,
   trigger: Trigger,
   ai: Schema.String,
+  startedAt: UtcIso,
   ms: Schema.Int,
   ok: Schema.BooleanFromBit,
   error: Schema.NullOr(Schema.String),
   logPath: Schema.NullOr(Schema.String),
-});
+};
+
+export const DigestRunInsert = Schema.Struct(digestRunFields);
+export type DigestRunInsert = typeof DigestRunInsert.Type;
+
+export const DigestRunRow = Schema.Struct({ id: Schema.Int, ...digestRunFields });
 export type DigestRunRow = typeof DigestRunRow.Type;
+
+export const ItemLiteRow = Schema.Struct({ seq: Seq, occurredAt: UtcIso, chars: Schema.Int });
+export type ItemLiteRow = typeof ItemLiteRow.Type;
 
 export const SearchFtsRow = Schema.Struct({
   text: Schema.String,

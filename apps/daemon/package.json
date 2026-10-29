@@ -17,12 +17,14 @@
   "dependencies": {
     "@effect/platform-bun": "catalog:",
     "@weir/contract": "workspace:*",
+    "@weir/digest": "workspace:*",
     "@weir/plugin-gws": "workspace:*",
     "@weir/store": "workspace:*",
     "@weir/sync": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:"
+    "@effect/vitest": "catalog:",
+    "@weir/fixtures": "workspace:*"
   }
 }

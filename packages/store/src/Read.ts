@@ -8,7 +8,10 @@ import {
   ConversationId,
   ConversationRow,
   ConversationTagRow,
+  type DigestId,
   DigestRow,
+  DigestRunRow,
+  ItemLiteRow,
   ItemRow,
   ListedConversationRow,
   Seq,
@@ -301,9 +304,7 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
       latest AS (
         SELECT listed.id AS conversation_id, item.from_name AS name,
           item.from_address AS address, item.occurred_at AS at,
-          row_number() OVER (
-            PARTITION BY listed.id ORDER BY item.occurred_at DESC, item.seq DESC
-          ) AS position
+          row_number() OVER (PARTITION BY listed.id ORDER BY item.seq DESC) AS position
         FROM listed
         JOIN item ON item.conversation_id = listed.id AND item.deleted_at IS NULL
           AND item.from_me = 0
@@ -332,6 +333,79 @@ export const digests = Effect.fnUntraced(function* (
   return yield* decodeDigests(
     yield* sql`SELECT * FROM digest WHERE ${sql.in("conversation_id", conversationIds)}
       ORDER BY conversation_id, from_seq, id`,
+  );
+});
+
+export const digest = Effect.fnUntraced(function* (id: DigestId) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(yield* decodeDigests(yield* sql`SELECT * FROM digest WHERE id = ${id}`));
+});
+
+const decodeItemsLite = Schema.decodeUnknownEffect(Schema.Array(ItemLiteRow));
+
+export const itemsLite = Effect.fnUntraced(function* (conversationId: ConversationId) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeItemsLite(
+    yield* sql`SELECT seq, occurred_at, length(body_new) AS chars FROM item
+      WHERE conversation_id = ${conversationId} AND deleted_at IS NULL ORDER BY seq`,
+  );
+});
+
+const decodeAiSince = Schema.decodeUnknownEffect(
+  Schema.Tuple([Schema.Struct({ aiSince: Schema.NullOr(UtcIso) })]),
+);
+
+export const aiSince = Effect.fnUntraced(function* (conversationId: ConversationId) {
+  const sql = yield* SqlClient.SqlClient;
+  const [{ aiSince }] = yield* decodeAiSince(
+    yield* sql`SELECT min(tag_state.ai_since) AS ai_since FROM conversation_tag
+      JOIN tag_state ON tag_state.name = conversation_tag.tag
+      WHERE conversation_tag.conversation_id = ${conversationId}`,
+  );
+  return Option.fromNullOr(aiSince);
+});
+
+export const aiConversations = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* decodeConversationIds(
+    yield* sql`SELECT DISTINCT conversation_tag.conversation_id AS id FROM conversation_tag
+      JOIN tag_state ON tag_state.name = conversation_tag.tag
+      ORDER BY id`,
+  );
+  return rows.map(({ id }) => id);
+});
+
+const decodeDigestRuns = Schema.decodeUnknownEffect(Schema.Array(DigestRunRow));
+
+export const lastDigestRun = Effect.fnUntraced(function* (conversationId: ConversationId) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeDigestRuns(
+      yield* sql`SELECT * FROM digest_run WHERE conversation_id = ${conversationId}
+        ORDER BY id DESC LIMIT 1`,
+    ),
+  );
+});
+
+export const DigestRunTotals = Schema.Struct({
+  at: UtcIso,
+  written: Schema.Int,
+  failed: Schema.Int,
+  avgMs: Schema.NullOr(Schema.Int),
+});
+export type DigestRunTotals = typeof DigestRunTotals.Type;
+
+const decodeDigestRunTotals = Schema.decodeUnknownEffect(Schema.Array(DigestRunTotals));
+
+export const digestRunsSince = Effect.fnUntraced(function* (since: DateTime.Utc) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeDigestRunTotals(
+      yield* sql`SELECT max(started_at) AS at, sum(ok = 1) AS written, sum(ok = 0) AS failed,
+          CAST(round(avg(CASE WHEN ok = 1 THEN ms END)) AS INTEGER) AS avg_ms
+        FROM digest_run WHERE started_at >= ${yield* Schema.encodeEffect(UtcIso)(since)}
+        HAVING count(*) > 0`,
+    ),
   );
 });
 

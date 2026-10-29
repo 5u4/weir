@@ -18,7 +18,14 @@ export const Topic = Schema.Struct({
 });
 export type Topic = typeof Topic.Type;
 
-const Text = (han: number, total: number) =>
+export const digestLimits = {
+  headline: { han: 40, total: 70 },
+  title: { han: 16, total: 40 },
+  body: { han: 80, total: 160 },
+  topics: { min: 1, max: 4 },
+} as const;
+
+const Text = ({ han, total }: { readonly han: number; readonly total: number }) =>
   Schema.Trim.check(
     Schema.isNonEmpty(),
     Schema.makeFilter(
@@ -37,17 +44,17 @@ const Seqs = Schema.NonEmptyArray(Schema.Int).check(
 );
 
 export const DigestOutput = Schema.Struct({
-  headline: Text(40, 70),
+  headline: Text(digestLimits.headline),
   topics: Schema.Array(
     Schema.Struct({
-      title: Text(16, 40),
+      title: Text(digestLimits.title),
       state: TopicState,
-      body: Text(80, 160),
+      body: Text(digestLimits.body),
       seqs: Seqs,
     }),
   ).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(4),
+    Schema.isMinLength(digestLimits.topics.min),
+    Schema.isMaxLength(digestLimits.topics.max),
     Schema.makeFilter((topics: ReadonlyArray<{ readonly seqs: ReadonlyArray<number> }>) => {
       const seqs = topics.flatMap((topic) => topic.seqs);
       return new Set(seqs).size === seqs.length || "an item belongs to at most one topic";
