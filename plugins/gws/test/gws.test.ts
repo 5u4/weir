@@ -13,6 +13,7 @@ import {
   seedMailbox,
   seedThreads,
   setDelay,
+  setQuota,
   type Thread,
 } from "@weir/fixtures";
 import * as Clock from "effect/Clock";
@@ -20,8 +21,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
-import { GwsError, Message, type MessagePart } from "../src/gws.ts";
-import { type GwsConfig, gws } from "../src/index.ts";
+import { abortableSleep, GwsError, Message, type MessagePart, type Sleep } from "../src/gws.ts";
+import { createSource, type GwsConfig, gws } from "../src/index.ts";
 
 const FAKE_GWS = join(import.meta.dirname, "../node_modules/.bin/fake-gws");
 const ME = "robin.ellis@example.com";
@@ -554,6 +555,110 @@ describe("gws plugin against fake-gws", () => {
     const shellError = await crash.sync(ME, null, running).catch((e: unknown) => e);
     expect(shellError).toBeInstanceOf(GwsError);
     expect(shellError).toMatchObject({ exitCode: 2, message: "gws exploded" });
+  });
+});
+
+describe("gws quota backoff", () => {
+  const schedule = [2, 4, 8, 16, 32, 60, 60, 60].map((s) => s * 1000);
+  const limitedUntil = Date.parse("2999-01-01T00:00:00Z");
+  const recorded = (onSleep: () => void = () => {}) => {
+    const delays: number[] = [];
+    const sleep: Sleep = async (ms) => {
+      delays.push(ms);
+      onSleep();
+    };
+    return { delays, sleep };
+  };
+  const mailboxSource = (dir: string, sleep: Sleep) =>
+    createSource(
+      { command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels: EVERY_LABEL },
+      sleep,
+    );
+  const failing = (error: object, sleep: Sleep) =>
+    createSource(
+      {
+        command: ["sh", "-c", `printf '%s' '${JSON.stringify({ error })}'; exit 1`],
+        backfill: "newer_than:30d",
+        labels: EVERY_LABEL,
+      },
+      sleep,
+    );
+
+  it("retries a quota error after 2, 4, 8, 16, 32, 60, 60 and 60 s, then fails the page", async () => {
+    const dir = seeded();
+    setQuota(dir, { until: limitedUntil, methods: ["threads list"] });
+    const { delays, sleep } = recorded();
+    const error = await mailboxSource(dir, sleep)
+      .sync(ME, null, running)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GwsError);
+    expect(error).toMatchObject({
+      exitCode: 1,
+      code: 403,
+      reason: "rateLimitExceeded",
+      message: expect.stringContaining("Quota exceeded"),
+    });
+    expect(delays).toEqual(schedule);
+    expect(
+      readCalls(dir)
+        .filter(({ command }) => command === "threads list")
+        .map(({ failed }) => failed),
+    ).toEqual([...schedule, 0].map(() => true));
+  });
+
+  it("finishes the page once the quota window closes", async () => {
+    const dir = seeded();
+    setQuota(dir, { until: limitedUntil, methods: ["threads get"] });
+    const { delays, sleep } = recorded(() => setQuota(dir, undefined));
+    const page = decodePage(await mailboxSource(dir, sleep).sync(ME, null, running));
+    expect(page).toMatchObject({ kind: "backfill", backfill: "running", more: true });
+    expect(page.upserts.length).toBeGreaterThan(0);
+    expect(delays.length).toBeGreaterThan(0);
+    expect(new Set(delays)).toEqual(new Set([2_000]));
+    expect(readCalls(dir).some(({ command, failed }) => command === "threads get" && failed)).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["HTTP 429", { code: 429, message: "Too many requests" }],
+    [
+      "403 userRateLimitExceeded",
+      { code: 403, reason: "userRateLimitExceeded", message: "User rate limit exceeded" },
+    ],
+    ["a Quota exceeded message", { code: 500, message: "Quota exceeded for quota metric Queries" }],
+  ])("treats %s as a quota error", async (_, error) => {
+    const { delays, sleep } = recorded();
+    await expect(failing(error, sleep).streams()).rejects.toMatchObject(error);
+    expect(delays.toSorted((a, b) => a - b)).toEqual(
+      [...schedule, ...schedule].toSorted((a, b) => a - b),
+    );
+  });
+
+  it.each([
+    ["403 forbidden", { code: 403, reason: "forbidden", message: "Delegation denied" }],
+    ["404 notFound", { code: 404, reason: "notFound", message: "Requested entity was not found." }],
+  ])("fails at once on %s", async (_, error) => {
+    const { delays, sleep } = recorded();
+    await expect(failing(error, sleep).streams()).rejects.toMatchObject(error);
+    expect(delays).toEqual([]);
+  });
+
+  it("rejects at once when the signal aborts during a quota sleep", async () => {
+    const dir = seeded();
+    setQuota(dir, { until: limitedUntil, methods: ["threads list"] });
+    const sleeping = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const page = mailboxSource(dir, (ms, signal) => {
+      sleeping.resolve();
+      return abortableSleep(ms, signal);
+    }).sync(ME, null, controller.signal);
+    await sleeping.promise;
+    const aborted = performance.now();
+    controller.abort();
+    await expect(page).rejects.toThrow();
+    expect(performance.now() - aborted).toBeLessThan(500);
+    expect(readCalls(dir).filter(({ command }) => command === "threads list")).toHaveLength(1);
   });
 });
 

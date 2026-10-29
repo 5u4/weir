@@ -6,6 +6,7 @@ import {
   readCalls,
   seedThreads,
   setDelay,
+  setQuota,
   type Thread,
 } from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
@@ -15,9 +16,10 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import type { Event, StreamStatus } from "../src/Api.ts";
 import type { WeirHome } from "../src/Home.ts";
 import * as Http from "../src/Http.ts";
-import { apiClient, eventually, makeHome } from "./harness.ts";
+import { apiClient, eventually, makeHome, openEvents } from "./harness.ts";
 
 const fakeGws = join(import.meta.dirname, "../node_modules/.bin/fake-gws");
 const pageSize = 10;
@@ -136,13 +138,12 @@ describe("gws background backfill", () => {
         const before = (yield* stream)?.items ?? 0;
 
         yield* client.reload();
-        const seen: Array<{ items: number; backfill: string }> = [];
-        for (let attempt = 0; attempt < 800; attempt++) {
-          const current = yield* stream;
-          if (current !== undefined) seen.push(current);
-          if (seen.some((s) => s.backfill === "running") && current?.backfill === "done") break;
-          yield* Effect.sleep(Duration.millis(25));
-        }
+        const seen: Array<typeof StreamStatus.Type> = [];
+        yield* eventually(
+          stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
+          (s) => s?.backfill === "done" && seen.some(({ backfill }) => backfill === "running"),
+          800,
+        );
         expect(seen.some((s) => s.backfill === "running")).toBe(true);
         expect(seen.at(-1)).toMatchObject({
           backfill: "done",
@@ -164,5 +165,38 @@ describe("gws background backfill", () => {
             .map(({ params }) => params.q),
         ).toEqual([bound, bound]);
       }).pipe(Effect.scoped),
+  );
+
+  it.live("a Gmail quota window mid-backfill backs off and the backfill still finishes", () =>
+    Effect.gen(function* () {
+      const seeded = 3 * pageSize + 1;
+      const { home, port, mailbox } = gmailHome(seeded, yield* Clock.currentTimeMillis);
+      setDelay(mailbox, { "threads list": 500 });
+      const { stream } = yield* connect(home, port);
+      const events = yield* openEvents(port);
+      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize, 400);
+      setQuota(mailbox, {
+        until: (yield* Clock.currentTimeMillis) + 2_500,
+        methods: ["threads get"],
+      });
+
+      const seen: Array<typeof StreamStatus.Type> = [];
+      yield* eventually(
+        stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
+        (s) => s?.backfill === "done" || s?.last_error != null,
+        800,
+      );
+      expect(seen.filter(({ last_error }) => last_error !== null)).toEqual([]);
+      expect(seen.at(-1)).toMatchObject({ backfill: "done", last_error: null, items: seeded });
+      const outcome = yield* events.until(
+        (event): event is Extract<Event, { type: "sync" }> =>
+          event.type === "sync" && event.status !== "started",
+      );
+      expect(outcome.status).toBe("done");
+      expect(
+        readCalls(mailbox).filter(({ command, failed }) => command === "threads get" && failed)
+          .length,
+      ).toBeGreaterThan(0);
+    }).pipe(Effect.scoped),
   );
 });

@@ -1,4 +1,4 @@
-import type { RawItem, SourcePlugin, SyncPage } from "@weir/contract/Source";
+import type { RawItem, Source, SourcePlugin, SyncPage } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -6,7 +6,8 @@ import * as Equivalence from "effect/Equivalence";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
 import {
-  type Command,
+  abortableSleep,
+  type Gws,
   GwsError,
   getProfile,
   getThread,
@@ -15,6 +16,7 @@ import {
   listLabels,
   listSendAs,
   listThreads,
+  type Sleep,
 } from "./gws.ts";
 import { toRawItem } from "./item.ts";
 
@@ -97,12 +99,8 @@ const HIDDEN: Record<string, true> = { SPAM: true, TRASH: true };
 const isNotFound = (error: unknown): error is GwsError =>
   error instanceof GwsError && error.code === 404;
 
-const resolveLabels = async (
-  command: Command,
-  names: LabelIds,
-  signal: AbortSignal,
-): Promise<LabelIds> => {
-  const { labels = [] } = await listLabels(command, signal);
+const resolveLabels = async (cli: Gws, names: LabelIds, signal: AbortSignal): Promise<LabelIds> => {
+  const { labels = [] } = await listLabels(cli, signal);
   const idByName = new Map(labels.map((label) => [label.name, label.id]));
   const ids = Arr.map(names, (name) => {
     const id = idByName.get(name);
@@ -114,7 +112,7 @@ const resolveLabels = async (
 };
 
 const fetchPage = async (
-  command: Command,
+  cli: Gws,
   emailAddress: string,
   labels: LabelIds,
   threadIds: ReadonlyArray<string>,
@@ -127,7 +125,7 @@ const fetchPage = async (
     const width = Math.min(CONCURRENCY, PAGE_MESSAGES - upserts.length - deletions.length);
     const threads = await Promise.all(
       threadIds.slice(next, next + width).map((id) =>
-        getThread(command, id, signal).catch((error: unknown) => {
+        getThread(cli, id, signal).catch((error: unknown) => {
           if (isNotFound(error)) return { messages: [] };
           throw error;
         }),
@@ -160,14 +158,18 @@ const emit = (changes: Changes, next: Cursor, kind: SyncPage["kind"]): SyncPage 
   backfill: next.phase === "incremental" ? "done" : "running",
 });
 
-const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
+export const createSource = (
+  { command, backfill, labels: labelNames }: GwsConfig,
+  sleep: Sleep,
+): Source => {
+  const cli: Gws = { command, sleep };
   const listingPage = async (pass: Pass, labels: LabelIds, q: string, position: Listing) => {
     const { listing, pageToken } = position;
     const [label, ...rest] = listing;
-    const list = await listThreads(command, label, q, pageToken, LIST_SIZE, pass.signal);
+    const list = await listThreads(cli, label, q, pageToken, LIST_SIZE, pass.signal);
     const fetched = new Set(position.fetched);
     const unfetched = (list.threads ?? []).map((t) => t.id).filter((id) => !fetched.has(id));
-    const page = await fetchPage(command, pass.emailAddress, labels, unfetched, pass.signal);
+    const page = await fetchPage(cli, pass.emailAddress, labels, unfetched, pass.signal);
     for (const id of unfetched.slice(0, unfetched.length - page.rest.length)) fetched.add(id);
     const carried = [...fetched];
     const next: Listing | null =
@@ -184,14 +186,14 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
 
   const livePage = async (pass: Pass, labels: LabelIds, live: Live) => {
     if (live.pending.length > 0) {
-      const page = await fetchPage(command, pass.emailAddress, labels, live.pending, pass.signal);
+      const page = await fetchPage(cli, pass.emailAddress, labels, live.pending, pass.signal);
       const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
       return { changes, live: { ...live, pending: page.rest } };
     }
     const startedAt = Effect.runSync(Clock.currentTimeMillis);
     let history: HistoryList;
     try {
-      history = await listHistory(command, live.historyId, live.pageToken, pass.signal);
+      history = await listHistory(cli, live.historyId, live.pageToken, pass.signal);
     } catch (error) {
       if (isNotFound(error)) return null;
       throw error;
@@ -205,7 +207,7 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
         if (labelIds.some((label) => labels.includes(label))) threads.add(message.threadId);
       }
     }
-    const page = await fetchPage(command, pass.emailAddress, labels, [...threads], pass.signal);
+    const page = await fetchPage(cli, pass.emailAddress, labels, [...threads], pass.signal);
     const changes: Changes = {
       upserts: page.upserts.filter((item) => !deleted.has(item.externalId)),
       deletions: [...new Set([...deleted, ...page.deletions])],
@@ -298,7 +300,7 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
 
   return {
     streams: async () => {
-      const [profile, sendAs] = await Promise.all([getProfile(command), listSendAs(command)]);
+      const [profile, sendAs] = await Promise.all([getProfile(cli), listSendAs(cli)]);
       return [
         {
           id: profile.emailAddress,
@@ -322,8 +324,8 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       const position = cursor === null ? null : decodeCursor(cursor);
       const recordedAt = Effect.runSync(Clock.currentTimeMillis);
       const [profile, labels] = await Promise.all([
-        getProfile(command, signal),
-        resolveLabels(command, labelNames, signal),
+        getProfile(cli, signal),
+        resolveLabels(cli, labelNames, signal),
       ]);
       if (streamId !== profile.emailAddress) {
         throw new Error(`gws has no stream ${streamId}; the mailbox is ${profile.emailAddress}`);
@@ -350,5 +352,5 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
 export const gws: SourcePlugin<GwsConfig> = {
   id: "gws",
   configSchema: Schema.toStandardSchemaV1(GwsConfig),
-  create,
+  create: (config) => createSource(config, abortableSleep),
 };
