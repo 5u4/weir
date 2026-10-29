@@ -235,6 +235,6 @@ describe("fake-gws --mailbox", () => {
     expect(list.ms).toBeGreaterThanOrEqual(1500);
     expect(list.answer.messages).toHaveLength(10);
     expect(profile.ms).toBeLessThan(1500);
-    expect(profile.answer.messagesTotal).toBe(31);
+    expect(profile.answer.messagesTotal).toBe(32);
   });
 });
