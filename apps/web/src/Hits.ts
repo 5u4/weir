@@ -10,7 +10,11 @@ import {
 } from "./Blocks.ts";
 
 export type Hit =
-  | { readonly _tag: "Item"; readonly seq: number; readonly field: "body" | "from" }
+  | {
+      readonly _tag: "Item";
+      readonly seq: number;
+      readonly field: "body" | "from" | "source";
+    }
   | { readonly _tag: "Topic"; readonly key: TopicKey }
   | { readonly _tag: "Headline"; readonly digest: number };
 
@@ -43,12 +47,14 @@ export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit>
       }
     });
   }
-  for (const { seq, from, body_new } of detail.items) {
+  for (const { seq, from, body_new, stream } of detail.items) {
     const field = leaves(visible(body_new)).some((leaf) => matches(leaf, pattern))
       ? "body"
       : matches(senderLabel(from.name, from.address), pattern)
         ? "from"
-        : null;
+        : matches(stream, pattern)
+          ? "source"
+          : null;
     if (field === null) continue;
     const digest = covering(detail, seq);
     const topic = digest?.topics.findIndex(({ seqs }) => seqs.includes(seq)) ?? -1;
@@ -69,6 +75,13 @@ export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit>
     })
     .map(({ hit }) => hit);
 };
+
+export const matchedIn = (detail: Detail, pattern: RegExp | null) =>
+  pattern === null
+    ? "Matched in filters"
+    : matches(detail.title, pattern)
+      ? "Matched in Title"
+      : "Matched the conversation";
 
 const holding = (detail: Detail, hit: Hit): Digest | undefined => {
   switch (hit._tag) {

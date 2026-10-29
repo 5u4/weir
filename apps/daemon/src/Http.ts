@@ -556,6 +556,9 @@ const weirHandlers = HttpApiBuilder.group(
           const lastRun = yield* Read.lastDigestRun(conversation.id);
           const lite = yield* Read.itemsLite(conversation.id);
           const open = yield* Read.openTarget(conversation.id);
+          const streams = new Map(
+            (yield* Read.hitItems([conversation.id])).map((item) => [item.seq, item.streamName]),
+          );
           const ranges =
             config.digest === undefined ? null : gaps(lite, digests, config.digest.max_input);
           return {
@@ -569,14 +572,22 @@ const weirHandlers = HttpApiBuilder.group(
               muted: state.muted,
               state: state.state,
             },
-            items: items.map((item) => ({
-              seq: item.seq,
-              occurred_at: DateTime.formatIso(item.occurredAt),
-              from: { name: item.fromName, address: item.fromAddress },
-              from_me: item.fromMe,
-              title: item.title,
-              body_new: item.bodyNew,
-            })),
+            items: items.flatMap((item) => {
+              const stream = streams.get(item.seq);
+              return stream === undefined
+                ? []
+                : [
+                    {
+                      seq: item.seq,
+                      occurred_at: DateTime.formatIso(item.occurredAt),
+                      from: { name: item.fromName, address: item.fromAddress },
+                      from_me: item.fromMe,
+                      title: item.title,
+                      body_new: item.bodyNew,
+                      stream,
+                    },
+                  ];
+            }),
             digests: digests.map(digestJson),
             digest: {
               backlog:

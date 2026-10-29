@@ -371,6 +371,7 @@ it("a Digest from here that lands earlier chunks keeps its failure on the first 
     from_me: false,
     title: null,
     body_new: `message ${seq}`,
+    stream: "robin.ellis@example.com",
   });
   const items = [1, 2, 3, 4].map(item);
   daemon.details.set(5, { items });

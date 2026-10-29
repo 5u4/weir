@@ -175,6 +175,7 @@ export const ItemSummary = Schema.Struct({
   from_me: Schema.Boolean,
   title: Schema.NullOr(Schema.String),
   body_new: Schema.String,
+  stream: Schema.String,
 });
 
 export const DigestGap = Schema.Struct({

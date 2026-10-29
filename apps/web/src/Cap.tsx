@@ -15,7 +15,7 @@ import {
   widgetDescription,
 } from "./Notch.ts";
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
-import { hitAt, searchHits, stepHit } from "./Reading.ts";
+import { hitAt, searchHits, searchMatchedIn, stepHit } from "./Reading.ts";
 import { groups, type ResultGroup } from "./Results.ts";
 import {
   type ConversationId,
@@ -430,6 +430,7 @@ function SearchSentence() {
 
 function HitStepper({ id }: { id: ConversationId }) {
   const hits = useAtomValue(searchHits(id));
+  const matched = useAtomValue(searchMatchedIn(id));
   const at = useAtomValue(hitAt(id));
   const step = useAtomSet(stepHit);
   if (Option.isNone(hits)) return null;
@@ -437,7 +438,7 @@ function HitStepper({ id }: { id: ConversationId }) {
   if (total === 0) {
     return (
       <span className="q-st">
-        <span className="q-n q-conv">Matched the conversation</span>
+        <span className="q-n q-conv">{Option.getOrNull(matched)}</span>
       </span>
     );
   }
