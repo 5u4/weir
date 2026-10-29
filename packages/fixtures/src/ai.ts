@@ -39,18 +39,14 @@ const replay = (input: Input): Output | undefined => {
       Date.parse(r.last_occurred_at) === Date.parse(last.occurred_at),
   );
   if (hit === undefined) return undefined;
-  return {
-    headline: hit.output.headline,
-    topics: hit.output.topics.map(({ positions, ...topic }) => ({
-      ...topic,
-      state: topic.state as Output["topics"][number]["state"],
-      seqs: positions.map((p) => {
-        const item = input.items[p];
-        if (item === undefined) throw new Error(`recorded position ${p} outside the range`);
-        return item.seq;
-      }),
-    })),
-  };
+  const topics = hit.output.topics.map(({ positions, ...topic }) => ({
+    ...topic,
+    state: topic.state as Output["topics"][number]["state"],
+    seqs: positions.map((p) => input.items[p]?.seq),
+  }));
+  const inRange = (t: (typeof topics)[number]): t is Output["topics"][number] =>
+    t.seqs.every((s) => s !== undefined);
+  return topics.every(inRange) ? { headline: hit.output.headline, topics } : undefined;
 };
 
 const envelope = (input: Input): Output => {

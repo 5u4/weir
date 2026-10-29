@@ -101,6 +101,15 @@ it("answers an unrecorded range deterministically within the contract and the ra
   const single = input("Solo", [item(9, "2026-10-22T10:00:00Z", "Ana")]);
   const one = lastJson(run([], prompt(single)).stdout) as DigestOutput;
   expect(one.topics.map((t) => t.seqs)).toEqual([[9]]);
+
+  const shortened = input(northwind.conversation.title, [
+    ...northwind.items.slice(0, 1),
+    ...northwind.items.slice(2),
+  ]);
+  const fallback = run([], prompt(shortened));
+  expect(fallback.exitCode).toBe(0);
+  expect(decodes(fallback.stdout)).toBe(true);
+  expect((lastJson(fallback.stdout) as DigestOutput).topics).toHaveLength(1);
 });
 
 it("--invalid first fails the first attempt and answers the retry; --invalid always never answers", () => {
