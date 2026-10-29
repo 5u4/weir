@@ -36,10 +36,18 @@ export const expectedDigests: { ai_since: string; digests: ExpectedDigest[] } =
 
 const tomlString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 
-export const configToml = (mailboxDir?: string): string => {
-  const command = ["fake-gws", ...(mailboxDir === undefined ? [] : ["--mailbox", mailboxDir])];
+export const configToml = ({
+  mailbox,
+  gws = ["fake-gws"],
+  ai = ["fake-ai"],
+}: {
+  mailbox?: string;
+  gws?: ReadonlyArray<string>;
+  ai?: ReadonlyArray<string>;
+} = {}): string => {
+  const command = [...gws, ...(mailbox === undefined ? [] : ["--mailbox", mailbox])];
   return String.raw`[ai.fake-ai]
-command = ["fake-ai"]
+command = [${ai.map(tomlString).join(", ")}]
 timeout = "30s"
 concurrency = 1
 
