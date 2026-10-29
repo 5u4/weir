@@ -55,7 +55,6 @@ const writePage = Effect.fnUntraced(function* (
   const recompute = new Set<ConversationId>(
     yield* Write.softDeleteItems(stream.id, page.deletions),
   );
-  const deleted = [...recompute];
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -73,7 +72,7 @@ const writePage = Effect.fnUntraced(function* (
   );
   if (backfilling) yield* Write.advanceSeenSeq(written);
   yield* Write.saveCursor(stream.id, page.cursor, { backfilled: backfilling && !page.more });
-  return [...new Set([...deleted, ...written.map(({ conversationId }) => conversationId)])];
+  return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });
 
 export const syncStream = Effect.fnUntraced(function* (

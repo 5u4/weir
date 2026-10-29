@@ -257,6 +257,21 @@ describe("events", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("e10: an item moving between conversations announces both conversations", () =>
+    Effect.gen(function* () {
+      const { port, source, deliver, conversationOf } = yield* start();
+      yield* deliver([item("m1", "Origin", 1), item("m2", "Origin", 2)]);
+      const origin = yield* conversationOf("Origin");
+      const events = yield* openEvents(port);
+      yield* events.take;
+
+      source.pending.push(item("m2", "Destination", 2));
+      const { ids } = yield* events.state;
+      const destination = yield* conversationOf("Destination");
+      expect(ids.toSorted()).toEqual([origin.id, destination.id].toSorted());
+    }).pipe(Effect.scoped),
+  );
+
   it.live("e3: a manual digest reports queued, running, done; a failing AI reports its log", () =>
     Effect.gen(function* () {
       const { port, client, deliver, conversationOf, home, writeConfig } = yield* start({
