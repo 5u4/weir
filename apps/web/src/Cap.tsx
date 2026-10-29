@@ -17,9 +17,18 @@ import {
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
 import { groups, type ResultGroup } from "./Results.ts";
 import { type Route, route, statusOpen, type View } from "./Route.ts";
-import { found, pickedGroup, searchGroup, searching, searchQuery, searchResult } from "./Search.ts";
 import { CloseIcon, StatusIcon } from "./Status.tsx";
-import { counts, searchOpen, tagOrder } from "./Weir.ts";
+import {
+  counts,
+  found,
+  pickedGroup,
+  searchGroup,
+  searching,
+  searchOpen,
+  searchQuery,
+  searchResult,
+  tagOrder,
+} from "./Weir.ts";
 
 const measureCap = (cap: HTMLDivElement) => {
   const observer = new ResizeObserver(() =>

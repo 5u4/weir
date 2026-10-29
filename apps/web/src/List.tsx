@@ -11,8 +11,7 @@ import { reading } from "./Reading.ts";
 import { ResultList } from "./ResultList.tsx";
 import { ConversationId, route, type View, viewLabel } from "./Route.ts";
 import { face, shown, tagHue } from "./Rows.ts";
-import { searching } from "./Search.ts";
-import { clearAll, dismiss, intents, tagOrder, viewList } from "./Weir.ts";
+import { clearAll, dismiss, intents, searching, tagOrder, viewList } from "./Weir.ts";
 
 type RowProps = {
   row: Row;

@@ -2,6 +2,7 @@ import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daem
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Option from "effect/Option";
@@ -16,6 +17,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
 import { refetches } from "./Live.ts";
+import { parseQuery, sameParams, searchParams } from "./Query.ts";
+import { narrowed, picked, type Result } from "./Results.ts";
 import { ConversationId, route, statusOpen, type View } from "./Route.ts";
 import { type Act, type Intents, intentFor, leaves, neighbor, shown, type Target } from "./Rows.ts";
 
@@ -265,6 +268,51 @@ export const visibleRows = Atom.family((view: View) =>
   ),
 );
 
+const debounce = Duration.millis(150);
+
+export const searchQuery = Atom.make((get) => parseQuery(get(route).query, get(tagOrder)));
+
+const searchRequest = Atom.make((get) => searchParams(get(searchQuery))).pipe(
+  Atom.withEquality(Option.makeEquivalence(sameParams)),
+);
+
+export const searching = Atom.make((get) => Option.isSome(get(searchRequest)));
+
+export const searchResult = Weir.runtime
+  .atom((get) =>
+    Option.match(get(searchRequest), {
+      onNone: () => Effect.succeed(Option.none<ReadonlyArray<Result>>()),
+      onSome: (query) =>
+        Effect.gen(function* () {
+          yield* Effect.sleep(debounce);
+          const client = yield* Weir;
+          const { conversations } = yield* client.search({ query });
+          return Option.some(conversations);
+        }),
+    }),
+  )
+  .pipe(Atom.withReactivity(["list"]));
+
+export const searchGroup = Atom.make(Option.none<View>());
+
+export const found = Atom.make((get) => Option.flatten(AsyncResult.value(get(searchResult))));
+
+export const pickedGroup = Atom.make((get) =>
+  Option.flatMap(get(found), (results) => picked(results, get(tagOrder), get(searchGroup))),
+);
+
+export const searchRows = Atom.make((get) =>
+  Option.match(get(found), {
+    onNone: (): ReadonlyArray<Result> => [],
+    onSome: (results) => narrowed(results, get(pickedGroup)),
+  }),
+);
+
+export const listedRows = Atom.make(
+  (get): ReadonlyArray<Row> =>
+    get(searching) ? get(searchRows) : get(visibleRows(get(route).view)),
+);
+
 export const dismiss = Weir.runtime
   .fn<{ readonly act: Act; readonly target: Target }>()(
     ({ act, target }, get) =>
@@ -278,9 +326,8 @@ export const dismiss = Weir.runtime
             _tag: "Replace",
             to: {
               ...current,
-              conversation: Option.map(
-                neighbor(get.registry.get(visibleRows(view)), target.id),
-                (next) => ConversationId.make(next.id),
+              conversation: Option.map(neighbor(get.registry.get(listedRows), target.id), (next) =>
+                ConversationId.make(next.id),
               ),
             },
           });

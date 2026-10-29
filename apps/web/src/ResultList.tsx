@@ -17,8 +17,8 @@ import {
   searchQuery,
   searchResult,
   searchRows,
-} from "./Search.ts";
-import { tagOrder } from "./Weir.ts";
+  tagOrder,
+} from "./Weir.ts";
 
 type Segments = Result["hits"][number]["text"];
 

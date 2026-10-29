@@ -2,9 +2,16 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { route } from "./Route.ts";
-import { found, searchResult } from "./Search.ts";
-import { counts } from "./Weir.ts";
+import { ConversationId, route } from "./Route.ts";
+import {
+  counts,
+  dismiss,
+  found,
+  searchGroup,
+  searchResult,
+  viewList,
+  visibleRows,
+} from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
   const origin = "http://weir.test";
@@ -12,11 +19,14 @@ const daemon = vi.hoisted(() => {
   const searches: Array<URLSearchParams> = [];
   const held: Array<{ q: string; reply: (ids: ReadonlyArray<number>) => void }> = [];
   const mode = { hold: false };
+  const results: Array<number> = [1];
+  const listed: Array<number> = [];
+  const tagged = new Map<number, ReadonlyArray<string>>();
   const row = (id: number) => ({
     id,
     source: "personal-mail",
     title: `#${id}`,
-    tags: [],
+    tags: tagged.get(id) ?? [],
     first_at: "2026-10-25T09:00:00.000Z",
     last_at: "2026-10-25T09:00:00.000Z",
     last_seq: 1,
@@ -32,8 +42,16 @@ const daemon = vi.hoisted(() => {
     senders: [],
     hits: [],
   });
-  const fetch = async (input: RequestInfo | URL) => {
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    const done = Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]);
+    if (method === "POST" && Number.isInteger(done)) {
+      return Response.json({ ...row(done), cleared_seq: 1, state: "done" });
+    }
+    if (url.pathname === "/conversations") {
+      return Response.json({ seq: 1, conversations: listed.map(row) });
+    }
     if (url.pathname === "/counts") {
       return Response.json({
         unread: 0,
@@ -47,7 +65,7 @@ const daemon = vi.hoisted(() => {
       const q = url.searchParams.get("q") ?? "";
       const respond = (ids: ReadonlyArray<number>) =>
         Response.json({ conversations: ids.map(row) });
-      if (!mode.hold) return respond([1]);
+      if (!mode.hold) return respond(results);
       return new Promise<Response>((resolve) => {
         held.push({ q, reply: (ids) => resolve(respond(ids)) });
       });
@@ -70,7 +88,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("addEventListener", () => {});
   vi.stubGlobal("removeEventListener", () => {});
   vi.stubGlobal("fetch", fetch);
-  return { page, searches, held, mode };
+  return { page, searches, held, mode, results, listed, tagged };
 });
 
 const session = async () => {
@@ -97,6 +115,9 @@ afterEach(() => {
   daemon.searches.length = 0;
   daemon.held.length = 0;
   daemon.mode.hold = false;
+  daemon.results.splice(0, Infinity, 1);
+  daemon.listed.length = 0;
+  daemon.tagged.clear();
 });
 
 it("typing sends one search once the input has been quiet for 150ms", async () => {
@@ -150,4 +171,33 @@ it("a query of only spaces sends nothing and finds nothing", async () => {
   await vi.advanceTimersByTimeAsync(1000);
   expect(daemon.searches).toEqual([]);
   expect(ids()).toEqual(Option.none());
+});
+
+it.each<[string, Option.Option<"untagged">, number]>([
+  ["Done on an open result opens the next result on screen", Option.none(), 2],
+  ["Done inside a group opens the next result in that group", Option.some("untagged"), 3],
+])("%s, keeping the query", async (_, group, next) => {
+  daemon.results.splice(0, Infinity, 1, 2, 3);
+  daemon.tagged.set(2, ["Me"]);
+  daemon.listed.push(1, 5);
+  const { registry, type } = await session();
+  registry.mount(visibleRows("untagged"));
+  await Effect.runPromise(
+    AtomRegistry.getResult(registry, viewList("untagged"), { suspendOnWaiting: true }),
+  );
+  type("north");
+  await vi.advanceTimersByTimeAsync(150);
+  await vi.waitFor(() => expect(Option.isSome(registry.get(found))).toBe(true));
+  registry.set(searchGroup, group);
+  registry.set(route, {
+    _tag: "Go",
+    to: { ...registry.get(route), conversation: Option.some(ConversationId.make(1)) },
+  });
+
+  registry.set(dismiss, { act: "Done", target: { id: 1, last_seq: 1, cleared_seq: 0 } });
+
+  await vi.waitFor(() =>
+    expect(registry.get(route).conversation).toEqual(Option.some(ConversationId.make(next))),
+  );
+  expect(registry.get(route).query).toBe("north");
 });

@@ -8,10 +8,9 @@ import { List } from "./List.tsx";
 import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
 import { route, statusOpen } from "./Route.ts";
-import { found, searching, searchQuery } from "./Search.ts";
 import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
-import { live, searchOpen, status, tabTitle } from "./Weir.ts";
+import { found, live, searching, searchOpen, searchQuery, status, tabTitle } from "./Weir.ts";
 
 export function App() {
   useAtomMount(theme);
