@@ -159,14 +159,15 @@ export const syncSource = Effect.fnUntraced(function* (
       }),
     ),
   );
-  yield* Effect.forEach(
-    descriptors,
-    (descriptor) =>
-      syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
-        Effect.catch((error) =>
-          Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error),
+  const failures = yield* Effect.forEach(descriptors, (descriptor) =>
+    syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
+      Effect.as(null),
+      Effect.catch((error) =>
+        Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error).pipe(
+          Effect.as(`${descriptor.id}: ${errorMessage(error)}`),
         ),
       ),
-    { discard: true },
+    ),
   );
+  return failures.filter((failure) => failure !== null);
 });

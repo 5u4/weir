@@ -83,14 +83,20 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           }),
         );
 
-      const report = (sourceId: string, error: string | null) =>
-        Ref.update(state, (current) => ({
+      const report = (sourceId: string, outcome: Scheduler.SyncOutcome) => {
+        const listing: Listing =
+          outcome.listing === "ok" ? { state: "ok" } : { state: "failed", error: outcome.error };
+        const error =
+          outcome.listing === "failed"
+            ? outcome.error
+            : outcome.streamErrors.length === 0
+              ? null
+              : outcome.streamErrors.join("\n");
+        return Ref.update(state, (current) => ({
           ...current,
-          listings: new Map(current.listings).set(
-            sourceId,
-            error === null ? { state: "ok" } : { state: "failed", error },
-          ),
+          listings: new Map(current.listings).set(sourceId, listing),
         })).pipe(Effect.andThen(syncEvent(sourceId, error === null ? "done" : "failed", error)));
+      };
 
       const publishDigest = ({ conversationId, range, trigger, ...status }: Digester.JobEvent) =>
         events.publish({

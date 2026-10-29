@@ -19,6 +19,7 @@ import {
   type FakeSource,
   fakePlugin,
   fakeSource,
+  mailStream,
   makeHome,
   rawItem,
   sourceConfig,
@@ -228,6 +229,31 @@ describe("events", () => {
       const failed = yield* events.until(isSync("failed"));
       expect(failed).toMatchObject({ type: "sync", source: "mail", status: "failed" });
       expect(failed.error).toContain("gws is down");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("e9: a failing stream reports failed while the listing and other streams stay ok", () =>
+    Effect.gen(function* () {
+      const { port, client, source, deliver } = yield* start();
+      const events = yield* openEvents(port);
+      const broken = { ...mailStream, id: "broken@example.com", name: "broken@example.com" };
+      source.streams = async () => [broken, mailStream];
+      source.failingStreams.add(broken.id);
+      yield* deliver([item("s1", "Still syncing", 1)]);
+
+      const ended = Effect.gen(function* () {
+        for (;;) {
+          const event = yield* events.until(isSync());
+          if (event.status !== "started") return event;
+        }
+      });
+      let last = yield* ended;
+      for (let cycle = 0; cycle < 3 && last.status !== "failed"; cycle++) last = yield* ended;
+      expect(last).toMatchObject({ type: "sync", source: "mail", status: "failed" });
+      expect(last.error).toContain("broken@example.com is unreachable");
+
+      const { sources } = yield* client.status();
+      expect(sources[0]).toMatchObject({ id: "mail", listing: "ok", error: null });
     }).pipe(Effect.scoped),
   );
 

@@ -121,6 +121,7 @@ export interface FakeSource {
   items: ReadonlyArray<RawItem>;
   pending: Array<RawItem>;
   syncCalls: number;
+  failingStreams: Set<string>;
 }
 
 export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
@@ -128,6 +129,7 @@ export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
   items,
   pending: [],
   syncCalls: 0,
+  failingStreams: new Set(),
 });
 
 export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
@@ -135,8 +137,9 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
   configSchema: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.String)),
   create: (): Source => ({
     streams: () => state.streams(),
-    sync: async (_streamId, cursor) => {
+    sync: async (streamId, cursor) => {
       state.syncCalls += 1;
+      if (state.failingStreams.has(streamId)) throw new Error(`${streamId} is unreachable`);
       return {
         upserts: cursor === null ? state.items : state.pending.splice(0),
         deletions: [],

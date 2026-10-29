@@ -72,11 +72,15 @@ export const loadSources = Effect.fnUntraced(function* (
   return loaded;
 });
 
+export type SyncOutcome =
+  | { readonly listing: "failed"; readonly error: string }
+  | { readonly listing: "ok"; readonly streamErrors: ReadonlyArray<string> };
+
 export const run = (
   sources: ReadonlyArray<ScheduledSource>,
   tags: Tags,
   onStarted: (sourceId: string) => Effect.Effect<void>,
-  report: (sourceId: string, listingError: string | null) => Effect.Effect<void>,
+  report: (sourceId: string, outcome: SyncOutcome) => Effect.Effect<void>,
   onWritten: Written,
 ) =>
   Effect.forEach(
@@ -87,9 +91,11 @@ export const run = (
         Effect.matchCauseEffect({
           onFailure: (cause) =>
             Effect.logError(`sync of ${id} failed`, cause).pipe(
-              Effect.andThen(report(id, errorMessage(Cause.squash(cause)))),
+              Effect.andThen(
+                report(id, { listing: "failed", error: errorMessage(Cause.squash(cause)) }),
+              ),
             ),
-          onSuccess: () => report(id, null),
+          onSuccess: (streamErrors) => report(id, { listing: "ok", streamErrors }),
         }),
         Effect.uninterruptible,
         Effect.repeat(Schedule.spaced(every)),

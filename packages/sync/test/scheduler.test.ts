@@ -6,7 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
-import { loadSources, type PluginRegistry, run } from "../src/Scheduler.ts";
+import { loadSources, type PluginRegistry, run, type SyncOutcome } from "../src/Scheduler.ts";
 import { page, rawItem, scriptedSource, storeLayer } from "./fixtures.ts";
 
 const FakeConfig = Schema.Struct({ command: Schema.NonEmptyArray(Schema.String) });
@@ -82,7 +82,7 @@ describe("run", () => {
   it.effect("syncs each source immediately, then every sync_every, reporting each listing", () =>
     Effect.gen(function* () {
       const calls: Array<ReadonlyArray<string>> = [];
-      const reports: Array<[string, string | null]> = [];
+      const reports: Array<[string, SyncOutcome]> = [];
       const parsed = yield* config(
         [
           { id: "a", plugin: "fake", sync_every: "5m", config: { command: ["fake-cli"] } },
@@ -99,7 +99,7 @@ describe("run", () => {
           sources,
           parsed.tag,
           () => Effect.void,
-          (id, error) => Effect.sync(() => reports.push([id, error])),
+          (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
           () => Effect.void,
         ),
       );
@@ -107,9 +107,9 @@ describe("run", () => {
       yield* settle;
       expect(calls).toEqual([["fake-cli"]]);
       expect(yield* syncRunCount).toBe(1);
-      expect(reports.toSorted()).toEqual([
-        ["a", null],
-        ["b", "gws: not logged in"],
+      expect(reports.toSorted(([a], [b]) => a.localeCompare(b))).toEqual([
+        ["a", { listing: "ok", streamErrors: [] }],
+        ["b", { listing: "failed", error: "gws: not logged in" }],
       ]);
       const sql = yield* SqlClient.SqlClient;
       expect(yield* sql`SELECT tag FROM conversation_tag`).toEqual([{ tag: "greeting" }]);
