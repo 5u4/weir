@@ -3,14 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   deliver,
+  deliverThreads,
   expireHistory,
   FIXTURE_NOW,
+  readCalls,
   relabel,
   remove,
   seedMailbox,
   seedThreads,
   setDelay,
   setNow,
+  setQuota,
 } from "@weir/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
 import scenarios from "../scenarios.json" with { type: "json" };
@@ -323,5 +326,189 @@ describe("fake-gws --mailbox", () => {
     expect(pages).toBe(2);
     expect(listed).toHaveLength(3);
     expect(messages).toHaveLength(6);
+  });
+});
+
+const scenarioOf = (threadId: string, mailboxDir: string) => {
+  const { messages } = gmail("threads get", { userId: "me", id: threadId }, mailboxDir);
+  const subject = messages[0].payload.headers.find(
+    (h: { name: string }) => h.name === "Subject",
+  ).value;
+  return scenarios.threads.find((t) => t.subject === subject)?.id;
+};
+const listedScenarios = (q: string, mailboxDir: string) =>
+  listAll({ q }, mailboxDir)
+    .threads.map((id) => scenarioOf(id, mailboxDir))
+    .sort();
+const epochSeconds = (iso: string) => at(iso) / 1000;
+
+describe("fake-gws q after:", () => {
+  it("lists threads with a message strictly after the epoch-seconds bound", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    expect(listedScenarios(`after:${epochSeconds("2026-10-22T12:00:00-07:00")}`, dir)).toEqual([
+      "bank-1",
+      "bank-3",
+      "dan-birthday",
+      "gh-billing-4818",
+      "gh-ci-main",
+      "gh-web-1312",
+      "newsletter-ledger",
+      "newsletter-trailhead",
+      "northwind-cutover",
+      "note-to-self",
+      "promo-kokoro",
+      "promo-ridgeway",
+    ]);
+    expect(listedScenarios(`after:${epochSeconds("2026-10-24T11:30:00-07:00")}`, dir)).toEqual([
+      "bank-3",
+    ]);
+  });
+
+  it("ANDs after: with newer_than in either order", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    setNow(dir, "2026-11-22T08:05:00-07:00");
+    const early = epochSeconds("2026-10-22T12:00:00-07:00");
+    const late = epochSeconds("2026-10-23T12:00:00-07:00");
+    expect(listedScenarios(`after:${early} newer_than:30d`, dir)).toEqual([
+      "bank-1",
+      "bank-3",
+      "dan-birthday",
+      "gh-ci-main",
+      "gh-web-1312",
+      "newsletter-trailhead",
+      "promo-kokoro",
+    ]);
+    expect(listedScenarios(`  newer_than:30d   after:${late} `, dir)).toEqual([
+      "bank-1",
+      "bank-3",
+      "dan-birthday",
+      "gh-ci-main",
+      "newsletter-trailhead",
+      "promo-kokoro",
+    ]);
+  });
+
+  it.each(["after:2026/10/22", "after:1 after:2", "newer_than:30d from:someone"])(
+    "rejects q %j with a validation exit",
+    (q) => {
+      const run = fakeGws([
+        "gmail",
+        "users",
+        "threads",
+        "list",
+        "--params",
+        JSON.stringify({ userId: "me", q }),
+      ]);
+      expect(run.exitCode).toBe(3);
+      expect(run.stderr).toMatch(/newer_than:N\[dmy\], after:N/);
+    },
+  );
+});
+
+describe("fake-gws quota", () => {
+  const QUOTA_MESSAGE =
+    "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user' of service 'gmail.googleapis.com'";
+  const threadsGet = (dir: string, params: Record<string, unknown>) =>
+    fakeGws(["gmail", "users", "threads", "get", "--params", JSON.stringify(params)], dir);
+
+  it("fails only the named methods with a 403 until the deadline passes", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    const [id] = listAll({}, dir).threads;
+    setQuota(dir, { until: at("2999-01-01T00:00:00Z"), methods: ["threads get"] });
+
+    const limited = threadsGet(dir, { userId: "me", id });
+    expect(limited.exitCode).toBe(1);
+    expect(JSON.parse(limited.stdout)).toEqual({
+      error: { code: 403, reason: "rateLimitExceeded", message: QUOTA_MESSAGE },
+    });
+    expect(limited.stderr).toBe(`error[api]: ${QUOTA_MESSAGE}\n`);
+    expect(threadsGet(dir, { userId: "me", id, fields: "id" }).exitCode).toBe(3);
+    expect(gmail("threads list", { userId: "me" }, dir).threads).toHaveLength(10);
+
+    setQuota(dir, { until: at("2001-01-01T00:00:00Z"), methods: ["threads get"] });
+    expect(threadsGet(dir, { userId: "me", id }).exitCode).toBe(0);
+
+    setQuota(dir, { until: at("2999-01-01T00:00:00Z"), methods: ["threads get"] });
+    setQuota(dir, undefined);
+    expect(threadsGet(dir, { userId: "me", id }).exitCode).toBe(0);
+  });
+});
+
+describe("fake-gws calls.log", () => {
+  it("appends one line per invocation with the method, params and outcome", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    expect(readCalls(dir)).toEqual([]);
+    gmail("getProfile", { userId: "me" }, dir);
+    fakeGws(["gmail", "users", "threads", "get", "--params", '{"userId":"me","id":"0"}'], dir);
+    fakeGws(["gmail", "users", "threads", "list", "--params", '{"userId":"me","x":1}'], dir);
+    expect(readCalls(dir)).toEqual([
+      { command: "getProfile", params: { userId: "me" }, failed: false },
+      { command: "threads get", params: { userId: "me", id: "0" }, failed: true },
+      { command: "threads list", params: { userId: "me", x: 1 }, failed: true },
+    ]);
+  });
+});
+
+describe("fake-gws deliverThreads", () => {
+  it("delivers new threads through history in time order", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    const start = gmail("getProfile", { userId: "me" }, dir).historyId;
+    const ids = deliverThreads(dir, [
+      {
+        id: "late-question",
+        subject: "Late question",
+        labels: ["INBOX"],
+        messages: [
+          { at: "2026-10-25T08:30:00-07:00", from: "me", to: ["priya"], text: "Answer" },
+          { at: "2026-10-25T08:00:00-07:00", from: "priya", to: ["me"], text: "Question" },
+        ],
+      },
+    ]);
+    expect(ids).toHaveLength(2);
+
+    const history = gmail("history list", { userId: "me", startHistoryId: start }, dir);
+    expect(history.historyId).toBe(String(Number(start) + 2));
+    const added = history.history.map(
+      (h: { messagesAdded: { message: { id: string; threadId: string } }[] }) =>
+        h.messagesAdded[0]?.message,
+    );
+    expect(added.map((m: { id: string }) => m.id)).toEqual(ids);
+
+    const thread = gmail("threads get", { userId: "me", id: added[0].threadId }, dir);
+    expect(thread.messages.map((m: { id: string }) => m.id)).toEqual(ids);
+    expect(thread.messages.map((m: { historyId: string }) => m.historyId)).toEqual(
+      history.history.map((h: { id: string }) => h.id),
+    );
+    expect(listAll({}, dir).threads).toHaveLength(16);
+  });
+
+  it("delivers only the new reply when a thread is passed again", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    const question = {
+      at: "2026-10-25T08:00:00-07:00",
+      from: "priya",
+      to: ["me"],
+      text: "Question",
+    };
+    const thread = { id: "follow-up", subject: "Follow up", labels: ["INBOX"] };
+    const [first] = deliverThreads(dir, [{ ...thread, messages: [question] }]);
+    const reply = deliverThreads(dir, [
+      {
+        ...thread,
+        messages: [
+          question,
+          { at: "2026-10-25T08:30:00-07:00", from: "priya", to: ["me"], text: "Any news?" },
+        ],
+      },
+    ]);
+    expect(reply).toHaveLength(1);
+    const { messages } = gmail("threads get", { userId: "me", id: first }, dir);
+    expect(messages.map((m: { id: string }) => m.id)).toEqual([first, ...reply]);
   });
 });

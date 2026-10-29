@@ -1,18 +1,22 @@
-import type { RawItem, SourcePlugin, SyncPage } from "@weir/contract/Source";
+import type { RawItem, Source, SourcePlugin, SyncPage } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Equivalence from "effect/Equivalence";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
 import {
-  type Command,
+  abortableSleep,
+  type Gws,
   GwsError,
   getProfile,
   getThread,
+  type HistoryList,
   listHistory,
   listLabels,
   listSendAs,
   listThreads,
+  type Sleep,
 } from "./gws.ts";
 import { toRawItem } from "./item.ts";
 
@@ -28,39 +32,65 @@ const GwsConfig = Schema.Struct({
 });
 export type GwsConfig = typeof GwsConfig.Type;
 
-const Backfill = Schema.Struct({
-  phase: Schema.Literal("backfill"),
-  labels: LabelIds,
-  startHistoryId: Schema.String,
-  listing: LabelIds,
+const Live = Schema.Struct({
+  historyId: Schema.String,
+  pageToken: Schema.NullOr(Schema.String),
+  watermark: Schema.Int,
+  pending: Schema.Array(Schema.String),
+});
+type Live = typeof Live.Type;
+
+const Listing = Schema.Struct({
   pageToken: Schema.NullOr(Schema.String),
   fetched: Schema.Array(Schema.String),
 });
-type Backfill = typeof Backfill.Type;
+type Listing = typeof Listing.Type;
 
-const Incremental = Schema.Struct({
-  phase: Schema.Literal("incremental"),
-  labels: LabelIds,
-  historyId: Schema.String,
-  pageToken: Schema.NullOr(Schema.String),
-  pending: Schema.Array(Schema.String),
-});
-type Incremental = typeof Incremental.Type;
-
-const Cursor = Schema.fromJsonString(Schema.Union([Backfill, Incremental]));
+const Cursor = Schema.fromJsonString(
+  Schema.Union([
+    Schema.Struct({
+      phase: Schema.Literal("backfill"),
+      labels: LabelIds,
+      listing: LabelIds,
+      ...Listing.fields,
+      live: Live,
+      turn: Schema.Literals(["backfill", "live"]),
+    }),
+    Schema.Struct({
+      phase: Schema.Literal("gap"),
+      labels: LabelIds,
+      after: Schema.Int,
+      ...Listing.fields,
+      live: Live,
+    }),
+    Schema.Struct({
+      phase: Schema.Literal("incremental"),
+      labels: LabelIds,
+      live: Live,
+    }),
+  ]),
+);
 type Cursor = typeof Cursor.Type;
 const encodeCursor = Schema.encodeSync(Cursor);
 const decodeCursor = Schema.decodeUnknownSync(Cursor);
 const sameLabels = Arr.makeEquivalence(Equivalence.String);
 
-const newPass = (labels: LabelIds, startHistoryId: string): Backfill => ({
-  phase: "backfill",
-  labels,
-  startHistoryId,
+type Changes = { readonly upserts: RawItem[]; readonly deletions: string[] };
+type Pass = {
+  readonly emailAddress: string;
+  readonly historyId: string;
+  readonly recordedAt: number;
+  readonly signal: AbortSignal;
+};
+
+const listingStart = (labels: LabelIds): Listing & { readonly listing: LabelIds } => ({
   listing: labels,
   pageToken: null,
   fetched: [],
 });
+
+const GAP_SLACK_SECONDS = 3600;
+const HOLD_BACK_MS = 5 * 60_000;
 
 const LIST_SIZE = 100;
 const PAGE_MESSAGES = 100;
@@ -70,12 +100,8 @@ const HIDDEN: Record<string, true> = { SPAM: true, TRASH: true };
 const isNotFound = (error: unknown): error is GwsError =>
   error instanceof GwsError && error.code === 404;
 
-const resolveLabels = async (
-  command: Command,
-  names: LabelIds,
-  signal: AbortSignal,
-): Promise<LabelIds> => {
-  const { labels = [] } = await listLabels(command, signal);
+const resolveLabels = async (cli: Gws, names: LabelIds, signal: AbortSignal): Promise<LabelIds> => {
+  const { labels = [] } = await listLabels(cli, signal);
   const idByName = new Map(labels.map((label) => [label.name, label.id]));
   const ids = Arr.map(names, (name) => {
     const id = idByName.get(name);
@@ -87,7 +113,7 @@ const resolveLabels = async (
 };
 
 const fetchPage = async (
-  command: Command,
+  cli: Gws,
   emailAddress: string,
   labels: LabelIds,
   threadIds: ReadonlyArray<string>,
@@ -100,7 +126,7 @@ const fetchPage = async (
     const width = Math.min(CONCURRENCY, PAGE_MESSAGES - upserts.length - deletions.length);
     const threads = await Promise.all(
       threadIds.slice(next, next + width).map((id) =>
-        getThread(command, id, signal).catch((error: unknown) => {
+        getThread(cli, id, signal).catch((error: unknown) => {
           if (isNotFound(error)) return { messages: [] };
           throw error;
         }),
@@ -121,104 +147,185 @@ const fetchPage = async (
   return { upserts, deletions, rest: threadIds.slice(next) };
 };
 
-type Named = {
-  readonly deleted: ReadonlySet<string>;
-  readonly threads: ReadonlyArray<string>;
-  readonly after: Incremental;
-};
+const emit = (
+  changes: Changes,
+  next: Cursor,
+  kind: SyncPage["kind"],
+  historyDue = false,
+): SyncPage => ({
+  ...changes,
+  cursor: encodeCursor(next),
+  more:
+    kind === "backfill" ||
+    next.phase !== "incremental" ||
+    next.live.pageToken !== null ||
+    next.live.pending.length > 0 ||
+    historyDue,
+  kind,
+  backfill: next.phase === "incremental" ? "done" : "running",
+});
 
-const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
-  const backfillPage = async (
-    emailAddress: string,
-    position: Backfill,
-    signal: AbortSignal,
-  ): Promise<SyncPage> => {
-    const { labels, startHistoryId, listing, pageToken } = position;
-    const [label, ...rest] = listing;
-    const list = await listThreads(command, label, backfill, pageToken, LIST_SIZE, signal);
+export const createSource = (
+  { command, backfill, labels: labelNames }: GwsConfig,
+  sleep: Sleep,
+): Source => {
+  const cli: Gws = { command, sleep };
+  const listingPage = async (
+    pass: Pass,
+    labels: LabelIds,
+    labelId: string | null,
+    q: string,
+    position: Listing,
+  ) => {
+    const list = await listThreads(cli, labelId, q, position.pageToken, LIST_SIZE, pass.signal);
     const fetched = new Set(position.fetched);
     const unfetched = (list.threads ?? []).map((t) => t.id).filter((id) => !fetched.has(id));
-    const page = await fetchPage(command, emailAddress, labels, unfetched, signal);
+    const page = await fetchPage(cli, pass.emailAddress, labels, unfetched, pass.signal);
     for (const id of unfetched.slice(0, unfetched.length - page.rest.length)) fetched.add(id);
-    const carried = { phase: "backfill", labels, startHistoryId, fetched: [...fetched] } as const;
-    const next: Cursor =
-      page.rest.length > 0
-        ? { ...carried, listing, pageToken }
-        : list.nextPageToken !== undefined
-          ? { ...carried, listing, pageToken: list.nextPageToken }
-          : Arr.isReadonlyArrayNonEmpty(rest)
-            ? { ...carried, listing: rest, pageToken: null }
-            : {
-                phase: "incremental",
-                labels,
-                historyId: startHistoryId,
-                pageToken: null,
-                pending: [],
-              };
-    return {
-      upserts: page.upserts,
-      deletions: page.deletions,
-      cursor: encodeCursor(next),
-      more: true,
-      kind: "backfill",
-      backfill: next.phase === "backfill" ? "running" : "done",
+    const next: Listing = {
+      pageToken: page.rest.length > 0 ? position.pageToken : (list.nextPageToken ?? null),
+      fetched: [...fetched],
     };
+    const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
+    return { changes, next, done: page.rest.length === 0 && list.nextPageToken === undefined };
   };
 
-  const readHistory = async (position: Incremental, signal: AbortSignal): Promise<Named> => {
-    if (position.pending.length > 0) {
-      return { deleted: new Set(), threads: position.pending, after: position };
+  const livePage = async (pass: Pass, labels: LabelIds, live: Live) => {
+    if (live.pending.length > 0) {
+      const page = await fetchPage(cli, pass.emailAddress, labels, live.pending, pass.signal);
+      const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
+      return { changes, live: { ...live, pending: page.rest }, historyDue: true };
     }
-    const history = await listHistory(command, position.historyId, position.pageToken, signal);
+    const startedAt = Effect.runSync(Clock.currentTimeMillis);
+    let history: HistoryList;
+    try {
+      history = await listHistory(cli, live.historyId, live.pageToken, pass.signal);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
     const deleted = new Set<string>();
     const threads = new Set<string>();
     for (const record of history.history ?? []) {
       for (const { message } of record.messagesDeleted ?? []) deleted.add(message.id);
       for (const { message } of record.messagesAdded ?? []) threads.add(message.threadId);
       for (const { message, labelIds } of record.labelsAdded ?? []) {
-        if (labelIds.some((label) => position.labels.includes(label))) {
-          threads.add(message.threadId);
-        }
+        if (labelIds.some((label) => labels.includes(label))) threads.add(message.threadId);
       }
     }
-    const after: Incremental =
-      history.nextPageToken === undefined
-        ? { ...position, historyId: history.historyId, pageToken: null }
-        : { ...position, pageToken: history.nextPageToken };
-    return { deleted, threads: [...threads], after };
-  };
-
-  const incrementalPage = async (
-    emailAddress: string,
-    restartHistoryId: string,
-    position: Incremental,
-    signal: AbortSignal,
-  ): Promise<SyncPage> => {
-    let named: Named;
-    try {
-      named = await readHistory(position, signal);
-    } catch (error) {
-      if (isNotFound(error)) {
-        return backfillPage(emailAddress, newPass(position.labels, restartHistoryId), signal);
-      }
-      throw error;
-    }
-    const { deleted, threads, after } = named;
-    const page = await fetchPage(command, emailAddress, position.labels, threads, signal);
-    const next: Incremental = { ...after, pending: page.rest };
-    return {
+    const page = await fetchPage(cli, pass.emailAddress, labels, [...threads], pass.signal);
+    const changes: Changes = {
       upserts: page.upserts.filter((item) => !deleted.has(item.externalId)),
       deletions: [...new Set([...deleted, ...page.deletions])],
-      cursor: encodeCursor(next),
-      more: next.pending.length > 0 || next.pageToken !== null,
-      kind: "live",
-      backfill: "done",
+    };
+    const next: Live =
+      history.nextPageToken === undefined
+        ? {
+            historyId: history.historyId,
+            pageToken: null,
+            watermark: startedAt,
+            pending: page.rest,
+          }
+        : { ...live, pageToken: history.nextPageToken, pending: page.rest };
+    return { changes, live: next, historyDue: false };
+  };
+
+  const step = async (pass: Pass, position: Cursor): Promise<SyncPage> => {
+    const { labels } = position;
+    const gap = (live: Live): Cursor => ({
+      phase: "gap",
+      labels,
+      after: Math.floor(live.watermark / 1000) - GAP_SLACK_SECONDS,
+      pageToken: null,
+      fetched: [],
+      live: {
+        historyId: pass.historyId,
+        pageToken: null,
+        watermark: pass.recordedAt,
+        pending: live.pending,
+      },
+    });
+    switch (position.phase) {
+      case "backfill": {
+        if (position.turn === "live") {
+          const live = await livePage(pass, labels, position.live);
+          if (live === null) return step(pass, gap(position.live));
+          return emit(live.changes, { ...position, live: live.live, turn: "backfill" }, "live");
+        }
+        const [label, ...later] = position.listing;
+        const { changes, next, done } = await listingPage(pass, labels, label, backfill, position);
+        const recent = position.live.watermark - HOLD_BACK_MS;
+        const queued = new Set(position.live.pending);
+        const pending = new Set(queued);
+        const upserts = changes.upserts.filter((item) => {
+          if (item.threadId === null) return true;
+          if (!queued.has(item.threadId) && Date.parse(item.occurredAt) < recent) return true;
+          pending.add(item.threadId);
+          return false;
+        });
+        const live = { ...position.live, pending: [...pending] };
+        const listing = done ? later : position.listing;
+        return emit(
+          { upserts, deletions: changes.deletions },
+          Arr.isReadonlyArrayNonEmpty(listing)
+            ? { ...position, listing, ...next, live, turn: "live" }
+            : { phase: "incremental", labels, live },
+          "backfill",
+        );
+      }
+      case "gap": {
+        const { changes, next, done } = await listingPage(
+          pass,
+          labels,
+          null,
+          `after:${position.after}`,
+          position,
+        );
+        return emit(
+          changes,
+          done
+            ? {
+                phase: "backfill",
+                labels,
+                ...listingStart(labels),
+                live: position.live,
+                turn: "backfill",
+              }
+            : { ...position, ...next },
+          "live",
+        );
+      }
+      case "incremental": {
+        const live = await livePage(pass, labels, position.live);
+        if (live === null) return step(pass, gap(position.live));
+        return emit(
+          live.changes,
+          { phase: "incremental", labels, live: live.live },
+          "live",
+          live.historyDue,
+        );
+      }
+    }
+  };
+
+  const resume = (position: Cursor | null, labels: LabelIds, cold: Live): Cursor => {
+    if (position === null) {
+      return { phase: "backfill", labels, ...listingStart(labels), live: cold, turn: "backfill" };
+    }
+    if (sameLabels(position.labels, labels)) return position;
+    if (position.phase === "gap") return { ...position, labels, pageToken: null, fetched: [] };
+    return {
+      phase: "backfill",
+      labels,
+      ...listingStart(labels),
+      live: position.live,
+      turn: "live",
     };
   };
 
   return {
     streams: async () => {
-      const [profile, sendAs] = await Promise.all([getProfile(command), listSendAs(command)]);
+      const [profile, sendAs] = await Promise.all([getProfile(cli), listSendAs(cli)]);
       return [
         {
           id: profile.emailAddress,
@@ -240,27 +347,29 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       signal: AbortSignal,
     ): Promise<SyncPage> => {
       const position = cursor === null ? null : decodeCursor(cursor);
+      const recordedAt = Effect.runSync(Clock.currentTimeMillis);
       const [profile, labels] = await Promise.all([
-        getProfile(command, signal),
-        resolveLabels(command, labelNames, signal),
+        getProfile(cli, signal),
+        resolveLabels(cli, labelNames, signal),
       ]);
       if (streamId !== profile.emailAddress) {
         throw new Error(`gws has no stream ${streamId}; the mailbox is ${profile.emailAddress}`);
       }
-      if (position === null) {
-        return backfillPage(profile.emailAddress, newPass(labels, profile.historyId), signal);
-      }
-      if (!sameLabels(position.labels, labels)) {
-        const checkpoint =
-          position.phase === "backfill" ? position.startHistoryId : position.historyId;
-        return backfillPage(profile.emailAddress, newPass(labels, checkpoint), signal);
-      }
-      switch (position.phase) {
-        case "backfill":
-          return backfillPage(profile.emailAddress, position, signal);
-        case "incremental":
-          return incrementalPage(profile.emailAddress, profile.historyId, position, signal);
-      }
+      const pass: Pass = {
+        emailAddress: profile.emailAddress,
+        historyId: profile.historyId,
+        recordedAt,
+        signal,
+      };
+      return step(
+        pass,
+        resume(position, labels, {
+          historyId: profile.historyId,
+          pageToken: null,
+          watermark: recordedAt,
+          pending: [],
+        }),
+      );
     },
   };
 };
@@ -268,5 +377,5 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
 export const gws: SourcePlugin<GwsConfig> = {
   id: "gws",
   configSchema: Schema.toStandardSchemaV1(GwsConfig),
-  create,
+  create: (config) => createSource(config, abortableSleep),
 };

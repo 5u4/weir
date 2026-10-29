@@ -1,3 +1,5 @@
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -102,10 +104,29 @@ const ErrorBody = Schema.fromJsonString(
   }),
 );
 
-export type Command = ReadonlyArray<string>;
+type Command = ReadonlyArray<string>;
 type Params = Record<string, unknown>;
 
-const call = async <A>(
+export type Sleep = (ms: number, signal: AbortSignal | undefined) => Promise<void>;
+
+export const abortableSleep: Sleep = (ms, signal) =>
+  Effect.runPromise(Effect.sleep(Duration.millis(ms)), signal === undefined ? {} : { signal });
+
+export type Gws = { readonly command: Command; readonly sleep: Sleep };
+
+const QUOTA_RETRY_SECONDS = [2, 4, 8, 16, 32, 60, 60, 60];
+const QUOTA_REASONS: Record<string, true> = {
+  rateLimitExceeded: true,
+  userRateLimitExceeded: true,
+};
+
+const isQuota = (error: unknown) =>
+  error instanceof GwsError &&
+  (error.code === 429 ||
+    (error.code === 403 && error.reason !== undefined && QUOTA_REASONS[error.reason] === true) ||
+    error.message.includes("Quota exceeded"));
+
+const run = async <A>(
   command: Command,
   method: ReadonlyArray<string>,
   params: Params,
@@ -140,29 +161,47 @@ const call = async <A>(
   return Schema.decodeUnknownSync(Schema.fromJsonString(schema))(stdout);
 };
 
-export const getProfile = (command: Command, signal?: AbortSignal) =>
-  call(command, ["getProfile"], { userId: "me" }, Profile, signal);
+const call = async <A>(
+  gws: Gws,
+  method: ReadonlyArray<string>,
+  params: Params,
+  schema: Schema.Codec<A>,
+  signal?: AbortSignal,
+): Promise<A> => {
+  for (const seconds of QUOTA_RETRY_SECONDS) {
+    try {
+      return await run(gws.command, method, params, schema, signal);
+    } catch (error) {
+      if (!isQuota(error)) throw error;
+    }
+    await gws.sleep(seconds * 1000, signal);
+  }
+  return run(gws.command, method, params, schema, signal);
+};
 
-export const listSendAs = (command: Command) =>
-  call(command, ["settings", "sendAs", "list"], { userId: "me" }, SendAsList);
+export const getProfile = (gws: Gws, signal?: AbortSignal) =>
+  call(gws, ["getProfile"], { userId: "me" }, Profile, signal);
 
-export const listLabels = (command: Command, signal: AbortSignal) =>
-  call(command, ["labels", "list"], { userId: "me" }, LabelList, signal);
+export const listSendAs = (gws: Gws) =>
+  call(gws, ["settings", "sendAs", "list"], { userId: "me" }, SendAsList);
+
+export const listLabels = (gws: Gws, signal: AbortSignal) =>
+  call(gws, ["labels", "list"], { userId: "me" }, LabelList, signal);
 
 export const listThreads = (
-  command: Command,
-  labelId: string,
+  gws: Gws,
+  labelId: string | null,
   q: string,
   pageToken: string | null,
   maxResults: number,
   signal: AbortSignal,
 ) =>
   call(
-    command,
+    gws,
     ["threads", "list"],
     {
       userId: "me",
-      labelIds: [labelId],
+      ...(labelId === null ? {} : { labelIds: [labelId] }),
       q,
       maxResults,
       ...(pageToken === null ? {} : { pageToken }),
@@ -171,17 +210,17 @@ export const listThreads = (
     signal,
   );
 
-export const getThread = (command: Command, id: string, signal: AbortSignal) =>
-  call(command, ["threads", "get"], { userId: "me", id, format: "full" }, Thread, signal);
+export const getThread = (gws: Gws, id: string, signal: AbortSignal) =>
+  call(gws, ["threads", "get"], { userId: "me", id, format: "full" }, Thread, signal);
 
 export const listHistory = (
-  command: Command,
+  gws: Gws,
   startHistoryId: string,
   pageToken: string | null,
   signal: AbortSignal,
 ) =>
   call(
-    command,
+    gws,
     ["history", "list"],
     {
       userId: "me",
