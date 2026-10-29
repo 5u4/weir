@@ -110,6 +110,9 @@ export const Row = Schema.Struct({
   new: Schema.Int,
   items: Schema.Int,
   participants: Schema.Int,
+  from: Party,
+  preview: Schema.String,
+  senders: Schema.Array(Party),
 });
 export type Row = typeof Row.Type;
 

@@ -485,3 +485,108 @@ describe("search", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+describe("list rows", () => {
+  const ann = { name: "Ann Lee", address: "ann@x.example" };
+  const bob = { name: "Bob", address: "bob@x.example" };
+  const me = { name: "Me", address: "me@example.com" };
+
+  it.live("from is the newest sender who is not me, senders the first two by appearance", () =>
+    Effect.gen(function* () {
+      const { listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("r1", "team", 1, { title: "Team sync", from: ann, bodyNew: "agenda" }),
+        item("r2", "team", 2, { from: bob }),
+        item("r3", "team", 3, { from: { name: "Ann L", address: "ANN@X.example" } }),
+        item("r4", "team", 4, { from: { name: "Cy", address: "cy@x.example" } }),
+        item("r5", "team", 5, { from: me, bodyNew: "thanks all" }),
+        item("r6", "solo", 6, { title: "Note to self", from: me, bodyNew: "buy milk" }),
+      ]);
+      const team = yield* conversationOf("Team sync");
+      const solo = yield* conversationOf("Note to self");
+      const rows = yield* listed(untagged);
+
+      expect(rows.find(({ id }) => id === team)).toMatchObject({
+        from: { name: "Cy", address: "cy@x.example" },
+        senders: [ann, bob],
+        participants: 4,
+        preview: "Me: thanks all",
+      });
+      expect(rows.find(({ id }) => id === solo)).toMatchObject({
+        from: me,
+        senders: [me],
+        participants: 1,
+        preview: "Me: buy milk",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("preview is the digest headline only when the newest digest reaches the last item", () =>
+    Effect.gen(function* () {
+      const { client, home, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("p1", "spec", 1, { title: "Spec review", from: ann, bodyNew: "draft attached" }),
+        item("p2", "spec", 2, { from: bob, bodyNew: "looks fine" }),
+        item("p3", "spec", 3, {
+          from: ann,
+          bodyNew:
+            "<p>See **the** [spec](https://x.example/spec) ![diagram](https://x.example/a.png) at https://x.example/raw</p>\n\n> quoted",
+        }),
+      ]);
+      const id = yield* conversationOf("Spec review");
+      const [s1, s2, s3] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined || s3 === undefined) {
+        throw new Error("expected three items");
+      }
+      const insertDigest = (digestId: number, fromSeq: number, toSeq: number, headline: string) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const topics = [{ title: "Spec", state: "fyi", body: headline, seqs: [fromSeq] }];
+          yield* sql`INSERT INTO digest
+            (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+            VALUES (${digestId}, ${id}, ${fromSeq}, ${toSeq}, ${headline},
+              ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+        }).pipe(Effect.provide(Database.layer(home.db)));
+      const previews = Effect.gen(function* () {
+        const fromList = (yield* listed(untagged)).find((row) => row.id === id)?.preview;
+        const fromSearch = (yield* client.search({ query: { q: "" } })).conversations.find(
+          (row) => row.id === id,
+        )?.preview;
+        const fromWrite = (yield* client.read({ params: { id }, payload: { seq: s1 } })).preview;
+        return [fromList, fromSearch, fromWrite];
+      });
+      const lastMessage = "Ann: See the spec at quoted";
+
+      expect(yield* previews).toEqual([lastMessage, lastMessage, lastMessage]);
+
+      yield* insertDigest(1, s1, s2, "Draft reviewed");
+      expect(yield* previews).toEqual([lastMessage, lastMessage, lastMessage]);
+
+      yield* insertDigest(2, s3, s3, "Ann shared the spec");
+      const headline = "Ann shared the spec";
+      expect(yield* previews).toEqual([headline, headline, headline]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("an empty plain body previews as no text, long bodies cut at 160 code points", () =>
+    Effect.gen(function* () {
+      const { listed, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("n1", "blank", 1, { title: "Blank", from: ann, bodyNew: "" }),
+        item("n2", "link", 2, {
+          title: "Link only",
+          from: { name: "", address: "zed.q@x.example" },
+          bodyNew: "https://x.example/only ![x](https://x.example/x.png)",
+        }),
+        item("n3", "long", 3, { title: "Long", from: bob, bodyNew: "😀".repeat(200) }),
+      ]);
+      const rows = yield* listed(untagged);
+      const previewOf = (title: string) =>
+        conversationOf(title).pipe(Effect.map((id) => rows.find((row) => row.id === id)?.preview));
+
+      expect(yield* previewOf("Blank")).toBe("Ann: (no text)");
+      expect(yield* previewOf("Link only")).toBe("zed.q: (no text)");
+      expect(yield* previewOf("Long")).toBe(`Bob: ${"😀".repeat(160)}`);
+    }).pipe(Effect.scoped),
+  );
+});

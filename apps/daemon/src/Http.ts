@@ -163,6 +163,32 @@ const tagTest = Effect.fnUntraced(function* (file: string, name: string | undefi
   } satisfies TagTest;
 });
 
+const previewLength = 160;
+
+const preview = ({
+  coveringHeadline,
+  lastBodyNew,
+  lastFromName,
+  lastFromAddress,
+  lastFromMe,
+}: ListedConversationRow) => {
+  if (coveringHeadline !== null) return coveringHeadline;
+  const plain = lastBodyNew
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[#>*_`|~]+/g, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const text = [...plain].slice(0, previewLength).join("");
+  const named = lastFromName.trim() === "" ? (lastFromAddress.split("@")[0] ?? "") : lastFromName;
+  const who = lastFromMe ? "Me" : (named.trim().split(/\s+/u)[0] ?? "");
+  return `${who}: ${text === "" ? "(no text)" : text}`;
+};
+
 const row = (conversation: ListedConversationRow): Row => ({
   id: conversation.id,
   source: conversation.sourceId,
@@ -178,6 +204,9 @@ const row = (conversation: ListedConversationRow): Row => ({
   new: conversation.newItems,
   items: conversation.items,
   participants: conversation.participants,
+  from: conversation.from,
+  preview: preview(conversation),
+  senders: conversation.senders,
 });
 
 const hitLinesPerConversation = 3;

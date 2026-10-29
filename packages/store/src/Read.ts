@@ -224,6 +224,8 @@ export const tagCounts = Effect.fnUntraced(function* () {
 
 const decodeListed = Schema.decodeUnknownEffect(Schema.Array(ListedConversationRow));
 
+const rowSenders = 2;
+
 export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
   const sql = yield* SqlClient.SqlClient;
   const open = sql`c.state IN ('unread', 'read')`;
@@ -243,8 +245,22 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
         (SELECT count(*) FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
           AS items,
         (SELECT count(DISTINCT lower(item.from_address)) FROM item
-          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants
-      FROM listed c
+          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants,
+        (SELECT json_object('name', item.from_name, 'address', item.from_address) FROM item
+          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
+          ORDER BY item.from_me, item.seq DESC LIMIT 1) AS "from",
+        (SELECT json_group_array(json_object('name', name, 'address', address)) FROM
+          (SELECT item.from_name AS name, item.from_address AS address, min(item.seq) AS first_seq
+            FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
+            GROUP BY lower(item.from_address) ORDER BY first_seq LIMIT ${rowSenders})) AS senders,
+        last.from_name AS last_from_name,
+        last.from_address AS last_from_address,
+        last.from_me AS last_from_me,
+        last.body_new AS last_body_new,
+        (SELECT CASE WHEN digest.to_seq >= c.last_seq THEN digest.headline END FROM digest
+          WHERE digest.conversation_id = c.id ORDER BY digest.from_seq DESC, digest.id DESC LIMIT 1)
+          AS covering_headline
+      FROM listed c JOIN item last ON last.seq = c.last_seq
       WHERE ${condition}
       ORDER BY c.last_at DESC, c.id DESC`,
   );
