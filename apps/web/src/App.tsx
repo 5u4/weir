@@ -4,10 +4,10 @@ import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import type { MouseEvent, ReactNode } from "react";
 import { health, plural } from "./Health.ts";
-import { href, type Route, route, type View } from "./Route.ts";
+import { href, type Route, route, statusOpen, type View } from "./Route.ts";
 import { CloseIcon, EmptyReader, StatusIcon, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
-import { status, statusOpen } from "./Weir.ts";
+import { status } from "./Weir.ts";
 
 const plainLeftClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;

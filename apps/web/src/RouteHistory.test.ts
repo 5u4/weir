@@ -1,7 +1,7 @@
 import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConversationId, href, type Navigation, route } from "./Route.ts";
+import { ConversationId, href, type Navigation, route, statusOpen } from "./Route.ts";
 
 const origin = "http://127.0.0.1:9347";
 
@@ -33,7 +33,9 @@ const fakeBrowser = (start: string) => {
     go: (delta: number) => pendingMoves.push(delta),
     back: () => pendingMoves.push(-1),
   });
-  vi.stubGlobal("addEventListener", (_: string, listener: () => void) => popstate.add(listener));
+  vi.stubGlobal("addEventListener", (type: string, listener: () => void) => {
+    if (type === "popstate") popstate.add(listener);
+  });
   vi.stubGlobal("removeEventListener", (_: string, listener: () => void) =>
     popstate.delete(listener),
   );
@@ -56,6 +58,7 @@ const session = (start: string) => {
   registry.mount(route);
   return {
     browser,
+    registry,
     navigate: (navigation: Navigation) => {
       registry.set(route, navigation);
       browser.deliverHistoryMoves();
@@ -114,5 +117,26 @@ describe("leaving search through browser history", () => {
     expect(browser.url()).toBe("/?v=cleared");
     expect(shown()).toBe("/?v=cleared");
     expect(browser.canGoBackTo()).toEqual([]);
+  });
+});
+
+describe("navigating closes Status", () => {
+  it.each<[string, Navigation]>([
+    [
+      "a view link",
+      { _tag: "Go", to: { view: "cleared", query: "", conversation: Option.none() } },
+    ],
+    [
+      "the current view link",
+      { _tag: "Go", to: { view: "untagged", query: "", conversation: Option.none() } },
+    ],
+    ["typing a search", { _tag: "Type", query: "a" }],
+    ["typing the same search", { _tag: "Type", query: "" }],
+  ])("%s", (_, navigation) => {
+    const { registry, navigate } = session("/");
+    registry.mount(statusOpen);
+    registry.set(statusOpen, true);
+    navigate(navigation);
+    expect(registry.get(statusOpen)).toBe(false);
   });
 });

@@ -13,8 +13,9 @@ import {
   type SourceHealth,
   type Verdict,
 } from "./Health.ts";
+import { statusOpen } from "./Route.ts";
 import { ThemePreference, themePreference } from "./Theme.ts";
-import { reload, status, statusOpen } from "./Weir.ts";
+import { reload, status } from "./Weir.ts";
 
 export function StatusIcon() {
   return (
