@@ -433,6 +433,7 @@ describe("search", () => {
       const topics = [
         { title: "Canary plan", state: "open", body: "Ship the canary Friday", seqs: [s1, s2] },
         { title: "Wrap-up", state: "fyi", body: "Thanked the team", seqs: [s3] },
+        { title: "Canary metrics", state: "fyi", body: "Dashboards", seqs: [s3 + 1000] },
       ];
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -460,7 +461,16 @@ describe("search", () => {
       };
       expect(conversations.find((conversation) => conversation.id === id)?.hits).toEqual([
         { ...topic, seq: s2 },
-        { ...topic, seq: s1 },
+        {
+          field: "topic",
+          seq: null,
+          digest_id: digestId,
+          title: [
+            { text: "Canary", mark: true },
+            { text: " metrics", mark: false },
+          ],
+          text: [{ text: "Dashboards", mark: false }],
+        },
         {
           field: "headline",
           seq: null,

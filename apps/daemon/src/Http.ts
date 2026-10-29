@@ -1,7 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
 import { type Config, untagged } from "@weir/contract/Config";
-import type { Topic } from "@weir/contract/Digest";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import {
@@ -221,30 +220,24 @@ const hitLines = (
   digests: ReadonlyArray<DigestRow>,
   pattern: RegExp,
 ): Array<Line> => {
-  const citing = new Map<number, { readonly digest: DigestRow; readonly topic: Topic }>();
-  for (const digest of digests) {
-    for (const topic of digest.topics) {
-      for (const seq of topic.seqs) {
-        if (!citing.has(seq)) citing.set(seq, { digest, topic });
-      }
-    }
-  }
-  const itemLines = items.flatMap((item): Array<Line> => {
-    const cited = citing.get(item.seq);
-    if (
-      cited !== undefined &&
-      (cited.topic.title.search(pattern) !== -1 || cited.topic.body.search(pattern) !== -1)
-    ) {
-      return [
-        {
+  const live = new Set<number>(items.map(({ seq }) => seq));
+  const coveredByTopic = new Set<number>();
+  const topicLines = digests.toReversed().flatMap((digest) =>
+    digest.topics
+      .filter(({ title, body }) => title.search(pattern) !== -1 || body.search(pattern) !== -1)
+      .map((topic): Line => {
+        for (const seq of topic.seqs) coveredByTopic.add(seq);
+        return {
           field: "topic",
-          seq: item.seq,
-          digest_id: cited.digest.id,
-          title: segments(cited.topic.title, pattern),
-          text: segments(cited.topic.body, pattern),
-        },
-      ];
-    }
+          seq: topic.seqs.findLast((seq) => live.has(seq)) ?? null,
+          digest_id: digest.id,
+          title: segments(topic.title, pattern),
+          text: segments(topic.body, pattern),
+        };
+      }),
+  );
+  const itemLines = items.flatMap((item): Array<Line> => {
+    if (coveredByTopic.has(item.seq)) return [];
     const fields = [
       ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
       ["from", item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`],
@@ -281,7 +274,7 @@ const hitLines = (
       },
     ];
   });
-  return [...itemLines, ...headlineLines].slice(0, hitLinesPerConversation);
+  return [...topicLines, ...itemLines, ...headlineLines].slice(0, hitLinesPerConversation);
 };
 
 const sendersPerView = 3;
