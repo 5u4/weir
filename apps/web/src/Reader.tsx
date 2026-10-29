@@ -922,7 +922,9 @@ function Dock({ id }: { id: ConversationId }) {
   );
 }
 
-export function Reader({ id }: { id: ConversationId }) {
+// Status hides the reader instead of unmounting it, so closing Status returns to the same reading state
+// and scroll position.
+export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) {
   const result = useAtomValue(conversation(id));
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
@@ -948,6 +950,7 @@ export function Reader({ id }: { id: ConversationId }) {
     <>
       <div
         className="r-scroll"
+        hidden={hidden}
         onWheel={arm}
         onTouchMove={arm}
         onPointerDown={arm}
@@ -974,7 +977,7 @@ export function Reader({ id }: { id: ConversationId }) {
           )
         )}
       </div>
-      <Dock id={id} />
+      {!hidden && <Dock id={id} />}
     </>
   );
 }

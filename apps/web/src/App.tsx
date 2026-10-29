@@ -46,9 +46,10 @@ export function App() {
           <List />
         </main>
         <section className={`reader${open ? " sv-open" : ""}`} aria-label="Reader">
-          {!open && Option.isSome(current.conversation) ? (
-            <Reader id={current.conversation.value} />
-          ) : (
+          {Option.isSome(current.conversation) && (
+            <Reader id={current.conversation.value} hidden={open} />
+          )}
+          {(open || !reading) && (
             <div className="r-scroll">
               {AsyncResult.isFailure(result) && Option.isNone(loaded) ? (
                 <div className="calm es warn">
