@@ -183,14 +183,21 @@ export const fakeAi = [join(import.meta.dirname, "../node_modules/.bin/fake-ai")
 
 export interface DigestOptions {
   readonly capture: string;
+  readonly wrap?: ReadonlyArray<string>;
   readonly args?: ReadonlyArray<string>;
   readonly concurrency?: number;
   readonly guide?: string;
 }
 
-export const digestConfig = ({ capture, args = [], concurrency = 1, guide }: DigestOptions) => `
+export const digestConfig = ({
+  capture,
+  wrap = [],
+  args = [],
+  concurrency = 1,
+  guide,
+}: DigestOptions) => `
 [ai.fake]
-command = ${JSON.stringify([...fakeAi, "--capture", capture, ...args])}
+command = ${JSON.stringify([...wrap, ...fakeAi, "--capture", capture, ...args])}
 timeout = "20s"
 concurrency = ${concurrency}
 

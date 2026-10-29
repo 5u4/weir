@@ -199,12 +199,8 @@ export const make = Effect.fnUntraced(function* (settings: Settings, logDir: str
           yield* Ref.update(queue, (jobs) => new Map(jobs).set(id, { ...job, running: true }));
           const written: Array<DigestRow> = [];
           for (const chunk of plan.chunks) {
-            const result = yield* Effect.result(runChunk(plan, chunk));
-            if (Result.isFailure(result)) {
-              if (written.length === 0) return yield* result.failure;
-              break;
-            }
-            if (Option.isSome(result.success)) written.push(result.success.value);
+            const result = yield* runChunk(plan, chunk);
+            if (Option.isSome(result)) written.push(result.value);
           }
           return written;
         }),

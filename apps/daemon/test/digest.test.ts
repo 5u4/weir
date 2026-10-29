@@ -374,6 +374,30 @@ describe("manual digest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("a later chunk that fails answers 502 and keeps the chunks written before it", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail, calls } = yield* start({
+        wrap: ["sh", "-c", 'if [ -s "$3" ]; then exec "$@" --exit 1; fi; exec "$@"', "fake-ai"],
+      });
+      yield* deliver([1, 2, 3].map((n) => item(`l${n}`, "List news", 10_000, n)));
+      const id = yield* conversationOf("List news");
+      const [s1, s2, s3] = (yield* detail(id)).items.map(({ seq }) => seq);
+
+      const failed = yield* Effect.flip(client.digest({ params: { id }, payload: {} }));
+      if (failed._tag !== "DigestFailed")
+        throw new Error(`expected DigestFailed, got ${failed._tag}`);
+      expect(failed.error).toContain("exit 1");
+      expect(readFileSync(failed.log_path ?? "", "utf8")).toContain("===== attempt 3");
+      expect(calls().map(({ input }) => input.range)).toEqual([
+        { from_seq: s1, to_seq: s2 },
+        { from_seq: s3, to_seq: s3 },
+        { from_seq: s3, to_seq: s3 },
+        { from_seq: s3, to_seq: s3 },
+      ]);
+      expect(ranges((yield* detail(id)).digests)).toEqual([[s1, s2, "manual"]]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("one conversation runs one call at a time; two conversations overlap", () =>
     Effect.gen(function* () {
       const { client, deliver, conversationOf, calls } = yield* start({
