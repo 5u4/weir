@@ -1,4 +1,4 @@
-import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import type { Status } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
 import type { CSSProperties, KeyboardEvent } from "react";
@@ -15,7 +15,7 @@ import {
 } from "./Health.ts";
 import { statusOpen } from "./Route.ts";
 import { ThemePreference, themePreference } from "./Theme.ts";
-import { reload, status } from "./Weir.ts";
+import { reload } from "./Weir.ts";
 
 export function StatusIcon() {
   return (
@@ -135,8 +135,7 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
 
 function ConfigSection({ config }: { config: Status["config"] }) {
   const state = configState(useAtomValue(reload), config);
-  const runReload = useAtomSet(reload, { mode: "promiseExit" });
-  const refreshStatus = useAtomRefresh(status);
+  const runReload = useAtomSet(reload);
   const reloading = state._tag === "Reloading";
   return (
     <section className="sv-sec" aria-labelledby="sv-h-cfg">
@@ -207,10 +206,8 @@ function ConfigSection({ config }: { config: Status["config"] }) {
           type="button"
           className="sv-reload"
           aria-disabled={reloading}
-          onClick={async () => {
-            if (reloading) return;
-            await runReload({});
-            refreshStatus();
+          onClick={() => {
+            if (!reloading) runReload();
           }}
         >
           {reloading ? (

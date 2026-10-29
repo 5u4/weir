@@ -1,4 +1,5 @@
 import { Api } from "@weir/daemon/Api";
+import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Atom from "effect/reactivity/Atom";
 import * as AtomHttpApi from "effect/reactivity/AtomHttpApi";
@@ -29,4 +30,11 @@ export const status = Atom.transform(
   { initialValueTarget: statusSnapshot },
 );
 
-export const reload = Weir.mutation("weir", "reload");
+export const reload = Weir.runtime.fn<void>()(
+  Effect.fnUntraced(function* (_, get) {
+    const client = yield* Weir;
+    yield* client.reload({}).pipe(Effect.catchTag("ConfigInvalid", () => Effect.void));
+    get.refresh(statusSnapshot);
+    yield* get.result(statusSnapshot, { suspendOnWaiting: true });
+  }),
+);
