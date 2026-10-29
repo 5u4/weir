@@ -336,11 +336,15 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
         if (current.query === "" && !currentTarget.contains(relatedTarget)) setSearching(false);
       }}
     >
-      {form === "search" ? (
-        <>
-          <div className="cap-q" role="search" onMouseDown={keepFocus}>
-            <SearchIcon />
-            <QueryField />
+      {form !== "full" ? (
+        <div
+          className={form === "search" ? "cap-q" : "cap-nav"}
+          role={form === "search" ? "search" : undefined}
+          onMouseDown={keepFocus}
+        >
+          {form === "search" && <SearchIcon />}
+          <QueryField />
+          {form === "search" ? (
             <button
               type="button"
               className="q-x"
@@ -354,31 +358,29 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
             >
               <CloseIcon />
             </button>
-          </div>
-          <div className="cap-nav" aria-live="polite" onMouseDown={keepFocus}>
-            <SearchSentence />
-          </div>
-        </>
-      ) : form === "compact" ? (
-        <div className="cap-nav" onMouseDown={keepFocus}>
-          <QueryField />
-          <span className="cap-div" />
-          <span className="cws-w">
-            <nav className="cws" aria-label="Views" ref={fadeStrip}>
-              {Option.match(loaded, {
-                onNone: () => null,
-                onSome: (value) =>
-                  chips(value).map((widget) => (
-                    <Chip key={widget.view} widget={widget} active={active} />
-                  )),
-              })}
-            </nav>
-            <StripArrow direction={-1} />
-            <StripArrow direction={1} />
-          </span>
-          <span className="cap-div" />
-          {Option.isSome(loaded) && <Chip widget={clearedWidget(loaded.value)} active={active} />}
-          <StatusButton className="cw cw-st" alert={alert} />
+          ) : (
+            <>
+              <span className="cap-div" />
+              <span className="cws-w">
+                <nav className="cws" aria-label="Views" ref={fadeStrip}>
+                  {Option.match(loaded, {
+                    onNone: () => null,
+                    onSome: (value) =>
+                      chips(value).map((widget) => (
+                        <Chip key={widget.view} widget={widget} active={active} />
+                      )),
+                  })}
+                </nav>
+                <StripArrow direction={-1} />
+                <StripArrow direction={1} />
+              </span>
+              <span className="cap-div" />
+              {Option.isSome(loaded) && (
+                <Chip widget={clearedWidget(loaded.value)} active={active} />
+              )}
+              <StatusButton className="cw cw-st" alert={alert} />
+            </>
+          )}
         </div>
       ) : (
         <div className="cap-nav">
@@ -418,6 +420,11 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
             </button>
             <StatusButton className="st-go" alert={alert} />
           </span>
+        </div>
+      )}
+      {form === "search" && (
+        <div className="cap-nav" aria-live="polite" onMouseDown={keepFocus}>
+          <SearchSentence />
         </div>
       )}
     </div>
