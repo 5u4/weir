@@ -157,16 +157,21 @@ export const gaps = (
   spans: ReadonlyArray<Span>,
   maxInput: number,
 ): Gaps => {
-  const earlier = spans
-    .toSorted((a, b) => a.fromSeq - b.fromSeq)
-    .flatMap((span): Array<EarlierGap> => {
-      const floor = floorOf(spans.filter(({ toSeq }) => toSeq < span.fromSeq));
-      const run = items.filter(({ seq }) => floor < seq && seq < span.fromSeq);
-      const last = run.at(-1);
-      if (last === undefined) return [];
-      const found = gap(items, spans, run, { _tag: "UpTo", seq: last.seq }, maxInput);
-      return found === null ? [] : [{ ...found, beforeDigest: span.id }];
-    });
+  const earlier: Array<EarlierGap> = [];
+  let cursor = 0;
+  let reach = 0;
+  for (const span of spans.toSorted((a, b) => a.fromSeq - b.fromSeq)) {
+    while (cursor < items.length && (items[cursor]?.seq ?? 0) <= reach) cursor++;
+    const start = cursor;
+    while (cursor < items.length && (items[cursor]?.seq ?? 0) < span.fromSeq) cursor++;
+    const run = items.slice(start, cursor);
+    const last = run.at(-1);
+    if (last !== undefined) {
+      const found = gap(run, [], run, { _tag: "UpTo", seq: last.seq }, maxInput);
+      if (found !== null) earlier.push({ ...found, beforeDigest: span.id });
+    }
+    reach = Math.max(reach, span.toSeq);
+  }
   const floor = floorOf(spans);
   const tail = items.filter(({ seq }) => seq > floor);
   return { earlier, now: gap(items, spans, tail, { _tag: "Now" }, maxInput) };

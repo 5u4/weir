@@ -205,6 +205,23 @@ describe("gaps", () => {
     });
     expect(gaps(items([100, 100]), [], maxInput)).toEqual({ earlier: [], now: gap(1, 2, 2, 2) });
   });
+
+  it("finds thousands of runs in one pass", () => {
+    const many = items(Array.from({ length: 20000 }, () => 100));
+    const spans = Array.from({ length: 5000 }, (_, index) =>
+      span(index + 1, 4 * index + 4, 4 * index + 4),
+    );
+    const started = performance.now();
+    const found = gaps(many, spans, maxInput);
+    expect(performance.now() - started).toBeLessThan(250);
+    expect(found).toEqual({
+      earlier: spans.map(({ id, fromSeq }) => ({
+        ...gap(fromSeq - 3, fromSeq - 1, 3, 3),
+        beforeDigest: id,
+      })),
+      now: null,
+    });
+  });
 });
 
 describe("chunks", () => {
