@@ -17,11 +17,13 @@ export type SearchParams = {
 };
 
 const untagged = "Untagged";
-const fieldToken = /^(from|in|source):(\S+)$/iu;
+const fieldToken = /^(from|in|source):(?:"([^"]+)"|([^\s"]\S*))$/iu;
+const queryToken = /(?:from|in|source):"[^"]*"(?=\s|$)|\S+/giu;
 
 const chipOf = (token: string, tags: ReadonlyArray<string>): Chip | null => {
-  const [, rawKey = "", value = ""] = fieldToken.exec(token) ?? [];
+  const [, rawKey = "", quoted, bare] = fieldToken.exec(token) ?? [];
   const key = rawKey.toLowerCase();
+  const value = quoted ?? bare ?? "";
   if (key === "from" || key === "source") return { key, value };
   if (key !== "in") return null;
   const name = [...tags, untagged].find((tag) => tag.toLowerCase() === value.toLowerCase());
@@ -36,16 +38,16 @@ const withChip = (chips: ReadonlyArray<Chip>, chip: Chip) => [
 export const parseQuery = (q: string, tags: ReadonlyArray<string>): Query => {
   const words: Array<string> = [];
   let chips: ReadonlyArray<Chip> = [];
-  for (const token of q.split(/\s+/u)) {
-    if (token === "") continue;
-    const chip = chipOf(token, tags);
-    if (chip === null) words.push(token);
+  for (const [word] of q.matchAll(queryToken)) {
+    const chip = chipOf(word, tags);
+    if (chip === null) words.push(word);
     else chips = withChip(chips, chip);
   }
   return { text: words.join(" "), chips };
 };
 
-export const chipText = ({ key, value }: Chip) => `${key}:${value}`;
+export const chipText = ({ key, value }: Chip) =>
+  /\s/u.test(value) ? `${key}:"${value}"` : `${key}:${value}`;
 
 export const queryText = ({ text, chips }: Query) =>
   [...chips.map(chipText), text].filter((part) => part !== "").join(" ");
@@ -78,7 +80,7 @@ export const typed = (
 ): Field => {
   let chips = field.chips;
   const kept: Array<string> = [];
-  for (const match of text.matchAll(/\S+/gu)) {
+  for (const match of text.matchAll(queryToken)) {
     const closed = done || match.index + match[0].length < text.length;
     const chip = closed ? chipOf(match[0], tags) : null;
     if (chip === null) kept.push(match[0]);

@@ -11,7 +11,7 @@ import {
   typed,
 } from "./Query.ts";
 
-const tags = ["Me", "On-call", "GitHub"];
+const tags = ["Me", "On-call", "GitHub", "On call"];
 
 describe("parseQuery", () => {
   it.each<[string, string, Query]>([
@@ -59,6 +59,23 @@ describe("parseQuery", () => {
       },
     ],
     ["a word that only contains a colon", "re:freeze", { text: "re:freeze", chips: [] }],
+    [
+      "a quoted in: names a tag with a space",
+      'in:"On call" freeze',
+      { text: "freeze", chips: [{ key: "in", value: "On call" }] },
+    ],
+    [
+      "a quoted in: matches any case",
+      'IN:"on CALL"',
+      { text: "", chips: [{ key: "in", value: "On call" }] },
+    ],
+    [
+      "a quoted from: keeps its space",
+      'from:"Ada Lovelace" x',
+      { text: "x", chips: [{ key: "from", value: "Ada Lovelace" }] },
+    ],
+    ["an unclosed quote stays text", 'in:"On call', { text: 'in:"On call', chips: [] }],
+    ["an empty quote stays text", 'from:"" x', { text: 'from:"" x', chips: [] }],
   ])("%s", (_, q, expected) => {
     expect(parseQuery(q, tags)).toEqual(expected);
   });
@@ -80,12 +97,21 @@ describe("search params", () => {
       "in:me from:ada source:personal-mail freeze",
       Option.some({ q: "freeze", tag: "Me", from: "ada", source: "personal-mail" }),
     ],
+    [
+      "a quoted tag sends the configured spelling",
+      'in:"on call" x',
+      Option.some({ q: "x", tag: "On call" }),
+    ],
   ])("%s", (_, q, expected) => {
     expect(searchParams(parseQuery(q, tags))).toEqual(expected);
   });
 
   it("the query reads back with chips first", () => {
     expect(queryText(parseQuery("freeze in:me", tags))).toBe("in:Me freeze");
+  });
+
+  it("a value with a space reads back quoted", () => {
+    expect(queryText(parseQuery('x in:"on call"', tags))).toBe('in:"On call" x');
   });
 });
 
@@ -104,6 +130,16 @@ describe("the search field", () => {
       { chips: [{ key: "from", value: "ada" }], rest: "freeze de" },
     ],
     ["an unknown in: is not lifted", "in:nowhere ", { chips: [], rest: "in:nowhere " }],
+    [
+      "a space closes a quoted field into a chip",
+      'in:"On call" ',
+      { chips: [{ key: "in", value: "On call" }], rest: "" },
+    ],
+    [
+      "a space inside an open quote is still typing",
+      'from:"Ada Love',
+      { chips: [], rest: 'from:"Ada Love' },
+    ],
   ])("%s", (_, q, expected) => {
     expect(fieldOf(q, tags)).toEqual(expected);
   });
@@ -131,5 +167,16 @@ describe("the search field", () => {
   it("no chips and no text is the empty query", () => {
     expect(queryOf({ chips: [], rest: "" })).toBe("");
     expect(queryOf({ chips: [{ key: "from", value: "ada" }], rest: "" })).toBe("from:ada ");
+  });
+
+  it("removing a chip keeps a quoted chip quoted", () => {
+    const field = fieldOf('from:ada in:"On call" x', tags);
+    expect(field.chips).toEqual([
+      { key: "from", value: "ada" },
+      { key: "in", value: "On call" },
+    ]);
+    const query = queryOf({ ...field, chips: field.chips.slice(1) });
+    expect(query).toBe('in:"On call" x');
+    expect(fieldOf(query, tags)).toEqual({ chips: [{ key: "in", value: "On call" }], rest: "x" });
   });
 });
