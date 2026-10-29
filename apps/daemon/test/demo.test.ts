@@ -1,16 +1,20 @@
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const demo = join(import.meta.dirname, "../../../scripts/demo.ts");
+const PATH = (process.env.PATH ?? "")
+  .split(delimiter)
+  .filter((entry) => !entry.split(sep).includes("node_modules"))
+  .join(delimiter);
 
 describe("bun run demo", () => {
   it("runs in its own temporary home and leaves WEIR_HOME and ~/.weir untouched", async () => {
     const home = mkdtempSync(join(tmpdir(), "weir-demo-home-"));
     const weirHome = mkdtempSync(join(tmpdir(), "weir-demo-weir-home-"));
     const proc = Bun.spawn([process.execPath, demo], {
-      env: { ...process.env, HOME: home, WEIR_HOME: weirHome },
+      env: { ...process.env, PATH, HOME: home, WEIR_HOME: weirHome },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -22,7 +26,7 @@ describe("bun run demo", () => {
 
   it("--serve keeps the daemon answering until SIGINT, then exits 130 and removes its home", async () => {
     const proc = Bun.spawn([process.execPath, demo, "--serve"], {
-      env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), "weir-demo-home-")) },
+      env: { ...process.env, PATH, HOME: mkdtempSync(join(tmpdir(), "weir-demo-home-")) },
       stdout: "pipe",
       stderr: "pipe",
     });
