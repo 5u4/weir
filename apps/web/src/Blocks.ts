@@ -200,7 +200,9 @@ export const reader = (
     const to = Math.min(running.to, last);
     if (from > to || (from === first) !== (at === "start")) return [];
     const count = items.filter(({ seq }) => within({ from, to }, seq)).length;
-    return count === 0 ? [] : [{ _tag: "Skeleton", items: count }];
+    if (count === 0) return [];
+    if (at === "start") mark(first > frozenSeen);
+    return [{ _tag: "Skeleton", items: count }];
   };
 
   for (const seg of segs) {

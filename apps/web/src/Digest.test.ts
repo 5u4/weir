@@ -176,6 +176,15 @@ describe("the skeleton stands where the card will land", () => {
       "[3,4,5,6]",
     ]);
   });
+
+  it("All new from here stands above a skeleton that opens on unread messages", () => {
+    const fresh = detail([1, 2, 4], []);
+    expect(tags(reader(fresh, 0, closedUi, { from: 1, to: 4 }))).toEqual([
+      "Marker",
+      "Skeleton(3)",
+      "[1,2,4]",
+    ]);
+  });
 });
 
 describe("rejections", () => {
