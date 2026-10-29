@@ -69,26 +69,47 @@ const page = <T>(items: T[], p: Params, size: number) => {
   };
 };
 
-const newerThanCutoff = (mailbox: Mailbox, q: unknown): number => {
-  if (q === undefined) return Number.NEGATIVE_INFINITY;
-  if (typeof q !== "string") throw invalidArgument(`Invalid q: ${String(q)}`);
-  const trimmed = q.trim();
-  if (trimmed === "") return Number.NEGATIVE_INFINITY;
-  const m = /^newer_than:(\d+)([dmy])$/.exec(trimmed);
-  if (!m) throw validation(`fake-gws supports only an empty q or newer_than:N[dmy], got "${q}"`);
-  const n = Number(m[1]);
+const newerThanCutoff = (mailbox: Mailbox, [, amount, unit]: RegExpExecArray): number => {
+  const n = Number(amount);
   const { local, offsetMinutes } = parseClock(mailbox.now);
   return (
     Date.UTC(
-      local.getUTCFullYear() - (m[2] === "y" ? n : 0),
-      local.getUTCMonth() - (m[2] === "m" ? n : 0),
-      local.getUTCDate() - (m[2] === "d" ? n : 0),
+      local.getUTCFullYear() - (unit === "y" ? n : 0),
+      local.getUTCMonth() - (unit === "m" ? n : 0),
+      local.getUTCDate() - (unit === "d" ? n : 0),
       local.getUTCHours(),
       local.getUTCMinutes(),
       local.getUTCSeconds(),
     ) -
     offsetMinutes * 60_000
   );
+};
+
+const QUERY_TERMS: ReadonlyArray<{
+  pattern: RegExp;
+  cutoff: (mailbox: Mailbox, match: RegExpExecArray) => number;
+}> = [
+  { pattern: /^newer_than:(\d+)([dmy])$/, cutoff: newerThanCutoff },
+  { pattern: /^after:(\d+)$/, cutoff: (_, [, seconds]) => Number(seconds) * 1000 },
+];
+
+const queryCutoff = (mailbox: Mailbox, q: unknown): number => {
+  if (q === undefined) return Number.NEGATIVE_INFINITY;
+  if (typeof q !== "string") throw invalidArgument(`Invalid q: ${String(q)}`);
+  const used = new Set<(typeof QUERY_TERMS)[number]>();
+  let cutoff = Number.NEGATIVE_INFINITY;
+  for (const term of q.trim().split(/\s+/).filter(Boolean)) {
+    const spec = QUERY_TERMS.find((t) => t.pattern.test(term));
+    const match = spec?.pattern.exec(term);
+    if (!spec || !match || used.has(spec)) {
+      throw validation(
+        `fake-gws supports only an empty q, newer_than:N[dmy], after:N, or both, got "${q}"`,
+      );
+    }
+    used.add(spec);
+    cutoff = Math.max(cutoff, spec.cutoff(mailbox, match));
+  }
+  return cutoff;
 };
 
 const labelIdOf = (mailbox: Mailbox, raw: unknown): string | undefined => {
@@ -106,7 +127,7 @@ const labelIdOf = (mailbox: Mailbox, raw: unknown): string | undefined => {
 
 const listThreads = (mailbox: Mailbox, p: Params) => {
   userOf(mailbox, p);
-  const cutoff = newerThanCutoff(mailbox, p.q);
+  const cutoff = queryCutoff(mailbox, p.q);
   const withSpamTrash = boolParam(p, "includeSpamTrash");
   const labelId = labelIdOf(mailbox, p.labelIds);
   const newest = new Map<string, Message>();
@@ -267,6 +288,7 @@ const parseArgs = (args: string[]) => {
 export const runGws = (
   args: string[],
   load: (mailboxDir: string | undefined) => Mailbox,
+  nowMs: number,
 ): GwsResult => {
   let delayMs = 0;
   let called: { mailboxDir: string; command: string; params: Params } | undefined;
@@ -303,6 +325,14 @@ export const runGws = (
       throw validation(`fake-gws cannot read mailbox ${mailboxDir}: ${(e as Error).message}`);
     }
     delayMs = mailbox.delay?.[method] ?? 0;
+    if (mailbox.quota?.methods.includes(method) && nowMs < mailbox.quota.until) {
+      throw new GwsError(
+        "api",
+        403,
+        "rateLimitExceeded",
+        "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user' of service 'gmail.googleapis.com'",
+      );
+    }
     return finish(`${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`, "", 0);
   } catch (e) {
     if (!(e instanceof GwsError)) throw e;

@@ -5,6 +5,7 @@ import type { GwsCall } from "./gws.ts";
 import {
   callsFile,
   deliverNext,
+  deliverWith,
   expire,
   parseClock,
   readMailbox,
@@ -181,6 +182,16 @@ export const setDelay = (dir: string, delay: Record<string, number>) => {
   writeMailbox(dir, mailbox);
 };
 
+export const setQuota = (
+  dir: string,
+  quota: { until: number; methods: ReadonlyArray<string> } | undefined,
+) => {
+  const mailbox = readMailbox(dir);
+  if (quota) mailbox.quota = { until: quota.until, methods: [...quota.methods] };
+  else delete mailbox.quota;
+  writeMailbox(dir, mailbox);
+};
+
 export const readCalls = (dir: string): GwsCall[] => {
   const file = callsFile(dir);
   if (!existsSync(file)) return [];
@@ -188,4 +199,11 @@ export const readCalls = (dir: string): GwsCall[] => {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as GwsCall);
+};
+
+export const deliverThreads = (dir: string, threads: ReadonlyArray<Thread>): string[] => {
+  const mailbox = readMailbox(dir);
+  const ids = deliverWith(mailbox, threads);
+  writeMailbox(dir, mailbox);
+  return ids;
 };

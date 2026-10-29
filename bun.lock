@@ -108,6 +108,9 @@
         "fake-gws": "./src/bin/fake-gws.ts",
         "fake-gws-seed": "./src/bin/fake-gws-seed.ts",
       },
+      "dependencies": {
+        "effect": "catalog:",
+      },
       "devDependencies": {
         "@weir/contract": "workspace:*",
       },

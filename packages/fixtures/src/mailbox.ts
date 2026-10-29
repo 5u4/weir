@@ -64,6 +64,7 @@ export type Mailbox = {
   pending: string[];
   history: History[];
   delay?: Record<string, number>;
+  quota?: { until: number; methods: string[] };
 };
 
 const INITIAL_HISTORY_ID = 100_000;
@@ -148,12 +149,20 @@ export const seed = (now: string): Mailbox => {
   return mailbox;
 };
 
-export const seedWith = (now: string, threads: ReadonlyArray<Thread>): Mailbox => {
-  const mailbox = empty(now);
+export const deliverWith = (mailbox: Mailbox, threads: ReadonlyArray<Thread>): string[] => {
   const messages = gmailMessages({ ...scenarios, threads: [...threads] }).sort(
     (a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id),
   );
-  for (const m of messages) deliverOne(mailbox, m);
+  for (const m of messages) {
+    if (mailbox.messages[m.id]) throw new Error(`message ${m.id} is already delivered`);
+    deliverOne(mailbox, m);
+  }
+  return messages.map((m) => m.id);
+};
+
+export const seedWith = (now: string, threads: ReadonlyArray<Thread>): Mailbox => {
+  const mailbox = empty(now);
+  deliverWith(mailbox, threads);
   return mailbox;
 };
 
