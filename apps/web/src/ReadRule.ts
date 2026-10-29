@@ -88,5 +88,5 @@ export const step = (state: State, event: Event): readonly [State, Command] => {
       { _tag: "Send", seq: next.candidate },
     ];
   }
-  return [next, next.candidate > state.candidate ? { _tag: "Debounce" } : { _tag: "Idle" }];
+  return [next, eligible && next.candidate > covered ? { _tag: "Debounce" } : { _tag: "Idle" }];
 };

@@ -114,6 +114,16 @@ describe("read rule", () => {
       commands: ["Idle", "Debounce", 18, "Idle", 18, "Idle", "Idle"],
     },
     {
+      name: "a failed partial read debounces again on the next eligible event",
+      events: [input, viewport(18), elapsed, failed(18), viewport(18), elapsed],
+      commands: ["Idle", "Debounce", 18, "Idle", "Debounce", 18],
+    },
+    {
+      name: "a failed partial read waits while the window is unfocused",
+      events: [input, viewport(18), elapsed, failed(18), focus(false), input, focus(true), elapsed],
+      commands: ["Idle", "Debounce", 18, "Idle", "Idle", "Idle", "Debounce", 18],
+    },
+    {
       name: "a failed full read waits for the next trigger instead of retrying at once",
       events: [input, viewport(25), failed(25), input, acked(25), input],
       commands: ["Idle", 25, "Idle", 25, "Idle", "Idle"],
