@@ -58,6 +58,7 @@ describe("route URL", () => {
 
 const go = (to: Route): Navigation => ({ _tag: "Go", to });
 const type = (query: string): Navigation => ({ _tag: "Type", query });
+const replace = (to: Route): Navigation => ({ _tag: "Replace", to });
 
 describe("history write kind", () => {
   it.each([
@@ -80,6 +81,14 @@ describe("history write kind", () => {
     ["chip removed", at("untagged", "from:ada x"), type("x"), "replace"],
     ["editing over a result", at("untagged", "abc", 9), type("abcd"), "replace"],
     ["open result while searching", at("untagged", "abc"), go(at("untagged", "abc", 9)), "push"],
+    [
+      "Done moves to the next row",
+      at("untagged", "", 4),
+      replace(at("untagged", "", 5)),
+      "replace",
+    ],
+    ["Done on the last row closes it", at("tag:Me", "", 4), replace(at("tag:Me")), "replace"],
+    ["replace to the same route", at("untagged", "", 4), replace(at("untagged", "", 4)), "none"],
   ] as const)("%s", (_, previous, navigation, expected) => {
     expect(writeKind(previous, navigation)).toBe(expected);
   });

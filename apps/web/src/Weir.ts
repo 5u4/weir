@@ -1,10 +1,13 @@
-import { Api } from "@weir/daemon/Api";
+import { Api, View as ApiView, ClearableView, type Row } from "@weir/daemon/Api";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import * as AtomHttpApi from "effect/reactivity/AtomHttpApi";
+import * as Schema from "effect/Schema";
 import { now } from "./Health.ts";
-import { statusOpen } from "./Route.ts";
+import { statusOpen, type View } from "./Route.ts";
+import { type Intents, intentFor } from "./Rows.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -38,3 +41,74 @@ export const reload = Weir.runtime.fn<void>()(
     yield* get.result(statusSnapshot, { suspendOnWaiting: true });
   }),
 );
+
+export const searchOpen = Atom.make(false);
+
+export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
+
+const toApiView = Schema.decodeSync(ApiView);
+const toClearableView = Schema.decodeSync(ClearableView);
+
+export const viewList = Atom.family((view: View) =>
+  Weir.query("view", "conversations", {
+    query: { view: toApiView(view) },
+    reactivityKeys: ["list"],
+  }),
+);
+
+export const intents = Atom.make<Intents>(new Map()).pipe(Atom.keepAlive);
+
+const changed = <A>(map: ReadonlyMap<number, A>, id: number, value: A | undefined) => {
+  const next = new Map(map);
+  if (value === undefined) next.delete(id);
+  else next.set(id, value);
+  return next;
+};
+
+export const dismiss = Weir.runtime
+  .fn<{ readonly view: View; readonly row: Row }>()(
+    ({ view, row }, get) =>
+      Effect.gen(function* () {
+        const client = yield* Weir;
+        const before = get.registry.get(intents).get(row.id);
+        get.registry.update(intents, (map) => changed(map, row.id, intentFor(view, row)));
+        const request =
+          view === "cleared"
+            ? client.restore({ params: { id: row.id } })
+            : client.done({ params: { id: row.id }, payload: { seq: row.last_seq } });
+        yield* request.pipe(
+          Effect.onError(() =>
+            Effect.sync(() => get.registry.update(intents, (map) => changed(map, row.id, before))),
+          ),
+        );
+      }),
+    { concurrent: true, reactivityKeys: ["counts", "list"] },
+  )
+  .pipe(Atom.keepAlive);
+
+export const clearAll = Weir.runtime
+  .fn<{
+    readonly view: Exclude<View, "cleared">;
+    readonly seq: number;
+    readonly ids: ReadonlyArray<number>;
+  }>()(
+    ({ view, seq, ids }, get) =>
+      Effect.gen(function* () {
+        const client = yield* Weir;
+        yield* client.clear({ payload: { view: toClearableView(view), seq } });
+        get.registry.update(intents, (map) =>
+          ids.reduce<Intents>((next, id) => changed(next, id, undefined), map),
+        );
+      }),
+    { reactivityKeys: ["counts", "list"] },
+  )
+  .pipe(Atom.keepAlive);
+
+export const tabTitle = Atom.make((get) => {
+  const unread = AsyncResult.getOrElse(
+    AsyncResult.map(get(counts), (value) => value.unread),
+    () => 0,
+  );
+  document.title = unread > 0 ? `(${unread}) weir` : "weir";
+  return unread;
+});
