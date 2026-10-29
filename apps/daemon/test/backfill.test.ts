@@ -34,15 +34,7 @@ const note = (id: string, at: number): Thread => ({
   messages: [{ at: gmailTime(at), from: "priya", to: ["me"], text: `Note ${id}` }],
 });
 
-const gmailHome = (threads: number, now: number) => {
-  const { home, port, writeConfig } = makeHome("");
-  const mailbox = join(home.root, "mailbox");
-  seedThreads(
-    mailbox,
-    Array.from({ length: threads }, (_, i) => note(`seed-${i}`, now - (i + 2) * hour)),
-    { now: gmailTime(now), pageSize },
-  );
-  writeConfig(`[[source]]
+const gmailConfig = (mailbox: string, labels?: ReadonlyArray<string>) => `[[source]]
 id = "gmail"
 plugin = "gws"
 sync_every = "1h"
@@ -50,8 +42,18 @@ sync_every = "1h"
 [source.config]
 command = ${JSON.stringify([fakeGws, "--mailbox", mailbox])}
 backfill = "newer_than:30d"
-`);
-  return { home, port, mailbox };
+${labels === undefined ? "" : `labels = ${JSON.stringify(labels)}\n`}`;
+
+const gmailHome = (threads: number, now: number, labels?: ReadonlyArray<string>) => {
+  const { home, port, writeConfig } = makeHome("");
+  const mailbox = join(home.root, "mailbox");
+  seedThreads(
+    mailbox,
+    Array.from({ length: threads }, (_, i) => note(`seed-${i}`, now - (i + 2) * hour)),
+    { now: gmailTime(now), pageSize },
+  );
+  writeConfig(gmailConfig(mailbox, labels));
+  return { home, port, mailbox, writeConfig };
 };
 
 const connect = (home: WeirHome, port: number) =>
@@ -164,6 +166,46 @@ describe("gws background backfill", () => {
             )
             .map(({ params }) => params.q),
         ).toEqual([bound, bound]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.live(
+    "mail delivered just before a label change lands unread from the carried checkpoint",
+    () =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const seeded = 2 * pageSize + 1;
+        const { home, port, mailbox, writeConfig } = gmailHome(seeded, now, ["INBOX"]);
+        const { client, stream, states } = yield* connect(home, port);
+        yield* eventually(stream, (s) => s?.backfill === "done", 400);
+        expect(yield* storedCursor(home)).toMatchObject({
+          phase: "incremental",
+          labels: ["INBOX"],
+        });
+
+        deliverThreads(mailbox, [note("before-change", now)]);
+        writeConfig(gmailConfig(mailbox, ["INBOX", "SENT"]));
+        setDelay(mailbox, { "threads list": 300 });
+        yield* client.reload();
+        const seen: Array<typeof StreamStatus.Type> = [];
+        yield* eventually(
+          stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
+          (s) => s?.backfill === "done" && seen.some(({ backfill }) => backfill === "running"),
+          800,
+        );
+        expect(seen.at(-1)).toMatchObject({
+          backfill: "done",
+          last_error: null,
+          items: seeded + 1,
+        });
+        expect(yield* storedCursor(home)).toMatchObject({
+          phase: "incremental",
+          labels: ["INBOX", "SENT"],
+        });
+
+        const relisted = yield* states;
+        expect(relisted["Note before-change"]).toBe("unread");
+        expect(seedTitles(seeded).filter((title) => relisted[title] !== "read")).toEqual([]);
       }).pipe(Effect.scoped),
   );
 

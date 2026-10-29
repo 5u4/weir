@@ -489,6 +489,37 @@ describe("gws plugin against fake-gws", () => {
     expect(after).toMatchObject({ deletions: [id], more: false });
   });
 
+  it("restarts the gap listing under the new labels when the labels change mid-gap", async () => {
+    const dir = seeded();
+    const narrow: GwsConfig["labels"] = ["INBOX", "SENT"];
+    const cold = await syncAll(sourceFor(dir, narrow), null);
+    expireHistory(dir);
+    const [fresh] = deliverThreads(dir, [freshThread("gap-relabel")]);
+
+    const first = await syncPage(sourceFor(dir, narrow), cold.cursor);
+    expect(first).toMatchObject({ kind: "live", backfill: "running" });
+    const { after } = JSON.parse(first.cursor);
+    expect(JSON.parse(first.cursor)).toMatchObject({ phase: "gap", listing: ["SENT"] });
+
+    const widened = await syncAll(sourceFor(dir, EVERY_LABEL), first.cursor);
+    expect(JSON.parse(widened.pages[0]?.cursor ?? "")).toMatchObject({
+      phase: "gap",
+      labels: ["CATEGORY_PROMOTIONS", "INBOX", "SENT"],
+      after,
+      listing: ["INBOX", "SENT"],
+    });
+    const relist = widened.pages.findIndex((p) => p.kind === "backfill");
+    expect(widened.pages.slice(0, relist).every((p) => p.kind === "live")).toBe(true);
+    expect(
+      widened.pages.slice(0, relist).flatMap((p) => p.upserts.map((i) => i.externalId)),
+    ).toContain(fresh);
+    expect(
+      readCalls(dir)
+        .filter((c) => c.command === "threads list" && c.params.q === `after:${after}`)
+        .map((c) => c.params.labelIds),
+    ).toEqual([["INBOX"], ["CATEGORY_PROMOTIONS"], ["INBOX"], ["SENT"]]);
+  });
+
   it("stores raw without body data or transport headers", async () => {
     const dir = seeded();
     const { items } = await syncAll(sourceFor(dir), null);
