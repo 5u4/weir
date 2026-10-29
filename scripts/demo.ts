@@ -58,9 +58,15 @@ portProbe.stop(true);
 const AI_SINCE = expectedDigests.ai_since;
 const mailbox = join(home.root, "mailbox");
 const seeded = seedMailbox(mailbox, { until: AI_SINCE });
-writeFileSync(home.config, `port = ${port}\n\n${configToml(mailbox)}`);
-
-process.env.PATH = `${join(import.meta.dirname, "../node_modules/.bin")}:${process.env.PATH}`;
+const bin = (path: string) => [process.execPath, join(import.meta.dirname, "..", path)];
+writeFileSync(
+  home.config,
+  `port = ${port}\n\n${configToml({
+    mailbox,
+    gws: bin("packages/fixtures/src/bin/fake-gws.ts"),
+    ai: bin("packages/fixtures/src/bin/fake-ai.ts"),
+  })}`,
+);
 
 const millisOf = (iso: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(iso));
 let fixedMillis = millisOf(AI_SINCE);
@@ -89,7 +95,7 @@ const decodeTagTest = Schema.decodeUnknownSync(
 
 const axi = (...args: ReadonlyArray<string>) =>
   Effect.promise(async () => {
-    const proc = Bun.spawn(["weir-axi", ...args], {
+    const proc = Bun.spawn([...bin("apps/axi/src/main.ts"), ...args], {
       env: { ...process.env, WEIR_HOME: home.root },
       stdout: "pipe",
       stderr: "inherit",

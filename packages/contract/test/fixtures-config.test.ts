@@ -33,7 +33,9 @@ it("decodes the fixtures config with its fake-ai profile, gmail source and four 
 });
 
 it("decodes the fixtures config pointed at a mutable mailbox", () => {
-  const config = Effect.runSync(decodeConfig(Bun.TOML.parse(configToml('/tmp/mail "box"'))));
+  const config = Effect.runSync(
+    decodeConfig(Bun.TOML.parse(configToml({ mailbox: '/tmp/mail "box"' }))),
+  );
   expect(config.source[0]?.config).toEqual({
     command: ["fake-gws", "--mailbox", '/tmp/mail "box"'],
     backfill: "newer_than:30d",
