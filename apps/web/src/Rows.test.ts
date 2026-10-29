@@ -18,9 +18,9 @@ const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   new: 0,
   items: 1,
   participants: 1,
-  from: { name: "Ada Lovelace", address: "ada@example.com" },
+  from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
   preview: "Ada: hello",
-  senders: [{ name: "Ada Lovelace", address: "ada@example.com" }],
+  senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false }],
 });
 
 const ids = (rows: ReadonlyArray<Row>) => rows.map(({ id }) => id);
@@ -63,9 +63,9 @@ describe("next row after Done", () => {
 });
 
 describe("row face", () => {
-  const ada = { name: "Ada Lovelace", address: "ada@example.com" };
-  const bo = { name: "Bo", address: "bo@example.com" };
-  const nameless = { name: " ", address: "carol.k@example.com" };
+  const ada = { name: "Ada Lovelace", address: "ada@example.com", me: false };
+  const bo = { name: "Bo", address: "bo@example.com", me: false };
+  const nameless = { name: " ", address: "carol.k@example.com", me: false };
   it.each([
     ["no senders, nobody else", [], 0, "", ""],
     ["no senders, three participants", [], 3, "+3", ""],

@@ -49,9 +49,9 @@ const row = (id: number, last_seq: number): Row => ({
   new: 0,
   items: 1,
   participants: 1,
-  from: { name: "Ada Lovelace", address: "ada@example.com" },
+  from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
   preview: "Ada: hello",
-  senders: [{ name: "Ada Lovelace", address: "ada@example.com" }],
+  senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false }],
 });
 
 const settled = <A, E>(
