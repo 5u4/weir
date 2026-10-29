@@ -7,7 +7,15 @@ import { Api } from "@weir/daemon/Api";
 import { plugins } from "@weir/daemon/Daemon";
 import * as Home from "@weir/daemon/Home";
 import * as Http from "@weir/daemon/Http";
-import { configToml, expectedTags, FIXTURE_NOW } from "@weir/fixtures";
+import {
+  configToml,
+  deliver,
+  expectedDigests,
+  expectedTags,
+  FIXTURE_NOW,
+  seedMailbox,
+  setNow,
+} from "@weir/fixtures";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -47,17 +55,21 @@ console.error(`weir demo: WEIR_HOME=${home.root}`);
 const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
 const port = portProbe.port;
 portProbe.stop(true);
-writeFileSync(home.config, `port = ${port}\n\n${configToml()}`);
+const AI_SINCE = expectedDigests.ai_since;
+const mailbox = join(home.root, "mailbox");
+const seeded = seedMailbox(mailbox, { until: AI_SINCE });
+writeFileSync(home.config, `port = ${port}\n\n${configToml(mailbox)}`);
 
 process.env.PATH = `${join(import.meta.dirname, "../node_modules/.bin")}:${process.env.PATH}`;
 
-const fixedMillis = DateTime.toEpochMillis(DateTime.makeUnsafe(FIXTURE_NOW));
+const millisOf = (iso: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(iso));
+let fixedMillis = millisOf(AI_SINCE);
 const liveClock = Clock.Clock.defaultValue();
 const fixtureClock: Clock.Clock = {
   currentTimeMillisUnsafe: () => fixedMillis,
-  currentTimeMillis: Effect.succeed(fixedMillis),
+  currentTimeMillis: Effect.sync(() => fixedMillis),
   currentTimeNanosUnsafe: () => BigInt(fixedMillis) * 1_000_000n,
-  currentTimeNanos: Effect.succeed(BigInt(fixedMillis) * 1_000_000n),
+  currentTimeNanos: Effect.sync(() => BigInt(fixedMillis) * 1_000_000n),
   monotonicTimeNanosUnsafe: () => liveClock.monotonicTimeNanosUnsafe(),
   monotonicTimeNanos: liveClock.monotonicTimeNanos,
   sleep: (duration) => liveClock.sleep(duration),
@@ -88,19 +100,93 @@ const axi = (...args: ReadonlyArray<string>) =>
     return decode(stdout);
   });
 
+const pollUntil = <A, E, R>(
+  what: string,
+  probe: Effect.Effect<
+    { readonly done: boolean; readonly pending: string; readonly value: A },
+    E,
+    R
+  >,
+) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; ; attempt++) {
+      const result = yield* probe;
+      if (result.done) return result.value;
+      if (attempt >= 1200)
+        return yield* Effect.fail(`${what} did not settle within 60s; pending: ${result.pending}`);
+      yield* Effect.sleep(Duration.millis(50));
+    }
+  });
+
 const demo = Effect.gen(function* () {
   yield* Layer.build(Http.layer(home, plugins));
   const client = yield* HttpApiClient.make(Api, { baseUrl: `http://127.0.0.1:${port}` });
-  let status = yield* client.status();
-  for (let attempt = 0; attempt < 600; attempt++) {
-    if (status.sources.every(({ listing }) => listing !== "pending")) break;
-    yield* Effect.sleep(Duration.millis(50));
-    status = yield* client.status();
-  }
+
+  const syncedAt = (iso: string) =>
+    pollUntil(
+      `sync at ${iso}`,
+      Effect.map(client.status(), (status) => {
+        const pending = status.sources.flatMap(({ id, listing, streams }) =>
+          listing === "failed"
+            ? []
+            : listing === "pending"
+              ? [`${id} listing`]
+              : streams
+                  .filter(
+                    ({ last_sync_at }) =>
+                      last_sync_at === null || millisOf(last_sync_at) !== millisOf(iso),
+                  )
+                  .map(({ name }) => `${id} (${name})`),
+        );
+        return { done: pending.length === 0, pending: pending.join(", "), value: status };
+      }),
+    );
+
+  let status = yield* syncedAt(AI_SINCE);
   const failed = status.sources.filter(({ listing }) => listing !== "ok");
   if (failed.length > 0) return yield* Effect.fail(`first sync failed: ${JSON.stringify(failed)}`);
 
-  const lines = [`weir demo: temporary WEIR_HOME, fixture clock ${FIXTURE_NOW}`];
+  const views = [
+    ...Object.keys(expectedTags.tags).map((name) => ({ _tag: "Tag" as const, name })),
+    { _tag: "Untagged" as const },
+  ];
+  const allConversations = Effect.gen(function* () {
+    const byId = new Map<number, { readonly id: number; readonly last_seq: number }>();
+    for (const view of views) {
+      for (const row of (yield* client.conversations({ query: { view } })).conversations)
+        byId.set(row.id, row);
+    }
+    return [...byId.values()];
+  });
+  const before = yield* allConversations;
+  for (const { id, last_seq } of before)
+    yield* client.read({ params: { id }, payload: { seq: last_seq } });
+
+  const delivered = deliver(mailbox, seeded.pending);
+  setNow(mailbox, FIXTURE_NOW);
+  fixedMillis = millisOf(FIXTURE_NOW);
+  yield* client.reload();
+  status = yield* syncedAt(FIXTURE_NOW);
+  status = yield* pollUntil(
+    "digest queue",
+    Effect.map(client.status(), (status) => {
+      const digest = status.digest;
+      const pending =
+        digest === null
+          ? "digest disabled"
+          : [
+              ...digest.running.map(
+                ({ conversation_id, from_seq, to_seq }) =>
+                  `running ${conversation_id} #${from_seq}-#${to_seq}`,
+              ),
+              ...(digest.waiting > 0 ? [`${digest.waiting} waiting`] : []),
+            ].join(", ");
+      return { done: pending === "", pending, value: status };
+    }),
+  );
+  const lines = [
+    `weir demo: temporary WEIR_HOME, fixture clock ${AI_SINCE} (${seeded.delivered} items, read), then ${FIXTURE_NOW} (${delivered.length} more, reload)`,
+  ];
   const problems: Array<string> = [];
 
   for (const [query, expected] of searches) {
@@ -149,8 +235,75 @@ const demo = Effect.gen(function* () {
     ].join(", ")}`,
   );
 
+  const aiTags = status.tags.filter(({ ai_since }) => ai_since !== null);
+  for (const { name, ai_since } of status.tags) {
+    const ai = name === "Me" || name === "On-call";
+    if (
+      ai !== (ai_since !== null) ||
+      (ai_since !== null && millisOf(ai_since) !== millisOf(AI_SINCE))
+    )
+      problems.push(`tag ${name} ai_since ${ai_since}, expected ${ai ? AI_SINCE : null}`);
+  }
+
+  const key = (conversation: string, first: string, last: string) =>
+    `${conversation} | ${new Date(millisOf(first)).toISOString()} .. ${new Date(millisOf(last)).toISOString()}`;
+  const want = new Map(
+    expectedDigests.digests.map((digest) => [
+      key(digest.conversation, digest.first_occurred_at, digest.last_occurred_at),
+      digest,
+    ]),
+  );
+  const aiNames = new Set(aiTags.map(({ name }) => name));
+  const got = new Set<string>();
+  for (const { id } of yield* allConversations) {
+    const conversation = yield* client.conversation({ params: { id } });
+    const isAi = conversation.tags.some((tag) => aiNames.has(tag));
+    for (const digest of conversation.digests) {
+      if (digest.trigger !== "auto") continue;
+      const range = conversation.items.filter(
+        ({ seq }) => digest.from_seq <= seq && seq <= digest.to_seq,
+      );
+      const first = range[0];
+      const last = range.at(-1);
+      if (first === undefined || last === undefined) {
+        problems.push(
+          `"${conversation.title}" auto digest #${digest.from_seq}-#${digest.to_seq} covers no items`,
+        );
+        continue;
+      }
+      const k = key(conversation.title, first.occurred_at, last.occurred_at);
+      got.add(k);
+      const expected = want.get(k);
+      if (!isAi) problems.push(`"${conversation.title}" has no AI tag but has auto digest ${k}`);
+      if (millisOf(first.occurred_at) < millisOf(AI_SINCE))
+        problems.push(
+          `"${conversation.title}" auto digest starts before ai_since at ${first.occurred_at}`,
+        );
+      if (expected === undefined) {
+        problems.push(
+          `"${conversation.title}" auto digest ${k} (${range.length} items) is not in expected-digests.json`,
+        );
+      } else if (range.length !== expected.items || digest.ai_profile !== expected.ai_profile) {
+        problems.push(
+          `"${conversation.title}" auto digest ${k}: ${range.length} items by ${digest.ai_profile}, expected ${expected.items} by ${expected.ai_profile}`,
+        );
+      }
+    }
+  }
+  for (const [k, expected] of want) {
+    if (!got.has(k))
+      problems.push(
+        `"${expected.conversation}" expected auto digest ${k} (${expected.items} items) is missing`,
+      );
+  }
+  lines.push(
+    `ai_since ${aiTags.map(({ name }) => name).join(", ")}: ${AI_SINCE}`,
+    `auto digests: ${got.size}`,
+    ...[...got].map((k) => `  ${k}`),
+  );
+
   if (problems.length > 0) return yield* Effect.fail(problems.join("\n"));
-  lines.push("ok: search and tag test match the fixtures");
+  lines.push("ok: search, tag test and digests match the fixtures");
   console.log(lines.join("\n"));
   if (flags.serve) {
     console.log(`weir demo: serving http://127.0.0.1:${port}/ until Ctrl-C`);
