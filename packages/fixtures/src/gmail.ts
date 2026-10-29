@@ -85,8 +85,8 @@ const textHtml = (text: string) =>
     .split("\n\n")
     .map((p) => {
       const linked = escapeHtml(p)
-        .replace(/https?:\/\/[^\s<>()"]+/g, (url) => `<a href="${url}">${url}</a>`)
-        .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+        .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+        .replace(/https?:\/\/[^\s<>()"]+/g, (url) => `<a href="${url}">${url}</a>`);
       return `<p>${linked.replaceAll("\n", "<br>")}</p>`;
     })
     .join("");

@@ -10,13 +10,17 @@ const BOTH = [0, 1] as const;
 type Kind = (typeof BOTH)[number];
 const ATOM_OPEN = "\uE004";
 const ATOM_CLOSE = "\uE005";
+const WORD_JOINER = "\u2060";
 const SENTINELS = /[\uE000-\uE005]|&#(?:x0*e00[0-5](?![\da-f])|0*5734[4-9](?!\d));?/gi;
+const MARKERS = /[\uE000-\uE005]/g;
 const BLANK = /^[\s\u200b\u200c\u2060\ufeff]+$/u;
 const INVISIBLES = /[\s\u200b\u200c\u2060\ufeff]/g;
-const PARAGRAPH_BREAK = /\n\s*\n/;
-const BLOCK_LINE = /\n[ \t]*(?:#{1,6}(?:[ \t]|$)|[-+*][ \t]|\d{1,9}[.)][ \t]|>|```|~~~)/;
+const PARAGRAPH_BREAK = /(\n\s*\n)/;
+const BLOCK_LINE =
+  /\n[ \t]*(?:#{1,6}(?:[ \t]|$)|[-+*][ \t]|\d{1,9}[.)][ \t]|>|```|~~~|(?:-+|=+)[ \t]*(?:\n|$))/;
 const BLOCKS = "h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr";
-const ESCAPED = /((?:https?:\/\/|www\.)\S*)|[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/giu;
+const ESCAPED =
+  /((?<=^|[\s*_~(])(?:https?:\/\/|www\.)\S*)|[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/giu;
 
 type Class = "space" | "punctuation" | "other";
 
@@ -29,6 +33,7 @@ interface Unit {
   readonly tail: Class;
   readonly blank: boolean;
   readonly word: boolean;
+  readonly solid: boolean;
   readonly link: -1 | 0 | 1;
   readonly marks: [boolean, boolean];
   readonly breaks: [boolean, boolean];
@@ -38,6 +43,7 @@ const tokenize = (marked: string): Array<Unit> => {
   const units: Array<Unit> = [];
   const depth: [number, number] = [0, 0];
   let atom: string | undefined;
+  let prefix: string | undefined = "";
   let backslash = false;
   const add = (text: string, link: Unit["link"], isAtom: boolean) => {
     const chars = Array.from(text);
@@ -45,13 +51,31 @@ const tokenize = (marked: string): Array<Unit> => {
     const tail = classOf(chars.at(-1) ?? "");
     const blank = !isAtom && BLANK.test(text);
     const word = !isAtom && !blank && chars.length === 1 && head === "other";
+    const solid = isAtom && link === 0;
     const marks: [boolean, boolean] = [depth[0] > 0, depth[1] > 0];
     const previous = units.at(-1);
     if (word && previous?.word && previous.marks.every((mark, kind) => mark === marks[kind])) {
       previous.text += text;
       return;
     }
-    units.push({ text, head, tail, blank, word, link, marks, breaks: [false, false] });
+    units.push({ text, head, tail, blank, word, solid, link, marks, breaks: [false, false] });
+  };
+  const endPrefix = () => {
+    if (prefix) {
+      const text = prefix;
+      units.push({
+        text,
+        head: "space",
+        tail: "space",
+        blank: true,
+        word: false,
+        solid: true,
+        link: 0,
+        marks: [false, false],
+        breaks: [false, false],
+      });
+    }
+    prefix = undefined;
   };
   const flush = () => {
     if (backslash) add("\\", 0, false);
@@ -66,6 +90,13 @@ const tokenize = (marked: string): Array<Unit> => {
       }
       continue;
     }
+    if (prefix !== undefined) {
+      if (char === ">" || char === " " || char === "\t") {
+        prefix += char;
+        continue;
+      }
+      endPrefix();
+    }
     const kind = BOTH.find((each) => char === KINDS[each].open || char === KINDS[each].close);
     if (kind !== undefined) {
       flush();
@@ -78,8 +109,10 @@ const tokenize = (marked: string): Array<Unit> => {
       add(`\\${char}`, 0, false);
     } else if (char === "\\") backslash = true;
     else add(char, 0, false);
+    if (char === "\n") prefix = "";
   }
   flush();
+  endPrefix();
   return units;
 };
 
@@ -103,7 +136,10 @@ const balanced = (units: ReadonlyArray<Unit>, first: number, last: number) => {
   return depth === 0;
 };
 
-// CommonMark may mis-pair a `*` run with punctuation on both sides, as it can both open and close.
+// A `*` run with punctuation on both sides can both open and close, so CommonMark may mis-pair it.
+const stuck = (unit: Unit, edge: Class, outside: Class) =>
+  edge === "punctuation" && (unit.solid ? outside === "other" : outside !== "space");
+
 const trim = (units: Array<Unit>, kind: Kind) => {
   const tailBefore = (index: number) => units[index - 1]?.tail ?? "space";
   const headAfter = (index: number) => units[index + 1]?.head ?? "space";
@@ -114,11 +150,11 @@ const trim = (units: Array<Unit>, kind: Kind) => {
       let first = start;
       let last = end;
       for (let unit = units[first]; unit && first <= last; unit = units[++first]) {
-        if (!unit.blank && !(unit.head === "punctuation" && tailBefore(first) !== "space")) break;
+        if (!unit.blank && !stuck(unit, unit.head, tailBefore(first))) break;
         unit.marks[kind] = false;
       }
       for (let unit = units[last]; unit && last >= first; unit = units[--last]) {
-        if (!unit.blank && !(unit.tail === "punctuation" && headAfter(last) !== "space")) break;
+        if (!unit.blank && !stuck(unit, unit.tail, headAfter(last))) break;
         unit.marks[kind] = false;
       }
       if (first > last || balanced(units, first, last)) continue;
@@ -186,20 +222,32 @@ const serialize = (units: ReadonlyArray<Unit>) => {
     if (unit.link === 1 && closing.length + opening.length === 0 && previous?.text === "!") {
       markdown = `${markdown.slice(0, -1)}\\!`;
     }
+    const glued = closing.length + opening.length === 0 && unit.solid && previous?.solid;
+    if (glued && previous.text.endsWith("`") && unit.text.startsWith("`")) markdown += WORD_JOINER;
     markdown += unit.text;
   }
   return markdown;
+};
+
+const wrap = (open: string, close: string, text: string) => {
+  const inner = text.trim();
+  if (inner === "") return text;
+  const lead = text.slice(0, text.length - text.trimStart().length);
+  const trail = text.slice(text.trimEnd().length);
+  return `${lead}${open}${inner}${close}${trail}`;
 };
 
 const emphasis =
   ({ open, close }: (typeof KINDS)[number]) =>
   (content: string, node: TurndownService.Node) =>
     (node.textContent ?? "").replace(INVISIBLES, "") === "" ||
-    PARAGRAPH_BREAK.test(content.trim()) ||
     BLOCK_LINE.test(content.trim()) ||
     node.querySelectorAll(BLOCKS).length > 0
       ? content
-      : `${open}${content}${close}`;
+      : content
+          .split(PARAGRAPH_BREAK)
+          .map((piece) => wrap(open, close, piece))
+          .join("");
 
 const atom = (markdown: string) => (markdown === "" ? "" : `${ATOM_OPEN}${markdown}${ATOM_CLOSE}`);
 
@@ -221,7 +269,8 @@ const turndown = (dropQuoted: boolean) => {
     filter: (node) =>
       node.nodeName === "CODE" &&
       !(node.parentNode?.nodeName === "PRE" && !node.previousSibling && !node.nextSibling),
-    replacement: (...args) => atom(markdownOf(...args)),
+    replacement: (content, node, settings) =>
+      atom(markdownOf(content.replace(MARKERS, ""), node, settings)),
   });
   service.addRule("atomicImage", {
     filter: "img",
@@ -233,7 +282,10 @@ const turndown = (dropQuoted: boolean) => {
       `${atom("[")}${content}${atom(markdownOf(content, node, settings).slice(content.length + 1))}`,
   });
   service.addRule("autolink", {
-    filter: (node) => node.nodeName === "A" && node.getAttribute("href") === node.textContent,
+    filter: (node) =>
+      node.nodeName === "A" &&
+      node.children.length === 0 &&
+      node.getAttribute("href") === node.textContent,
     replacement: (_, node) => atom(node.textContent ?? ""),
   });
   for (const kind of KINDS) {
