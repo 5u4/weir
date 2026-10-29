@@ -242,11 +242,27 @@ function Long({
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
   const [over, setOver] = useState(false);
-  const measure = useCallback((body: HTMLDivElement) => {
-    const observer = new ResizeObserver(() => setOver(body.scrollHeight > body.clientHeight + 2));
-    observer.observe(body);
-    return () => observer.disconnect();
-  }, []);
+  const measure = useCallback(
+    (body: HTMLDivElement) => {
+      const observer = new ResizeObserver(() => setOver(body.scrollHeight > body.clientHeight + 2));
+      observer.observe(body);
+      const reveal = (event: FocusEvent) => {
+        setUi((current) =>
+          current.long.has(seq) ? current : { ...current, long: new Set(current.long).add(seq) },
+        );
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+          requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
+        }
+      };
+      body.addEventListener("focusin", reveal);
+      return () => {
+        observer.disconnect();
+        body.removeEventListener("focusin", reveal);
+      };
+    },
+    [seq, setUi],
+  );
   const open = ui.long.has(seq);
   return (
     <>
