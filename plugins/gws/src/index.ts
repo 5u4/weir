@@ -1,5 +1,6 @@
 import type { RawItem, SourcePlugin, SyncPage } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Equivalence from "effect/Equivalence";
 import * as Order from "effect/Order";
@@ -9,6 +10,7 @@ import {
   GwsError,
   getProfile,
   getThread,
+  type HistoryList,
   listHistory,
   listLabels,
   listSendAs,
@@ -28,39 +30,64 @@ const GwsConfig = Schema.Struct({
 });
 export type GwsConfig = typeof GwsConfig.Type;
 
-const Backfill = Schema.Struct({
-  phase: Schema.Literal("backfill"),
-  labels: LabelIds,
-  startHistoryId: Schema.String,
+const Live = Schema.Struct({
+  historyId: Schema.String,
+  pageToken: Schema.NullOr(Schema.String),
+  watermark: Schema.Int,
+  pending: Schema.Array(Schema.String),
+});
+type Live = typeof Live.Type;
+
+const Listing = Schema.Struct({
   listing: LabelIds,
   pageToken: Schema.NullOr(Schema.String),
   fetched: Schema.Array(Schema.String),
 });
-type Backfill = typeof Backfill.Type;
+type Listing = typeof Listing.Type;
 
-const Incremental = Schema.Struct({
-  phase: Schema.Literal("incremental"),
-  labels: LabelIds,
-  historyId: Schema.String,
-  pageToken: Schema.NullOr(Schema.String),
-  pending: Schema.Array(Schema.String),
-});
-type Incremental = typeof Incremental.Type;
-
-const Cursor = Schema.fromJsonString(Schema.Union([Backfill, Incremental]));
+const Cursor = Schema.fromJsonString(
+  Schema.Union([
+    Schema.Struct({
+      phase: Schema.Literal("backfill"),
+      labels: LabelIds,
+      ...Listing.fields,
+      live: Live,
+      turn: Schema.Literals(["backfill", "live"]),
+    }),
+    Schema.Struct({
+      phase: Schema.Literal("gap"),
+      labels: LabelIds,
+      after: Schema.Int,
+      ...Listing.fields,
+      live: Live,
+    }),
+    Schema.Struct({
+      phase: Schema.Literal("incremental"),
+      labels: LabelIds,
+      live: Live,
+    }),
+  ]),
+);
 type Cursor = typeof Cursor.Type;
 const encodeCursor = Schema.encodeSync(Cursor);
 const decodeCursor = Schema.decodeUnknownSync(Cursor);
 const sameLabels = Arr.makeEquivalence(Equivalence.String);
 
-const newPass = (labels: LabelIds, startHistoryId: string): Backfill => ({
-  phase: "backfill",
-  labels,
-  startHistoryId,
+type Changes = { readonly upserts: RawItem[]; readonly deletions: string[] };
+type Pass = {
+  readonly emailAddress: string;
+  readonly historyId: string;
+  readonly recordedAt: number;
+  readonly signal: AbortSignal;
+};
+
+const listingStart = (labels: LabelIds): Listing => ({
   listing: labels,
   pageToken: null,
   fetched: [],
 });
+
+const GAP_SLACK_SECONDS = 3600;
 
 const LIST_SIZE = 100;
 const PAGE_MESSAGES = 100;
@@ -121,98 +148,151 @@ const fetchPage = async (
   return { upserts, deletions, rest: threadIds.slice(next) };
 };
 
-type Named = {
-  readonly deleted: ReadonlySet<string>;
-  readonly threads: ReadonlyArray<string>;
-  readonly after: Incremental;
-};
+const emit = (changes: Changes, next: Cursor, kind: SyncPage["kind"]): SyncPage => ({
+  ...changes,
+  cursor: encodeCursor(next),
+  more:
+    kind === "backfill" ||
+    next.phase !== "incremental" ||
+    next.live.pageToken !== null ||
+    next.live.pending.length > 0,
+  kind,
+  backfill: next.phase === "incremental" ? "done" : "running",
+});
 
 const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
-  const backfillPage = async (
-    emailAddress: string,
-    position: Backfill,
-    signal: AbortSignal,
-  ): Promise<SyncPage> => {
-    const { labels, startHistoryId, listing, pageToken } = position;
+  const listingPage = async (pass: Pass, labels: LabelIds, q: string, position: Listing) => {
+    const { listing, pageToken } = position;
     const [label, ...rest] = listing;
-    const list = await listThreads(command, label, backfill, pageToken, LIST_SIZE, signal);
+    const list = await listThreads(command, label, q, pageToken, LIST_SIZE, pass.signal);
     const fetched = new Set(position.fetched);
     const unfetched = (list.threads ?? []).map((t) => t.id).filter((id) => !fetched.has(id));
-    const page = await fetchPage(command, emailAddress, labels, unfetched, signal);
+    const page = await fetchPage(command, pass.emailAddress, labels, unfetched, pass.signal);
     for (const id of unfetched.slice(0, unfetched.length - page.rest.length)) fetched.add(id);
-    const carried = { phase: "backfill", labels, startHistoryId, fetched: [...fetched] } as const;
-    const next: Cursor =
+    const carried = [...fetched];
+    const next: Listing | null =
       page.rest.length > 0
-        ? { ...carried, listing, pageToken }
+        ? { listing, pageToken, fetched: carried }
         : list.nextPageToken !== undefined
-          ? { ...carried, listing, pageToken: list.nextPageToken }
+          ? { listing, pageToken: list.nextPageToken, fetched: carried }
           : Arr.isReadonlyArrayNonEmpty(rest)
-            ? { ...carried, listing: rest, pageToken: null }
-            : {
-                phase: "incremental",
-                labels,
-                historyId: startHistoryId,
-                pageToken: null,
-                pending: [],
-              };
-    return {
-      upserts: page.upserts,
-      deletions: page.deletions,
-      cursor: encodeCursor(next),
-      more: true,
-      kind: "backfill",
-      backfill: next.phase === "backfill" ? "running" : "done",
-    };
+            ? { listing: rest, pageToken: null, fetched: carried }
+            : null;
+    const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
+    return { changes, next };
   };
 
-  const readHistory = async (position: Incremental, signal: AbortSignal): Promise<Named> => {
-    if (position.pending.length > 0) {
-      return { deleted: new Set(), threads: position.pending, after: position };
+  const livePage = async (pass: Pass, labels: LabelIds, live: Live) => {
+    if (live.pending.length > 0) {
+      const page = await fetchPage(command, pass.emailAddress, labels, live.pending, pass.signal);
+      const changes: Changes = { upserts: page.upserts, deletions: page.deletions };
+      return { changes, live: { ...live, pending: page.rest } };
     }
-    const history = await listHistory(command, position.historyId, position.pageToken, signal);
+    const startedAt = Effect.runSync(Clock.currentTimeMillis);
+    let history: HistoryList;
+    try {
+      history = await listHistory(command, live.historyId, live.pageToken, pass.signal);
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
     const deleted = new Set<string>();
     const threads = new Set<string>();
     for (const record of history.history ?? []) {
       for (const { message } of record.messagesDeleted ?? []) deleted.add(message.id);
       for (const { message } of record.messagesAdded ?? []) threads.add(message.threadId);
       for (const { message, labelIds } of record.labelsAdded ?? []) {
-        if (labelIds.some((label) => position.labels.includes(label))) {
-          threads.add(message.threadId);
-        }
+        if (labelIds.some((label) => labels.includes(label))) threads.add(message.threadId);
       }
     }
-    const after: Incremental =
-      history.nextPageToken === undefined
-        ? { ...position, historyId: history.historyId, pageToken: null }
-        : { ...position, pageToken: history.nextPageToken };
-    return { deleted, threads: [...threads], after };
-  };
-
-  const incrementalPage = async (
-    emailAddress: string,
-    restartHistoryId: string,
-    position: Incremental,
-    signal: AbortSignal,
-  ): Promise<SyncPage> => {
-    let named: Named;
-    try {
-      named = await readHistory(position, signal);
-    } catch (error) {
-      if (isNotFound(error)) {
-        return backfillPage(emailAddress, newPass(position.labels, restartHistoryId), signal);
-      }
-      throw error;
-    }
-    const { deleted, threads, after } = named;
-    const page = await fetchPage(command, emailAddress, position.labels, threads, signal);
-    const next: Incremental = { ...after, pending: page.rest };
-    return {
+    const page = await fetchPage(command, pass.emailAddress, labels, [...threads], pass.signal);
+    const changes: Changes = {
       upserts: page.upserts.filter((item) => !deleted.has(item.externalId)),
       deletions: [...new Set([...deleted, ...page.deletions])],
-      cursor: encodeCursor(next),
-      more: next.pending.length > 0 || next.pageToken !== null,
-      kind: "live",
-      backfill: "done",
+    };
+    const next: Live =
+      history.nextPageToken === undefined
+        ? {
+            historyId: history.historyId,
+            pageToken: null,
+            watermark: startedAt,
+            pending: page.rest,
+          }
+        : { ...live, pageToken: history.nextPageToken, pending: page.rest };
+    return { changes, live: next };
+  };
+
+  const step = async (pass: Pass, position: Cursor): Promise<SyncPage> => {
+    const { labels } = position;
+    const gap = (live: Live): Cursor => ({
+      phase: "gap",
+      labels,
+      after: Math.floor(live.watermark / 1000) - GAP_SLACK_SECONDS,
+      ...listingStart(labels),
+      live: {
+        historyId: pass.historyId,
+        pageToken: null,
+        watermark: pass.recordedAt,
+        pending: live.pending,
+      },
+    });
+    switch (position.phase) {
+      case "backfill": {
+        if (position.turn === "live") {
+          const live = await livePage(pass, labels, position.live);
+          if (live === null) return step(pass, gap(position.live));
+          return emit(live.changes, { ...position, live: live.live, turn: "backfill" }, "live");
+        }
+        const { changes, next } = await listingPage(pass, labels, backfill, position);
+        return emit(
+          changes,
+          next === null
+            ? { phase: "incremental", labels, live: position.live }
+            : { ...position, ...next, turn: "live" },
+          "backfill",
+        );
+      }
+      case "gap": {
+        const { changes, next } = await listingPage(
+          pass,
+          labels,
+          `after:${position.after}`,
+          position,
+        );
+        return emit(
+          changes,
+          next === null
+            ? {
+                phase: "backfill",
+                labels,
+                ...listingStart(labels),
+                live: position.live,
+                turn: "backfill",
+              }
+            : { ...position, ...next },
+          "live",
+        );
+      }
+      case "incremental": {
+        const live = await livePage(pass, labels, position.live);
+        if (live === null) return step(pass, gap(position.live));
+        return emit(live.changes, { phase: "incremental", labels, live: live.live }, "live");
+      }
+    }
+  };
+
+  const resume = (position: Cursor | null, labels: LabelIds, cold: Live): Cursor => {
+    if (position === null) {
+      return { phase: "backfill", labels, ...listingStart(labels), live: cold, turn: "backfill" };
+    }
+    if (sameLabels(position.labels, labels)) return position;
+    if (position.phase === "gap") return { ...position, labels, ...listingStart(labels) };
+    return {
+      phase: "backfill",
+      labels,
+      ...listingStart(labels),
+      live: position.live,
+      turn: "live",
     };
   };
 
@@ -240,6 +320,7 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       signal: AbortSignal,
     ): Promise<SyncPage> => {
       const position = cursor === null ? null : decodeCursor(cursor);
+      const recordedAt = Effect.runSync(Clock.currentTimeMillis);
       const [profile, labels] = await Promise.all([
         getProfile(command, signal),
         resolveLabels(command, labelNames, signal),
@@ -247,20 +328,21 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       if (streamId !== profile.emailAddress) {
         throw new Error(`gws has no stream ${streamId}; the mailbox is ${profile.emailAddress}`);
       }
-      if (position === null) {
-        return backfillPage(profile.emailAddress, newPass(labels, profile.historyId), signal);
-      }
-      if (!sameLabels(position.labels, labels)) {
-        const checkpoint =
-          position.phase === "backfill" ? position.startHistoryId : position.historyId;
-        return backfillPage(profile.emailAddress, newPass(labels, checkpoint), signal);
-      }
-      switch (position.phase) {
-        case "backfill":
-          return backfillPage(profile.emailAddress, position, signal);
-        case "incremental":
-          return incrementalPage(profile.emailAddress, profile.historyId, position, signal);
-      }
+      const pass: Pass = {
+        emailAddress: profile.emailAddress,
+        historyId: profile.historyId,
+        recordedAt,
+        signal,
+      };
+      return step(
+        pass,
+        resume(position, labels, {
+          historyId: profile.historyId,
+          pageToken: null,
+          watermark: recordedAt,
+          pending: [],
+        }),
+      );
     },
   };
 };

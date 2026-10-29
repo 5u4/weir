@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { type RawItem, type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import {
   deliver,
+  deliverThreads,
   expireHistory,
   FIXTURE_NOW,
   readCalls,
@@ -12,7 +13,10 @@ import {
   seedMailbox,
   seedThreads,
   setDelay,
+  type Thread,
 } from "@weir/fixtures";
+import * as Clock from "effect/Clock";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
@@ -99,11 +103,31 @@ const syncAll = async (source: Source, cursor: string | null) => {
 const subjectOf = (item: RawItem) => item.title?.replace(/^Re: /, "");
 const idsWithSubject = (items: Map<string, RawItem>, subject: string) =>
   [...items.values()].filter((i) => subjectOf(i) === subject).map((i) => i.externalId);
-const passKinds = (pages: SyncPage[]) => [
-  ...pages.slice(0, -2).map(() => ["backfill", "running"]),
-  ["backfill", "done"],
-  ["live", "done"],
-];
+const passKinds = (pages: SyncPage[]) =>
+  pages.map((_, i) =>
+    i === pages.length - 1
+      ? ["live", "done"]
+      : i === pages.length - 2
+        ? ["backfill", "done"]
+        : i % 2 === 0
+          ? ["backfill", "running"]
+          : ["live", "running"],
+  );
+const freshThread = (id: string, agoMs = 0): Thread => ({
+  id,
+  subject: `Fresh ${id}`,
+  labels: ["INBOX"],
+  messages: [
+    {
+      at: new Date(Effect.runSync(Clock.currentTimeMillis) - agoMs)
+        .toISOString()
+        .replace(/\.\d+Z$/, "+00:00"),
+      from: "priya",
+      to: ["me"],
+      text: `Fresh note ${id}`,
+    },
+  ],
+});
 
 const rawMessage = (dir: string, item: RawItem) => {
   const proc = Bun.spawnSync([
@@ -149,7 +173,7 @@ describe("gws plugin against fake-gws", () => {
     expect(JSON.parse(cursor ?? "")).toMatchObject({
       phase: "incremental",
       labels: ["CATEGORY_PROMOTIONS", "INBOX", "SENT"],
-      pageToken: null,
+      live: { pageToken: null },
     });
     const item = [...items.values()][0];
     expect(item?.link).toBe(
@@ -203,14 +227,14 @@ describe("gws plugin against fake-gws", () => {
     );
 
     const { pages, items } = await syncAll(sourceFor(dir, ["INBOX"]), null);
-    expect(pages.map((page) => [...new Set(page.upserts.map(subjectOf))])).toEqual([
+    expect(pages.map(({ kind }) => kind)).toEqual(["backfill", "live", "backfill", "live"]);
+    const backfills = pages.filter((page) => page.kind === "backfill");
+    expect(backfills.map((page) => [...new Set(page.upserts.map(subjectOf))])).toEqual([
       subjects.slice(0, 8),
       subjects.slice(8),
-      [],
     ]);
-    expect(pages.map(({ kind }) => kind)).toEqual(["backfill", "backfill", "live"]);
-    expect(pages.map((page) => page.upserts.length)).toEqual([7 * 12 + 150, 3 * 12, 0]);
-    expect(pages[0]?.upserts.filter((item) => subjectOf(item) === "Long")).toHaveLength(150);
+    expect(backfills.map((page) => page.upserts.length)).toEqual([7 * 12 + 150, 3 * 12]);
+    expect(backfills[0]?.upserts.filter((item) => subjectOf(item) === "Long")).toHaveLength(150);
     expect(items.size).toBe(delivered);
     const fetched = threadGets(dir);
     expect(fetched).toHaveLength(subjects.length);
@@ -307,13 +331,38 @@ describe("gws plugin against fake-gws", () => {
     ).toHaveLength(3);
 
     const idle = await syncPage(source, page.cursor);
-    expect(idle).toEqual({
+    expect(idle).toMatchObject({
       upserts: [],
       deletions: [],
-      cursor: page.cursor,
       more: false,
       kind: "live",
       backfill: "done",
+    });
+    expect(JSON.parse(idle.cursor).live).toMatchObject({
+      historyId: JSON.parse(page.cursor).live.historyId,
+      pageToken: null,
+    });
+  });
+
+  it("alternates backfill pages with live pages that pick up mail delivered mid-backfill", async () => {
+    const dir = seeded();
+    const source = sourceFor(dir);
+    const first = await syncPage(source, null);
+    expect(first).toMatchObject({ kind: "backfill", backfill: "running", more: true });
+    const startHistoryId = JSON.parse(first.cursor).live.historyId;
+    const [fresh] = deliverThreads(dir, [freshThread("mid-backfill")]);
+
+    const live = await syncPage(source, first.cursor);
+    expect(live).toMatchObject({ kind: "live", backfill: "running", more: true });
+    expect(live.upserts.map((i) => i.externalId)).toEqual([fresh]);
+
+    const rest = await syncAll(source, live.cursor);
+    const pages = [first, live, ...rest.pages];
+    expect(pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(passKinds(pages));
+    expect(new Set(pages.flatMap((p) => p.upserts.map((i) => i.externalId))).size).toBe(33);
+    expect(JSON.parse(rest.cursor ?? "")).toMatchObject({
+      phase: "incremental",
+      live: { historyId: String(Number(startHistoryId) + 1), pageToken: null },
     });
   });
 
@@ -321,9 +370,9 @@ describe("gws plugin against fake-gws", () => {
     const dir = seeded();
     const inbox = await syncAll(sourceFor(dir, ["INBOX"]), null);
     const widened = await syncAll(sourceFor(dir, ["INBOX", "CATEGORY_PROMOTIONS"]), inbox.cursor);
-    expect(widened.pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(
-      passKinds(widened.pages),
-    );
+    const [replay, ...relisted] = widened.pages;
+    expect(replay).toMatchObject({ kind: "live", backfill: "running", upserts: [] });
+    expect(relisted.map(({ kind, backfill }) => [kind, backfill])).toEqual(passKinds(relisted));
     expect(widened.items.size).toBe(32);
     expect(JSON.parse(widened.cursor ?? "")).toMatchObject({
       phase: "incremental",
@@ -333,7 +382,12 @@ describe("gws plugin against fake-gws", () => {
       sourceFor(dir, ["CATEGORY_PROMOTIONS", "INBOX", "INBOX"]),
       widened.cursor,
     );
-    expect(reordered).toMatchObject({ upserts: [], kind: "live", cursor: widened.cursor });
+    expect(reordered).toMatchObject({ upserts: [], kind: "live", backfill: "done" });
+    expect(JSON.parse(reordered.cursor)).toMatchObject({
+      phase: "incremental",
+      labels: ["CATEGORY_PROMOTIONS", "INBOX"],
+      live: { historyId: JSON.parse(widened.cursor ?? "").live.historyId },
+    });
   });
 
   it("returns the scenario text as bodyNew for every message", async () => {
@@ -398,16 +452,35 @@ describe("gws plugin against fake-gws", () => {
     expect(page.deletions).toEqual([gone]);
   });
 
-  it("re-lists the backfill when history has expired", async () => {
+  it("lists mail newer than the watermark less an hour as live pages when history expires, then re-backfills", async () => {
     const dir = seeded();
     const source = sourceFor(dir);
     const cold = await syncAll(source, null);
+    const { watermark } = JSON.parse(cold.cursor ?? "").live;
+    const [beforeExpiry] = deliverThreads(dir, [freshThread("gap-1", 60_000)]);
     expireHistory(dir);
+    const [afterExpiry] = deliverThreads(dir, [freshThread("gap-2")]);
+
     const recovered = await syncAll(source, cold.cursor);
-    expect(recovered.items.size).toBe(32);
-    expect(recovered.pages.map(({ kind, backfill }) => [kind, backfill])).toEqual(
-      passKinds(recovered.pages),
+    const relist = recovered.pages.findIndex((p) => p.kind === "backfill");
+    const gap = recovered.pages.slice(0, relist);
+    expect(gap.map(({ kind, backfill }) => [kind, backfill])).toEqual(
+      gap.map(() => ["live", "running"]),
     );
+    expect(gap.flatMap((p) => p.upserts.map((i) => i.externalId))).toEqual(
+      expect.arrayContaining([beforeExpiry, afterExpiry]),
+    );
+    const backfillPages = recovered.pages.slice(relist);
+    expect(backfillPages.map(({ kind, backfill }) => [kind, backfill])).toEqual(
+      passKinds(backfillPages),
+    );
+    expect(recovered.pages.flatMap((p) => p.deletions)).toEqual([]);
+    expect(recovered.items.size).toBe(34);
+    expect(
+      readCalls(dir)
+        .filter((c) => c.command === "threads list" && String(c.params.q).startsWith("after:"))
+        .map((c) => c.params.q),
+    ).toEqual(EVERY_LABEL.map(() => `after:${Math.floor(watermark / 1000) - 3600}`));
     expect(JSON.parse(recovered.cursor ?? "")).toMatchObject({ phase: "incremental" });
     const [id] = recovered.items.keys();
     remove(dir, id ?? "");
