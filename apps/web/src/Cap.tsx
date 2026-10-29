@@ -1,7 +1,7 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { Fragment, type MouseEvent } from "react";
+import { Fragment, type MouseEvent, useCallback, useRef } from "react";
 import { Avatars } from "./Avatar.tsx";
 import { plural } from "./Health.ts";
 import { Link } from "./Link.tsx";
@@ -102,6 +102,69 @@ function StripArrow(props: { readonly direction: 1 | -1 }) {
     >
       <Chevron direction={props.direction} />
     </button>
+  );
+}
+
+const hands = ["pointerdown", "wheel", "touchstart", "keydown", "focusin"] as const;
+
+// The current view's chip scrolls to the middle whenever what is on screen moves (view, conversation, or the
+// pill appearing), never under a hand that is scrolling the strip. Until a hand touches it, the chip stays
+// centred while the pill settles its width.
+function ViewStrip({
+  widgets,
+  active,
+  shown,
+}: {
+  readonly widgets: ReadonlyArray<Widget>;
+  readonly active: View | null;
+  readonly shown: string;
+}) {
+  const centred = useRef<string | null>(null);
+  const loaded = widgets.length > 0;
+  const centre = useCallback(
+    (wrap: HTMLSpanElement | null) => {
+      const strip = wrap?.querySelector<HTMLElement>(".cws");
+      const chip = strip?.querySelector<HTMLElement>(".cw.on");
+      if (!loaded || wrap == null || strip == null || chip == null) return;
+      const smooth =
+        centred.current !== null &&
+        centred.current !== shown &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches;
+      centred.current = shown;
+      const goal = () => {
+        const box = strip.getBoundingClientRect();
+        const at = chip.getBoundingClientRect();
+        return strip.scrollLeft + at.left - box.left + at.width / 2 - strip.clientWidth / 2;
+      };
+      let left = goal();
+      strip.scrollTo({ left, behavior: smooth ? "smooth" : "auto" });
+      const settle = new ResizeObserver(() => {
+        const next = goal();
+        if (Math.abs(next - left) < 1) return;
+        left = next;
+        strip.scrollTo({ left, behavior: "auto" });
+      });
+      settle.observe(strip);
+      for (const each of strip.children) settle.observe(each);
+      const release = () => {
+        settle.disconnect();
+        for (const hand of hands) wrap.removeEventListener(hand, release);
+      };
+      for (const hand of hands) wrap.addEventListener(hand, release, { passive: true });
+      return release;
+    },
+    [shown, loaded],
+  );
+  return (
+    <span className="cws-w" ref={centre}>
+      <nav className="cws" aria-label="Views" ref={fadeStrip}>
+        {widgets.map((widget) => (
+          <Chip key={widget.view} widget={widget} active={active} />
+        ))}
+      </nav>
+      <StripArrow direction={-1} />
+      <StripArrow direction={1} />
+    </span>
   );
 }
 
@@ -442,19 +505,11 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
           ) : (
             <>
               <span className="cap-div" />
-              <span className="cws-w">
-                <nav className="cws" aria-label="Views" ref={fadeStrip}>
-                  {Option.match(loaded, {
-                    onNone: () => null,
-                    onSome: (value) =>
-                      chips(value).map((widget) => (
-                        <Chip key={widget.view} widget={widget} active={active} />
-                      )),
-                  })}
-                </nav>
-                <StripArrow direction={-1} />
-                <StripArrow direction={1} />
-              </span>
+              <ViewStrip
+                widgets={Option.match(loaded, { onNone: () => [], onSome: chips })}
+                active={active}
+                shown={`${active}|${Option.getOrElse(current.conversation, () => "")}`}
+              />
               <span className="cap-div" />
               {Option.isSome(loaded) && (
                 <Chip widget={clearedWidget(loaded.value)} active={active} />
