@@ -389,6 +389,8 @@ backfill = "newer_than:30d"
       );
       const detail = yield* client.conversation({ params: { id: unread[0]?.id ?? 0 } });
       expect(detail.open?.link.endsWith(`#all/${delivered}`)).toBe(true);
+      expect(detail.items.length).toBeGreaterThan(0);
+      expect(detail.items.every(({ stream }) => stream === "robin.ellis@example.com")).toBe(true);
       expect((yield* client.status()).sources[0]?.streams).toMatchObject([{ backfill: "done" }]);
     }).pipe(Effect.scoped),
   );

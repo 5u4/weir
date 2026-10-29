@@ -30,6 +30,7 @@ const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSum
   from_me: false,
   title: null,
   body_new,
+  stream: "robin.ellis@example.com",
 });
 
 const digest = (

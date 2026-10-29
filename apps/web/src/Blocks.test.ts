@@ -22,6 +22,7 @@ const item = (seq: number, minute: number, from = ada, from_me = false): ItemSum
   from_me,
   title: null,
   body_new: `message ${seq}`,
+  stream: "robin.ellis@example.com",
 });
 
 const digest = (id: number, from_seq: number, to_seq: number, seqs = [from_seq]): Digest => ({

@@ -109,6 +109,7 @@ const daemon = vi.hoisted(() => {
             link: null,
             body: "hello",
             body_new: "hello",
+            stream: "robin.ellis@example.com",
             raw: null,
             deleted_at: null,
           },
