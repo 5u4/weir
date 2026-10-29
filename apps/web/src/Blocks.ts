@@ -19,9 +19,15 @@ export type ReaderUi = {
   readonly shapes: ReadonlyMap<number, Shape>;
   readonly earlier: boolean;
   readonly originals: ReadonlySet<TopicKey | UncitedKey>;
+  readonly long: ReadonlySet<number>;
 };
 
-export const closedUi: ReaderUi = { shapes: new Map(), earlier: false, originals: new Set() };
+export const closedUi: ReaderUi = {
+  shapes: new Map(),
+  earlier: false,
+  originals: new Set(),
+  long: new Set(),
+};
 
 export const revealing = (ui: ReaderUi, run: Run): ReaderUi =>
   run._tag === "Failed" && run.action._tag === "Redo" && !ui.shapes.has(run.action.id)

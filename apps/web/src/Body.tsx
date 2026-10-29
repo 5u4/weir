@@ -1,5 +1,5 @@
 import type { Block, Inline, Visible } from "@weir/daemon/Markdown";
-import { createElement, Fragment, type ReactNode } from "react";
+import { createElement, Fragment, type ReactNode, type Ref } from "react";
 import { Highlighted } from "./Marked.tsx";
 
 const inline = (node: Inline, pattern: RegExp | null): ReactNode => {
@@ -98,6 +98,16 @@ const block = (node: Block, pattern: RegExp | null): ReactNode => {
   }
 };
 
-export function Body({ tree, pattern }: { tree: Visible; pattern: RegExp | null }) {
-  return createElement("div", { className: "body" }, ...tree.map((node) => block(node, pattern)));
+export function Body({
+  tree,
+  pattern,
+  className,
+  ref,
+}: {
+  tree: Visible;
+  pattern: RegExp | null;
+  className: string;
+  ref: Ref<HTMLDivElement>;
+}) {
+  return createElement("div", { className, ref }, ...tree.map((node) => block(node, pattern)));
 }

@@ -848,6 +848,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li>只有一个 topic 的 digest，卡片上不显示 topic 标题和状态 chip，headline、正文和 <code>1 original</code> 照常显示。</li>
 <li>最后一份 digest 之后还没 digest 的尾巴，是原文气泡。尾巴存在时显示 Digest now。conversation 开着 AI 时，旁边还显示离阈值还差多少。</li>
 <li>原文气泡里，你自己的消息靠右。换人或者停顿 5 分钟及以上就开一个新组。每组都有头像和组头，组头是名字和时间，比如「Jacky Ng 14:03」，和 Slack、Teams 一样。你自己的组和别人的组用同一套头像和名字，只是左右镜像，头像在右边。气泡里不放时间。</li>
+<li>原文气泡的正文超过大约 12 行的高度时，只显示这一段，底部淡出，下面有 Show all。点了在原处展开全文，按钮变成 Show less，收起时把这条气泡滚回视口。搜索跳到某条原文正文里的命中时，那条气泡先展开，命中词会落在视口里。</li>
 <li>某份 digest 前面还没 digest 的一段原文，底部紧挨着那份 digest 有一条 <code>Not digested</code>、<code>N messages above</code> 和 Digest earlier。从新往旧翻的时候先碰到它，往前补 digest 就靠它，一次补一次调用的量。</li>
 <li>还没 digest 的每条原文气泡，悬停或聚焦时显示 Digest from here，从这条往后补到下一份 digest 之前。窄屏上点一下气泡显示。</li>
 <li>阅读区只有这一种视图，没有全部原文的开关。</li>

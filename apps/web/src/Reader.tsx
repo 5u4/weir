@@ -1,5 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
-import { visible } from "@weir/daemon/Markdown";
+import { type Visible, visible } from "@weir/daemon/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -8,7 +8,9 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type UIEvent,
+  useCallback,
   useRef,
+  useState,
 } from "react";
 import { Avatar } from "./Avatar.tsx";
 import {
@@ -219,7 +221,65 @@ function End({ seq, watch }: { seq: number; watch: Watch }) {
   return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
 }
 
+function Long({
+  id,
+  seq,
+  tree,
+  pattern,
+}: {
+  id: ConversationId;
+  seq: number;
+  tree: Visible;
+  pattern: RegExp | null;
+}) {
+  const [ui, setUi] = useAtom(readerUi(id));
+  const [over, setOver] = useState(false);
+  const measure = useCallback((body: HTMLDivElement) => {
+    const observer = new ResizeObserver(() => setOver(body.scrollHeight > body.clientHeight + 2));
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, []);
+  const open = ui.long.has(seq);
+  return (
+    <>
+      <Body
+        tree={tree}
+        pattern={pattern}
+        className={["body clip", open && "open", over && "over"].filter(Boolean).join(" ")}
+        ref={measure}
+      />
+      <button
+        type="button"
+        className="more"
+        aria-expanded={open}
+        onClick={(event) => {
+          const bubble = event.currentTarget.closest(".bl");
+          setUi((current) => {
+            const long = new Set(current.long);
+            if (open) long.delete(seq);
+            else long.add(seq);
+            return { ...current, long };
+          });
+          if (open) {
+            requestAnimationFrame(() =>
+              bubble?.scrollIntoView({
+                block: "nearest",
+                behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+                  ? "auto"
+                  : "smooth",
+              }),
+            );
+          }
+        }}
+      >
+        {open ? "Show less" : "Show all"}
+      </button>
+    </>
+  );
+}
+
 function Bubble({
+  id,
   item,
   here,
   controls,
@@ -227,6 +287,7 @@ function Bubble({
   mark,
   found,
 }: {
+  id: ConversationId;
   item: ItemSummary;
   here: Here | undefined;
   controls: Controls | null;
@@ -266,7 +327,7 @@ function Bubble({
           {tree.length === 0 ? (
             <p className="body b-none">(no text)</p>
           ) : (
-            <Body tree={tree} pattern={found.pattern} />
+            <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} />
           )}
         </div>
         {hit?._tag === "Item" && hit.field !== "body" && (
@@ -305,12 +366,14 @@ function Bubble({
 }
 
 function Group({
+  id,
   group,
   mark,
   found,
   watch,
   controls = null,
 }: {
+  id: ConversationId;
   group: Bubbles;
   mark: Mark;
   found: Found;
@@ -335,6 +398,7 @@ function Group({
       {group.items.map((item, index) => (
         <Bubble
           key={item.seq}
+          id={id}
           item={item}
           here={group.heres?.[index]}
           controls={controls}
@@ -380,12 +444,14 @@ const flipped =
   };
 
 function Originals({
+  id,
   fold,
   noun,
   toggle,
   mark,
   found,
 }: {
+  id: ConversationId;
   fold: AnyFold;
   noun: string;
   toggle: () => void;
@@ -416,7 +482,7 @@ function Originals({
       {fold.open && (
         <div className="unf">
           {fold.groups.map((group) => (
-            <Group key={group.items[0]?.seq} group={group} mark={mark} found={found} />
+            <Group key={group.items[0]?.seq} id={id} group={group} mark={mark} found={found} />
           ))}
         </div>
       )}
@@ -463,7 +529,7 @@ function Topic({
       <p className="tp-b">
         <Highlighted text={view.topic.body} pattern={found.pattern} />
       </p>
-      <Originals fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
+      <Originals id={id} fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
     </section>
   );
 }
@@ -564,6 +630,7 @@ function DigestCard({
         {uncited !== null && (
           <section className={`tp uncited${solo ? " solo" : ""}`}>
             <Originals
+              id={id}
               fold={uncited}
               noun="other original"
               toggle={() => setUi(flipped(uncited))}
@@ -727,7 +794,9 @@ export function BlockView({
     case "Skeleton":
       return <Skeleton items={block.items} />;
     case "Bubbles":
-      return <Group group={block} watch={watch} mark={mark} found={found} controls={controls} />;
+      return (
+        <Group id={id} group={block} watch={watch} mark={mark} found={found} controls={controls} />
+      );
   }
 }
 

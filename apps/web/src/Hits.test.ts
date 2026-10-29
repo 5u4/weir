@@ -1,5 +1,6 @@
+import { RegistryProvider } from "@effect/atom-react/RegistryContext";
 import { termPattern } from "@weir/daemon/Match";
-import { createElement, Fragment } from "react";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
@@ -9,11 +10,13 @@ import {
   type Digest,
   type ItemSummary,
   lastSeq,
+  type ReaderUi,
   reader,
   topicKey,
 } from "./Blocks.ts";
 import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import { BlockView } from "./Reader.tsx";
+import { readerUi } from "./Reading.ts";
 import { ConversationId } from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
@@ -146,30 +149,42 @@ const outer = (markup: string, key: string) => {
   return null;
 };
 
+const rendered = (
+  of: Detail,
+  ui: ReaderUi,
+  found: {
+    readonly pattern: RegExp | null;
+    readonly hits: ReadonlyMap<string, Hit>;
+    readonly current: string | null;
+  },
+) => {
+  const id = ConversationId.make(of.id);
+  return renderToStaticMarkup(
+    createElement(
+      RegistryProvider,
+      { initialValues: [[readerUi(id), ui]] },
+      reader(of, lastSeq(of), ui, null).map((block, at) =>
+        createElement(BlockView, {
+          key: at,
+          id,
+          block,
+          watch: () => () => {},
+          mark: { seen: lastSeq(of), unread: () => {} },
+          found,
+          controls: null,
+        }),
+      ),
+    ),
+  );
+};
+
 const revealed = (of: Detail, query: string) => {
   const pattern = termPattern(query);
   const all = hits(of, pattern);
   const keyed = new Map(all.map((hit) => [hitKey(hit), hit]));
   return all.map((hit) => {
     const key = hitKey(hit);
-    const blocks = reader(of, lastSeq(of), reveal(closedUi, of, hit), null);
-    const markup = renderToStaticMarkup(
-      createElement(
-        Fragment,
-        null,
-        blocks.map((block, at) =>
-          createElement(BlockView, {
-            key: at,
-            id: ConversationId.make(of.id),
-            block,
-            watch: () => () => {},
-            mark: { seen: lastSeq(of), unread: () => {} },
-            found: { pattern, hits: keyed, current: key },
-            controls: null,
-          }),
-        ),
-      ),
-    );
+    const markup = rendered(of, reveal(closedUi, of, hit), { pattern, hits: keyed, current: key });
     return { key, target: outer(markup, key) };
   });
 };
@@ -348,24 +363,8 @@ describe("newsletter body", () => {
         `${newsletterBody}\n\n[run](javascript:alert(1))`,
       ),
     ]);
-    const markup = renderToStaticMarkup(
-      createElement(
-        Fragment,
-        null,
-        reader(unsafe, lastSeq(unsafe), closedUi, null).map((block, at) =>
-          createElement(BlockView, {
-            key: at,
-            id: ConversationId.make(unsafe.id),
-            block,
-            watch: () => () => {},
-            mark: { seen: lastSeq(unsafe), unread: () => {} },
-            found: { pattern: null, hits: new Map(), current: null },
-            controls: null,
-          }),
-        ),
-      ),
-    );
-    expect(markup).toContain('class="body"');
+    const markup = rendered(unsafe, closedUi, { pattern: null, hits: new Map(), current: null });
+    expect(markup).toContain('class="body clip"');
     expect(markup).not.toContain("<img");
     expect(markup).not.toContain("src=");
     expect(markup).not.toContain("javascript:");
@@ -377,15 +376,27 @@ describe("newsletter body", () => {
     expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
     expect(markup).toContain('class="b-img"');
   });
+
+  it("a long body starts clipped and opens when a search lands on it", () => {
+    const found = { pattern: null, hits: new Map(), current: null };
+    const closed = rendered(newsletter, closedUi, found);
+    expect(closed).toContain('<div class="body clip">');
+    expect(closed).toContain('class="more" aria-expanded="false">Show all</button>');
+    const landed = reveal(closedUi, newsletter, { _tag: "Item", seq: 1, field: "body" });
+    const open = rendered(newsletter, landed, found);
+    expect(open).toContain('<div class="body clip open">');
+    expect(open).toContain('class="more" aria-expanded="true">Show less</button>');
+  });
 });
 
 describe("reveal", () => {
   const [first] = northwind.digests as [Digest];
 
-  it("opens the card and only the topic that cites a covered original", () => {
+  it("opens the card, only the topic that cites a covered original, and its body", () => {
     const shown = reveal(closedUi, northwind, { _tag: "Item", seq: 21, field: "body" });
     expect(shown.shapes.get(first.id)).toBe("card");
     expect([...shown.originals]).toEqual([topicKey(first, 1)]);
+    expect([...shown.long]).toEqual([21]);
   });
 
   it("keeps originals the reader already opened", () => {
@@ -405,7 +416,13 @@ describe("reveal", () => {
     }
   });
 
-  it("leaves the reader as it is for an original outside any digest", () => {
-    expect(reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "body" })).toBe(closedUi);
+  it("opens only the body of an original outside any digest", () => {
+    const shown = reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "body" });
+    expect(shown).toEqual({ ...closedUi, long: new Set([2]) });
+    expect(reveal(shown, northwind, { _tag: "Item", seq: 2, field: "body" })).toBe(shown);
+  });
+
+  it("leaves the reader as it is for a sender hit outside any digest", () => {
+    expect(reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "from" })).toBe(closedUi);
   });
 });
