@@ -3,12 +3,13 @@ import type { Row } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
+import type { CSSProperties } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import { ConversationId, route, type View } from "./Route.ts";
-import { face, neighbor, shown } from "./Rows.ts";
-import { clearAll, dismiss, intents, viewList } from "./Weir.ts";
+import { face, neighbor, shown, tagHue } from "./Rows.ts";
+import { clearAll, counts, dismiss, intents, viewList } from "./Weir.ts";
 
 const viewLabel = (view: View) =>
   view === "untagged" ? "Untagged" : view === "cleared" ? "Cleared" : view.slice("tag:".length);
@@ -17,11 +18,13 @@ function ListRow({
   row,
   view,
   selected,
+  hue,
   onDismiss,
 }: {
   row: Row;
   view: View;
   selected: boolean;
+  hue: number | undefined;
   onDismiss: () => void;
 }) {
   const [current] = useAtom(route);
@@ -30,7 +33,10 @@ function ListRow({
   const { from, preview, who, names } = face(row);
   const cleared = view === "cleared";
   return (
-    <li className={`row${row.state === "unread" ? " unread" : ""}${selected ? " sel" : ""}`}>
+    <li
+      className={`row${row.state === "unread" ? " unread" : ""}${selected ? " sel" : ""}`}
+      style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
+    >
       <Link
         to={{ ...current, conversation: Option.some(ConversationId.make(row.id)) }}
         current={selected}
@@ -103,6 +109,10 @@ export function List() {
   const { view } = current;
   const result = useAtomValue(viewList(view));
   const pending = useAtomValue(intents);
+  const tags = AsyncResult.getOrElse(
+    AsyncResult.map(useAtomValue(counts), (value) => value.tags.map(({ name }) => name)),
+    () => [],
+  );
   const runDismiss = useAtomSet(dismiss);
   const runClear = useAtomSet(clearAll);
   const loaded = AsyncResult.getOrElse(AsyncResult.map(result, Option.some), () => Option.none());
@@ -150,6 +160,7 @@ export function List() {
                     row={row}
                     view={view}
                     selected={open === row.id}
+                    hue={tagHue(tags, view, row)}
                     onDismiss={() => {
                       if (open === row.id) {
                         navigate({

@@ -1,7 +1,7 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { face, type Intents, intentFor, neighbor, shown } from "./Rows.ts";
+import { face, type Intents, intentFor, neighbor, shown, tagHue } from "./Rows.ts";
 
 const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   id,
@@ -81,5 +81,24 @@ describe("row face", () => {
   it("passes the daemon's sender and preview through", () => {
     const value = { ...row(1, 1), from: bo, preview: "Ship it" };
     expect(face(value)).toMatchObject({ from: bo, preview: "Ship it" });
+  });
+});
+
+describe("row tint", () => {
+  const tags = ["Work", "GitHub", "Family"];
+  const tagged = (...names: ReadonlyArray<string>) => ({ ...row(1, 1), tags: names });
+
+  it("takes the hue of the tag the row is seen through", () => {
+    expect(tagHue(tags, "tag:GitHub", tagged("Work", "GitHub"))).toBe(200);
+  });
+
+  it("falls back to the row's first tag outside its tag views", () => {
+    expect(tagHue(tags, "cleared", tagged("Family", "Work"))).toBe(150);
+    expect(tagHue(tags, "tag:Work", tagged("Family"))).toBe(150);
+  });
+
+  it("leaves untagged rows and unknown tags untinted", () => {
+    expect(tagHue(tags, "untagged", tagged())).toBeUndefined();
+    expect(tagHue(tags, "cleared", tagged("Gone"))).toBeUndefined();
   });
 });
