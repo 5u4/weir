@@ -81,16 +81,19 @@ export const writeKind = (previous: Route, navigation: Navigation): Write => {
   return next.query === "" ? "leave" : "replace";
 };
 
-const SearchEntry = Schema.Struct({ preSearch: Schema.String, adjacent: Schema.Boolean });
+const SearchEntry = Schema.Struct({
+  preSearch: Schema.String,
+  depth: Schema.Int.check(Schema.isGreaterThan(0)),
+});
 type SearchEntry = typeof SearchEntry.Type;
 const searchEntry = Schema.decodeUnknownOption(SearchEntry);
 
 const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
   if (next.query === "") return null;
-  if (previous.query === "") return { preSearch: href(previous), adjacent: true };
+  if (previous.query === "") return { preSearch: href(previous), depth: 1 };
   return Option.match(searchEntry(history.state), {
     onNone: () => null,
-    onSome: ({ preSearch }) => ({ preSearch, adjacent: false }),
+    onSome: ({ preSearch, depth }) => ({ preSearch, depth: depth + 1 }),
   });
 };
 
@@ -115,16 +118,18 @@ export const route = Atom.writable(
         history.replaceState(history.state, "", href(next));
         ctx.setSelf(next);
         return;
-      case "leave": {
-        const entry = searchEntry(history.state);
-        const target = Option.match(entry, {
-          onNone: () => href({ ...next, conversation: Option.none() }),
-          onSome: ({ preSearch }) => preSearch,
+      case "leave":
+        Option.match(searchEntry(history.state), {
+          onNone: () => {
+            const target = { ...next, conversation: Option.none() };
+            history.replaceState(null, "", href(target));
+            ctx.setSelf(target);
+          },
+          onSome: ({ preSearch, depth }) => {
+            history.go(-depth);
+            ctx.setSelf(parse(new URL(preSearch, location.href).search));
+          },
         });
-        if (Option.exists(entry, ({ adjacent }) => adjacent)) history.back();
-        else history.replaceState(null, "", target);
-        ctx.setSelf(parse(new URL(target, location.href).search));
-      }
     }
   },
 );
