@@ -1,0 +1,24 @@
+{
+  "name": "@weir/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --bun vite",
+    "build": "bun --bun vite build"
+  },
+  "dependencies": {
+    "@effect/atom-react": "catalog:",
+    "@weir/daemon": "workspace:*",
+    "effect": "catalog:",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "scheduler": "0.27.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.5"
+  }
+}

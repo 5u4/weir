@@ -23,6 +23,7 @@ import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
+import * as Web from "./Web.ts";
 
 const tagTestBatch = 200;
 const tagTestSamples = 3;
@@ -279,11 +280,19 @@ const loopbackOnly = HttpRouter.middleware(
   { global: true },
 );
 
-export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
+export const layer = (
+  home: WeirHome,
+  registry: Scheduler.PluginRegistry,
+  webDist: string = Web.defaultDist,
+) =>
   advertise(home).pipe(
     Layer.provide(
       HttpRouter.serve(
-        Layer.mergeAll(HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)), loopbackOnly),
+        Layer.mergeAll(
+          HttpApiBuilder.layer(Api).pipe(Layer.provide(handlers)),
+          Web.layer(webDist),
+          loopbackOnly,
+        ),
         {
           disableLogger: true,
           disableListenLog: true,
@@ -294,7 +303,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
       Layer.unwrap(
         Effect.gen(function* () {
           const { port } = yield* Daemon;
-          return BunHttpServer.layer({ hostname: "127.0.0.1", port });
+          return BunHttpServer.layer({ hostname: "127.0.0.1", port, idleTimeout: 0 });
         }),
       ),
     ),
