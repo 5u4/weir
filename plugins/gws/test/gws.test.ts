@@ -297,6 +297,31 @@ describe("gws plugin against fake-gws", () => {
     expect(new Set(fetched).size).toBe(subjects.length);
   });
 
+  it("fetches the live queue as live pages first when the labels change", async () => {
+    const subjects = Array.from({ length: 10 }, (_, i) => `Starred ${i}`);
+    const { dir, delivered } = seedSized(
+      subjects.map((subject) => ({ subject, size: 13, labels: ["STARRED"] })),
+    );
+    const starred = await syncAll(sourceFor(dir, ["STARRED"]), null);
+    const cold = await syncAll(sourceFor(dir, ["INBOX"]), null);
+    for (const subject of subjects) {
+      relabel(dir, idsWithSubject(starred.items, subject)[0] ?? "", { add: ["INBOX"] });
+    }
+    const first = await syncPage(sourceFor(dir, ["INBOX"]), cold.cursor);
+    expect(first.upserts).toHaveLength(8 * 13);
+    const queued = new Set(
+      [...starred.items.keys()].filter((id) => !first.upserts.some((i) => i.externalId === id)),
+    );
+    expect(queued.size).toBe(2 * 13);
+
+    const widened = await syncAll(sourceFor(dir, ["INBOX", "SENT"]), first.cursor);
+    const [drained] = widened.pages;
+    expect(drained).toMatchObject({ kind: "live", backfill: "running", more: true });
+    expect(new Set(drained?.upserts.map((i) => i.externalId))).toEqual(queued);
+    const stored = new Set([...first.upserts, ...widened.items.values()].map((i) => i.externalId));
+    expect(stored.size).toBe(delivered);
+  });
+
   it("follows history only for threads that carry a configured label", async () => {
     const dir = seeded("2026-10-23T07:00:00-07:00");
     const [saltmarsh] = idsWithSubject((await syncAll(sourceFor(dir), null)).items, SALTMARSH);
