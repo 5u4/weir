@@ -1384,6 +1384,7 @@ button {
   line-height: 1.62;
   color: var(--ink);
   overflow-wrap: anywhere;
+  transition: background-color 160ms var(--ease);
 }
 .unf {
   margin: 4px 0 6px;
@@ -1754,6 +1755,318 @@ button {
 .ge {
   margin-top: 14px;
 }
+.tl-m {
+  position: relative;
+  flex: 1;
+  min-width: 40px;
+  height: 1px;
+  background: var(--line);
+}
+.tl-m i {
+  position: absolute;
+  left: 0;
+  top: -0.5px;
+  height: 2px;
+  width: calc(var(--p) * 100%);
+  border-radius: 2px;
+  background: var(--cl, var(--ink));
+}
+.tl-go {
+  flex: none;
+  height: 30px;
+  margin-left: auto;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cap-1);
+  background: var(--capbg);
+  box-shadow: var(--shadow-notch);
+  transition:
+    background-color 140ms,
+    transform 120ms;
+}
+.tl-go:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+.tl-go:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.tl-h.err {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.tl-h.err .tl-k {
+  color: var(--warn);
+}
+.tl-e {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.dg-log {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+}
+.dg-log code {
+  font:
+    12px / 1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--ink-2);
+}
+.bl-e {
+  max-width: 88%;
+  margin: 2px 0 6px;
+}
+.sg.me .bl-e {
+  align-self: flex-end;
+}
+.gp-go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 12px 0 9px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition:
+    color 140ms,
+    box-shadow 140ms,
+    transform 120ms;
+}
+.err .gp-go {
+  padding-left: 12px;
+}
+.gp-go:hover:not(:disabled) {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+.gp-go:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.gp-go.on {
+  opacity: 1;
+}
+.ar {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dfh-w {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: calc(100% - 12px);
+  display: flex;
+  justify-content: safe flex-end;
+  padding: 0 10px;
+  pointer-events: none;
+}
+.sg.me .dfh-w {
+  direction: rtl;
+}
+.dfh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px 0 9px;
+  border-radius: 999px;
+  direction: ltr;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--island);
+  box-shadow: var(--shadow-float);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 140ms var(--ease),
+    transform 260ms var(--ease),
+    background-color 140ms;
+}
+.bl.tap .dfh,
+.dfh.on {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.bl.dg:focus-within .dfh {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .bl.dg:hover .dfh {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.dfh:hover:not(:disabled) {
+  background: var(--hover);
+}
+.dfh:disabled {
+  cursor: default;
+  color: var(--ink-3);
+}
+.bl.dg::before {
+  content: "";
+  position: absolute;
+  top: -1.5px;
+  bottom: -1.5px;
+  left: -6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--cl, var(--ink));
+  opacity: 0;
+  transition: opacity 160ms var(--ease);
+}
+.sg.me .bl.dg::before {
+  left: auto;
+  right: -6px;
+}
+.bl.pv::before {
+  opacity: 1;
+}
+.bl.pv {
+  --bb-bg: color-mix(in oklch, var(--cl, var(--ink)) 12%, var(--bubble));
+  --bb-me-bg: color-mix(in oklch, var(--cl, var(--ink)) 24%, var(--me-bg));
+}
+.bl.busy {
+  opacity: 0.45;
+  transition: opacity 300ms;
+}
+.dc-redo {
+  flex: none;
+  height: 28px;
+  margin: 2px 0 0;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--ink-3);
+  transition:
+    color 140ms,
+    box-shadow 140ms,
+    opacity 140ms;
+}
+.dc-redo:hover:not(:disabled) {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+.dc-redo:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.dc.redoing .dc-redo {
+  opacity: 1;
+  color: var(--ink-2);
+}
+.dc-hl .dc-x + .dc-redo {
+  margin-left: 6px;
+}
+.dc.redoing .tps,
+.dc.redoing .dc-t {
+  opacity: 0.45;
+  transition: opacity 300ms var(--ease);
+}
+.dc-err {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--warn);
+}
+.dc-err .dg-log {
+  display: block;
+}
+.dc-x:active,
+.dc-redo:active,
+.tl-go:active,
+.gp-go:active,
+.dfh:active {
+  transform: scale(0.97);
+}
+.dc.sk {
+  padding: 4px 0 8px;
+  box-shadow: none;
+}
+.sk-l {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.sk-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cl, var(--ink));
+  animation: beat 1.2s var(--ease) infinite;
+}
+@keyframes beat {
+  50% {
+    transform: scale(0.55);
+    opacity: 0.5;
+  }
+}
+.sk-b,
+.sk-s {
+  display: block;
+  width: var(--w);
+  height: 12px;
+  margin-top: 9px;
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, var(--hover) 0%, var(--line-2) 50%, var(--hover) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.sk-b.sk-h {
+  height: 22px;
+  margin: 10px 0 0;
+}
+.sk-b.sk-tt {
+  height: 15px;
+  margin-top: 2px;
+}
+.sk-tp {
+  display: grid;
+  grid-template-columns: var(--gut) minmax(0, 1fr);
+  margin-top: 22px;
+}
+.sk-s {
+  width: 46px;
+  margin-top: 4px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
 
 @media (max-width: 899px) {
   :root {
@@ -1840,12 +2153,26 @@ button {
   .sv-thumb {
     width: calc((100% - 8px) / 3);
   }
+  .tl-h {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .tl-m {
+    order: 5;
+    flex-basis: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sv-pulse path,
-  .sv-spin {
+  .sv-spin,
+  .sk-b,
+  .sk-s,
+  .sk-dot {
     animation: none;
+  }
+  .dfh {
+    transform: none;
   }
   .sv-thumb,
   .st-dot {
