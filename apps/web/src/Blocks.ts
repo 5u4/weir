@@ -196,9 +196,10 @@ export const reader = (
     const first = items[0]?.seq;
     const last = items.at(-1)?.seq;
     if (running === null || first === undefined || last === undefined) return [];
-    if (running.from < first || running.to > last || (running.from === first) !== (at === "start"))
-      return [];
-    const count = items.filter(({ seq }) => within(running, seq)).length;
+    const from = Math.max(running.from, first);
+    const to = Math.min(running.to, last);
+    if (from > to || (from === first) !== (at === "start")) return [];
+    const count = items.filter(({ seq }) => within({ from, to }, seq)).length;
     return count === 0 ? [] : [{ _tag: "Skeleton", items: count }];
   };
 

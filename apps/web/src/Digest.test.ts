@@ -167,6 +167,15 @@ describe("the skeleton stands where the card will land", () => {
     expect(blocks(1, 7)[0]).toBe("Skeleton(4)");
     expect(blocks(9, 10)).not.toContainEqual(expect.stringMatching(/Skeleton/));
   });
+
+  it("a chunk that lands mid-run leaves the skeleton on what is still undigested", () => {
+    const chunked = detail([1, 2, 3, 4, 5, 6], [[1, 1, 2]]);
+    expect(tags(reader(chunked, 6, closedUi, { from: 1, to: 6 }))).toEqual([
+      "DigestRow",
+      "Skeleton(4)",
+      "[3,4,5,6]",
+    ]);
+  });
 });
 
 describe("rejections", () => {
