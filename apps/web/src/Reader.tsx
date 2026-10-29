@@ -2,7 +2,13 @@ import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-re
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import type { CSSProperties, KeyboardEvent, PointerEvent, UIEvent } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  type UIEvent,
+  useRef,
+} from "react";
 import { Avatar } from "./Avatar.tsx";
 import {
   type Block,
@@ -772,13 +778,16 @@ function Conversation({
   frozen,
   watch,
   mark,
+  hidden,
 }: {
   id: ConversationId;
   detail: Detail;
   frozen: number;
   watch: Watch;
   mark: Mark;
+  hidden: boolean;
 }) {
+  const landed = useRef(false);
   const [ui, setUi] = useAtom(readerUi(id));
   const { view } = useAtomValue(route);
   const hue = tagHue(useAtomValue(tagOrder), view, detail);
@@ -825,7 +834,11 @@ function Conversation({
   return (
     <article
       className="conv"
-      ref={land}
+      ref={(root) => {
+        if (hidden || landed.current || root === null) return;
+        landed.current = true;
+        land(root);
+      }}
       aria-label={detail.title}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
@@ -922,7 +935,9 @@ function Dock({ id }: { id: ConversationId }) {
   );
 }
 
-export function Reader({ id }: { id: ConversationId }) {
+// Status hides the reader instead of unmounting it, so closing Status returns to the same reading state
+// and scroll position.
+export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) {
   const result = useAtomValue(conversation(id));
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
@@ -948,6 +963,7 @@ export function Reader({ id }: { id: ConversationId }) {
     <>
       <div
         className="r-scroll"
+        hidden={hidden}
         onWheel={arm}
         onTouchMove={arm}
         onPointerDown={arm}
@@ -970,11 +986,12 @@ export function Reader({ id }: { id: ConversationId }) {
               frozen={frozen.value}
               watch={watch}
               mark={{ seen, unread }}
+              hidden={hidden}
             />
           )
         )}
       </div>
-      <Dock id={id} />
+      {!hidden && <Dock id={id} />}
     </>
   );
 }

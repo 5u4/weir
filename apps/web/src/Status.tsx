@@ -11,9 +11,12 @@ import {
   now,
   plural,
   type SourceHealth,
+  type SourceState,
+  type StreamHealth,
   type Verdict,
 } from "./Health.ts";
 import { statusOpen } from "./Route.ts";
+import { digestRows, waitingLine } from "./StatusRows.ts";
 import { ThemePreference, themePreference } from "./Theme.ts";
 import { reload } from "./Weir.ts";
 
@@ -33,8 +36,8 @@ export function CloseIcon() {
   );
 }
 
-const sourceLine = (source: SourceHealth, stopped: boolean, current: DateTime.Utc) => {
-  switch (source.state._tag) {
+const stateLine = (state: SourceState, stopped: boolean, current: DateTime.Utc) => {
+  switch (state._tag) {
     case "Failed":
       return "Sync failed";
     case "Starting":
@@ -42,9 +45,16 @@ const sourceLine = (source: SourceHealth, stopped: boolean, current: DateTime.Ut
     case "NotSynced":
       return stopped ? "Stopped" : "Not synced yet";
     case "Synced":
-      return stopped ? "Stopped" : `Synced ${ago(source.state.at, current)}`;
+      return stopped ? "Stopped" : `Synced ${ago(state.at, current)}`;
   }
 };
+
+const streamMeta = ({ state, items, backfilling }: StreamHealth, current: DateTime.Utc) =>
+  [
+    state._tag === "Failed" && state.tried !== null ? `Tried ${ago(state.tried, current)}` : null,
+    plural(items, "item"),
+    backfilling ? "backfill running" : null,
+  ].filter((part) => part !== null);
 
 const verdictText = (verdict: Verdict, current: DateTime.Utc) => {
   switch (verdict._tag) {
@@ -70,9 +80,10 @@ const verdictText = (verdict: Verdict, current: DateTime.Utc) => {
   }
 };
 
-export function EmptyReader({ health }: { health: Health }) {
+export function EmptyReader({ health, digest }: { health: Health; digest: Status["digest"] }) {
   const current = useAtomValue(now);
   const [, setOpen] = useAtom(statusOpen);
+  const waiting = waitingLine(digest, health.stopped);
   return (
     <div className={`calm es${health.alert ? " warn" : ""}`}>
       {health.stopped && (
@@ -88,13 +99,20 @@ export function EmptyReader({ health }: { health: Health }) {
             >
               <span className="sv-led es-led" aria-hidden="true" />
               <b>{source.id}</b>
-              <span className="es-st">{sourceLine(source, health.stopped, current)}</span>
+              <span className="es-st">{stateLine(source.state, health.stopped, current)}</span>
               {source.state._tag === "Failed" && (
                 <code className="es-err">{source.state.error}</code>
               )}
             </li>
           );
         })}
+        {waiting !== null && (
+          <li className={`es-row${health.stopped ? " held" : ""}`}>
+            <span className="sv-led es-led" aria-hidden="true" />
+            <b>Digests</b>
+            <span className="es-st">{waiting}</span>
+          </li>
+        )}
       </ul>
       {health.alert && (
         <button type="button" className="es-open" onClick={() => setOpen(true)}>
@@ -107,14 +125,16 @@ export function EmptyReader({ health }: { health: Health }) {
 
 function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean }) {
   const current = useAtomValue(now);
-  const { state } = source;
+  const { state, streams } = source;
+  const [only] = streams;
+  const perStream = streams.length > 1;
   const meta = [
-    state._tag === "Failed" && state.lastGood !== null
-      ? `Last good sync ${ago(state.lastGood, current)}`
-      : null,
-    plural(source.streams, "stream"),
-    source.backfilling ? "backfill running" : null,
-  ].filter((part) => part !== null);
+    plural(streams.length, "stream"),
+    ...(only !== undefined && !perStream ? streamMeta(only, current) : []),
+  ];
+  const ownError =
+    state._tag === "Failed" &&
+    !(perStream && streams.some((s) => s.state._tag === "Failed" && s.state.error === state.error));
   return (
     <li className={`sv-src${state._tag === "Failed" ? " bad" : ""}${stopped ? " held" : ""}`}>
       <span className="sv-led" aria-hidden="true" />
@@ -122,12 +142,28 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
         <b>{source.id}</b>
         <span>{source.plugin}</span>
       </span>
-      <span className="sv-src-state">{sourceLine(source, stopped, current)}</span>
+      <span className="sv-src-state">{stateLine(state, stopped, current)}</span>
       <span className="sv-src-meta">{meta.join(" · ")}</span>
-      {state._tag === "Failed" && (
+      {ownError && (
         <p className="sv-err">
           <code>{state.error}</code>
         </p>
+      )}
+      {perStream && (
+        <ul className="sv-streams" aria-label={`${source.id} streams`}>
+          {streams.map((stream) => (
+            <li key={stream.name} className={stream.state._tag === "Failed" ? "bad" : undefined}>
+              <b>{stream.name}</b>
+              <span className="sv-stream-state">{stateLine(stream.state, stopped, current)}</span>
+              <span className="sv-stream-meta">{streamMeta(stream, current).join(" · ")}</span>
+              {stream.state._tag === "Failed" && (
+                <p className="sv-err">
+                  <code>{stream.state.error}</code>
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </li>
   );
@@ -332,6 +368,36 @@ export function StatusView({ status: value, health }: { status: Status; health: 
               )}
             </dd>
           </div>
+          {digestRows(value.digest).map((row) => (
+            <div key={row.label} className="sv-row">
+              <dt>{row.label}</dt>
+              <dd>
+                {row.label === "Queue" ? (
+                  row.jobs.length === 0 ? (
+                    "Empty"
+                  ) : (
+                    <ul className="sv-tags">
+                      {row.jobs.map((job) => (
+                        <li key={job.key}>
+                          <b>{job.title}</b>
+                          <span className="sv-dim">{job.state}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : row.label === "Last run" ? (
+                  <>
+                    <time dateTime={DateTime.formatIso(row.at)}>{dayAndTime(row.at)}</time>
+                    <span className="sv-dim">{row.detail}</span>
+                  </>
+                ) : row.label === "Threshold" ? (
+                  row.text
+                ) : (
+                  <code>{row.profile}</code>
+                )}
+              </dd>
+            </div>
+          ))}
         </dl>
       </section>
       <ConfigSection config={value.config} />
