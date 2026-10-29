@@ -51,9 +51,7 @@ const stateLine = (state: SourceState, stopped: boolean, current: DateTime.Utc) 
 
 const streamMeta = ({ state, items, backfilling }: StreamHealth, current: DateTime.Utc) =>
   [
-    state._tag === "Failed" && state.lastGood !== null
-      ? `Last good sync ${ago(state.lastGood, current)}`
-      : null,
+    state._tag === "Failed" && state.tried !== null ? `Tried ${ago(state.tried, current)}` : null,
     plural(items, "item"),
     backfilling ? "backfill running" : null,
   ].filter((part) => part !== null);

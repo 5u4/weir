@@ -9,7 +9,7 @@ export type SourceState =
   | { readonly _tag: "Starting" }
   | { readonly _tag: "NotSynced" }
   | { readonly _tag: "Synced"; readonly at: DateTime.Utc }
-  | { readonly _tag: "Failed"; readonly error: string; readonly lastGood: DateTime.Utc | null };
+  | { readonly _tag: "Failed"; readonly error: string; readonly tried: DateTime.Utc | null };
 
 export type StreamState = Exclude<SourceState, { readonly _tag: "Starting" }>;
 
@@ -53,22 +53,22 @@ const sourceState = (source: Status["sources"][number]): SourceState => {
       ? (source.error ?? "listing failed")
       : source.streams.find(({ last_error }) => last_error !== null)?.last_error;
   if (error !== undefined && error !== null) {
-    return { _tag: "Failed", error, lastGood: lastSync };
+    return { _tag: "Failed", error, tried: lastSync };
   }
   if (source.listing === "pending") return { _tag: "Starting" };
   return lastSync === null ? { _tag: "NotSynced" } : { _tag: "Synced", at: lastSync };
 };
 
 const streamHealth = (stream: Status["sources"][number]["streams"][number]): StreamHealth => {
-  const lastGood = latest([stream.last_sync_at]);
+  const at = latest([stream.last_sync_at]);
   return {
     name: stream.name,
     state:
       stream.last_error !== null
-        ? { _tag: "Failed", error: stream.last_error, lastGood }
-        : lastGood === null
+        ? { _tag: "Failed", error: stream.last_error, tried: at }
+        : at === null
           ? { _tag: "NotSynced" }
-          : { _tag: "Synced", at: lastGood },
+          : { _tag: "Synced", at },
     items: stream.items,
     backfilling: stream.backfill === "running",
   };

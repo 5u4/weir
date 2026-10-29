@@ -52,7 +52,7 @@ describe("status health", () => {
     });
   });
 
-  it("names the first failing source; a stream error fails it and keeps the last good sync", () => {
+  it("names the first failing source; a stream error fails it and keeps the last attempt", () => {
     const result = health(
       status([
         source("work"),
@@ -71,9 +71,9 @@ describe("status health", () => {
       {
         _tag: "Failed",
         error: "invalid_grant",
-        lastGood: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
+        tried: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
       },
-      { _tag: "Failed", error: "gws not found", lastGood: null },
+      { _tag: "Failed", error: "gws not found", tried: null },
     ]);
   });
 
@@ -131,7 +131,7 @@ describe("status health", () => {
         state: {
           _tag: "Failed",
           error: "rate limited",
-          lastGood: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
+          tried: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
         },
         items: 3,
         backfilling: false,
