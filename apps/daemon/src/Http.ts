@@ -8,6 +8,7 @@ import {
   type ConversationRow,
   type ListedConversationRow,
   Seq,
+  type SourcedItemRow,
 } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import { match, ruleInput } from "@weir/sync/Match";
@@ -29,8 +30,10 @@ import {
   Api,
   type ConversationSummary,
   type Counts,
+  type Line,
   NotFound,
   type Row,
+  type SearchResult,
   type Status,
   type TagTest,
   type View,
@@ -177,6 +180,80 @@ const row = (conversation: ListedConversationRow): Row => ({
   participants: conversation.participants,
 });
 
+const hitLinesPerConversation = 3;
+const bodySnippetLength = 120;
+
+const termPattern = (query: string) => {
+  const terms = query
+    .split(/\s+/u)
+    .filter((term) => term.length > 0)
+    .toSorted((left, right) => right.length - left.length);
+  if (terms.length === 0) return null;
+  return new RegExp(
+    terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+    "giu",
+  );
+};
+
+const segments = (text: string, pattern: RegExp) => {
+  const result: Array<{ text: string; mark: boolean }> = [];
+  let at = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > at) result.push({ text: text.slice(at, match.index), mark: false });
+    result.push({ text: match[0], mark: true });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) result.push({ text: text.slice(at), mark: false });
+  return result;
+};
+
+const snippet = (text: string, matchAt: number) => {
+  if (text.length <= bodySnippetLength) return text;
+  const start = Math.max(
+    0,
+    Math.min(matchAt - bodySnippetLength / 3, text.length - bodySnippetLength),
+  );
+  const end = start + bodySnippetLength;
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+};
+
+const hitLines = (
+  items: ReadonlyArray<SourcedItemRow>,
+  streamNames: ReadonlyMap<number, string>,
+  pattern: RegExp,
+): Array<Line> =>
+  items
+    .toSorted(
+      (left, right) =>
+        DateTime.toEpochMillis(right.occurredAt) - DateTime.toEpochMillis(left.occurredAt) ||
+        right.seq - left.seq,
+    )
+    .flatMap((item): Array<Line> => {
+      const fields = [
+        ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
+        [
+          "from",
+          item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`,
+        ],
+        ["source", streamNames.get(item.streamId) ?? ""],
+      ] as const;
+      for (const [field, text] of fields) {
+        const matchAt = text.search(pattern);
+        if (matchAt === -1) continue;
+        return [
+          {
+            field,
+            seq: item.seq,
+            digest_id: null,
+            title: null,
+            text: segments(field === "body" ? snippet(text, matchAt) : text, pattern),
+          },
+        ];
+      }
+      return [];
+    })
+    .slice(0, hitLinesPerConversation);
+
 const sendersPerView = 3;
 
 const listed = Effect.fnUntraced(function* (id: number) {
@@ -292,7 +369,7 @@ const weirHandlers = HttpApiBuilder.group(
         ),
       search: ({ query: { q, tag, since, ...filters } }) =>
         Effect.gen(function* () {
-          const rows = yield* Read.search({
+          const found = yield* Read.search({
             query: q,
             ...filters,
             ...(tag === undefined
@@ -307,7 +384,32 @@ const weirHandlers = HttpApiBuilder.group(
               ? {}
               : { since: DateTime.subtractDuration(yield* DateTime.now, since) }),
           });
-          return { conversations: rows.map(summary) };
+          const ids = found.map(({ id }) => id);
+          const rows = new Map(
+            (yield* Read.conversations({ _tag: "Ids", ids })).map((listed) => [listed.id, listed]),
+          );
+          const pattern = termPattern(q);
+          const streamNames = new Map((yield* Read.streams()).map(({ id, name }) => [id, name]));
+          const items = pattern === null ? [] : yield* Read.liveItems({ conversationIds: ids });
+          return {
+            conversations: found.flatMap(({ id }) => {
+              const listed = rows.get(id);
+              if (listed === undefined) return [];
+              return [
+                {
+                  ...row(listed),
+                  hits:
+                    pattern === null
+                      ? []
+                      : hitLines(
+                          items.filter(({ conversationId }) => conversationId === id),
+                          streamNames,
+                          pattern,
+                        ),
+                },
+              ];
+            }),
+          } satisfies SearchResult;
         }).pipe(withSql, Effect.orDie),
       conversation: ({ params: { id } }) =>
         Effect.gen(function* () {

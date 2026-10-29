@@ -95,7 +95,39 @@ export const ConversationSummary = Schema.Struct({
 });
 export type ConversationSummary = typeof ConversationSummary.Type;
 
-export const SearchResult = Schema.Struct({ conversations: Schema.Array(ConversationSummary) });
+export const Row = Schema.Struct({
+  id: Schema.Int,
+  source: Schema.String,
+  title: Schema.String,
+  tags: Schema.Array(Schema.String),
+  first_at: Schema.String,
+  last_at: Schema.String,
+  last_seq: Schema.Int,
+  seen_seq: Schema.Int,
+  cleared_seq: Schema.Int,
+  muted: Schema.Boolean,
+  state: ConversationState,
+  new: Schema.Int,
+  items: Schema.Int,
+  participants: Schema.Int,
+});
+export type Row = typeof Row.Type;
+
+const Segment = Schema.Struct({ text: Schema.String, mark: Schema.Boolean });
+
+export const Line = Schema.Struct({
+  field: Schema.Literals(["topic", "body", "from", "source", "headline"]),
+  seq: Schema.NullOr(Schema.Int),
+  digest_id: Schema.NullOr(Schema.Int),
+  title: Schema.NullOr(Schema.Array(Segment)),
+  text: Schema.Array(Segment),
+});
+export type Line = typeof Line.Type;
+
+export const SearchResult = Schema.Struct({
+  conversations: Schema.Array(Schema.Struct({ ...Row.fields, hits: Schema.Array(Line) })),
+});
+export type SearchResult = typeof SearchResult.Type;
 
 export const ItemSummary = Schema.Struct({
   seq: Schema.Int,
@@ -229,24 +261,6 @@ export type ClearableView = typeof ClearableView.Type;
 
 export const View = Schema.Union([UntaggedView, TagView, ClearedView]);
 export type View = typeof View.Type;
-
-export const Row = Schema.Struct({
-  id: Schema.Int,
-  source: Schema.String,
-  title: Schema.String,
-  tags: Schema.Array(Schema.String),
-  first_at: Schema.String,
-  last_at: Schema.String,
-  last_seq: Schema.Int,
-  seen_seq: Schema.Int,
-  cleared_seq: Schema.Int,
-  muted: Schema.Boolean,
-  state: ConversationState,
-  new: Schema.Int,
-  items: Schema.Int,
-  participants: Schema.Int,
-});
-export type Row = typeof Row.Type;
 
 export const ViewList = Schema.Struct({ seq: Schema.Int, conversations: Schema.Array(Row) });
 

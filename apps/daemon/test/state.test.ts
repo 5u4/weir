@@ -321,3 +321,69 @@ describe("views and counts", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+describe("search", () => {
+  it.live("returns rows with up to three marked hit lines, newest first", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, seqsOf } = yield* start;
+      const padding = "lorem ipsum dolor sit amet ".repeat(6);
+      yield* deliver([
+        item("g1", "plan", 1, { title: "Plan", bodyNew: "code freeze starts Monday" }),
+        item("g2", "plan", 2, {
+          bodyNew: "ok",
+          from: { name: "Freeze Bot", address: "bot@x.example" },
+        }),
+        item("g3", "plan", 3, { bodyNew: `${padding}the freeze\nmoved ${padding}` }),
+        item("g4", "plan", 4, { bodyNew: "FREEZE confirmed" }),
+        item("g5", "other", 5, { title: "Other", bodyNew: "freeze too" }),
+      ]);
+      const plan = yield* conversationOf("Plan");
+      const other = yield* conversationOf("Other");
+      const [, s2, s3, s4] = yield* seqsOf(plan);
+      yield* client.done({ params: { id: plan }, payload: { seq: 1_000_000 } });
+      yield* client.mute({ params: { id: other } });
+
+      const { conversations } = yield* client.search({ query: { q: "freeze" } });
+      const planHit = conversations.find(({ id }) => id === plan);
+      const otherHit = conversations.find(({ id }) => id === other);
+      expect(planHit?.state).toBe("done");
+      expect(otherHit?.state).toBe("muted");
+      expect(otherHit?.hits).toEqual([
+        {
+          field: "body",
+          seq: expect.any(Number),
+          digest_id: null,
+          title: null,
+          text: [
+            { text: "freeze", mark: true },
+            { text: " too", mark: false },
+          ],
+        },
+      ]);
+
+      const hits = planHit?.hits ?? [];
+      expect(hits.map(({ field, seq }) => [field, seq])).toEqual([
+        ["body", s4],
+        ["body", s3],
+        ["from", s2],
+      ]);
+      expect(hits[0]?.text).toEqual([
+        { text: "FREEZE", mark: true },
+        { text: " confirmed", mark: false },
+      ]);
+      const snippet = hits[1]?.text ?? [];
+      const snippetText = snippet.map(({ text }) => text).join("");
+      expect(snippetText.startsWith("…") && snippetText.endsWith("…")).toBe(true);
+      expect(snippetText.length).toBeLessThanOrEqual(122);
+      expect(snippetText).toContain("the freeze moved");
+      expect(snippet.filter(({ mark }) => mark).map(({ text }) => text)).toEqual(["freeze"]);
+      expect(hits[2]?.text).toEqual([
+        { text: "Freeze", mark: true },
+        { text: " Bot <bot@x.example>", mark: false },
+      ]);
+
+      const empty = yield* client.search({ query: { q: "" } });
+      expect(empty.conversations.every(({ hits }) => hits.length === 0)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+});
