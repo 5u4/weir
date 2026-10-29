@@ -7,6 +7,7 @@ import type { CSSProperties } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
+import { reading } from "./Reading.ts";
 import { ConversationId, route, type View } from "./Route.ts";
 import { face, neighbor, shown, tagHue } from "./Rows.ts";
 import { clearAll, counts, dismiss, intents, viewList } from "./Weir.ts";
@@ -14,27 +15,29 @@ import { clearAll, counts, dismiss, intents, viewList } from "./Weir.ts";
 const viewLabel = (view: View) =>
   view === "untagged" ? "Untagged" : view === "cleared" ? "Cleared" : view.slice("tag:".length);
 
-function ListRow({
-  row,
-  view,
-  selected,
-  hue,
-  onDismiss,
-}: {
+type RowProps = {
   row: Row;
   view: View;
   selected: boolean;
   hue: number | undefined;
   onDismiss: () => void;
-}) {
+};
+
+function OpenRow(props: RowProps) {
+  const { candidate } = useAtomValue(reading(ConversationId.make(props.row.id)));
+  return <ListRow {...props} seen={candidate} />;
+}
+
+function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { seen: number }) {
   const [current] = useAtom(route);
   const at = useAtomValue(now);
   const last = DateTime.makeUnsafe(row.last_at);
   const { from, mark, preview, who, names } = face(row);
   const cleared = view === "cleared";
+  const unread = row.state === "unread" && seen < row.last_seq;
   return (
     <li
-      className={`row${row.state === "unread" ? " unread" : ""}${selected ? " sel" : ""}`}
+      className={`row${unread ? " unread" : ""}${selected ? " sel" : ""}`}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
       <Link
@@ -55,7 +58,7 @@ function ListRow({
           )}
           <span className="row-n">
             {plural(row.items, "message")}
-            {row.new > 0 && `, ${row.new} new`} · {row.source}
+            {unread && row.new > 0 && `, ${row.new} new`} · {row.source}
           </span>
         </span>
         {cleared ? (
@@ -154,14 +157,13 @@ export function List() {
               <Empty view={view} />
             ) : (
               <ul className={`rows${view === "cleared" ? " cleared" : ""}`}>
-                {list.map((row) => (
-                  <ListRow
-                    key={row.id}
-                    row={row}
-                    view={view}
-                    selected={open === row.id}
-                    hue={tagHue(tags, view, row)}
-                    onDismiss={() => {
+                {list.map((row) => {
+                  const props: RowProps = {
+                    row,
+                    view,
+                    selected: open === row.id,
+                    hue: tagHue(tags, view, row),
+                    onDismiss: () => {
                       if (open === row.id) {
                         navigate({
                           _tag: "Replace",
@@ -174,9 +176,14 @@ export function List() {
                         });
                       }
                       runDismiss({ view, row });
-                    }}
-                  />
-                ))}
+                    },
+                  };
+                  return props.selected ? (
+                    <OpenRow key={row.id} {...props} />
+                  ) : (
+                    <ListRow key={row.id} {...props} seen={0} />
+                  );
+                })}
               </ul>
             ),
         })
