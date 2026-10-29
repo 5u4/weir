@@ -72,8 +72,16 @@ const daemon = vi.hoisted(() => {
         digest: {
           ai: "fake-ai",
           threshold: 1000,
-          running: running.map((job) => ({ ...job, trigger: "manual" })),
-          queued: queued.map((job) => ({ ...job, trigger: "auto" })),
+          running: running.map((job) => ({
+            ...job,
+            title: `Thread ${job.conversation_id}`,
+            trigger: "manual",
+          })),
+          queued: queued.map((job) => ({
+            ...job,
+            title: `Thread ${job.conversation_id}`,
+            trigger: "auto",
+          })),
           last_run: null,
         },
       });

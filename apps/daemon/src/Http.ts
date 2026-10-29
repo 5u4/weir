@@ -115,13 +115,17 @@ const status = Effect.fnUntraced(function* (
       open: row?.open ?? 0,
     };
   };
+  const queue = Option.isNone(digester) ? { running: [], queued: [] } : yield* digester.value.queue;
+  const titles = yield* Read.conversationTitles(
+    [...queue.running, ...queue.queued].map(({ conversationId }) => conversationId),
+  );
   const digestJob = ({ conversationId, range, trigger }: Digester.Job) => ({
     conversation_id: conversationId,
     from_seq: range.fromSeq,
     to_seq: range.toSeq,
     trigger,
+    title: titles.get(conversationId) ?? "",
   });
-  const queue = Option.isNone(digester) ? { running: [], queued: [] } : yield* digester.value.queue;
   const lastRun = yield* Read.digestRunsSince(
     DateTime.subtract(yield* DateTime.now, { hours: lastRunHours }),
   );
@@ -155,6 +159,7 @@ const status = Effect.fnUntraced(function* (
             last_sync_at: stream.lastSyncAt === null ? null : DateTime.formatIso(stream.lastSyncAt),
             last_error: stream.lastError,
             backfill: stream.backfilledAt === null ? "running" : "done",
+            items: stream.items,
           })),
       };
     }),
