@@ -1,13 +1,4 @@
 {
-  "extends": "./tsconfig.base.json",
-  "include": [
-    "*.ts",
-    "scripts/**/*.ts",
-    "packages/*/src/**/*.ts",
-    "packages/*/test/**/*.ts",
-    "plugins/*/src/**/*.ts",
-    "plugins/*/test/**/*.ts",
-    "apps/*/src/**/*.ts",
-    "apps/*/test/**/*.ts"
-  ]
+  "files": [],
+  "references": [{ "path": "./tsconfig.server.json" }]
 }
