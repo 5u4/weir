@@ -86,6 +86,8 @@ export const migration = Effect.gen(function* () {
     ai_profile TEXT,
     created_at TEXT
   )`;
+  yield* sql`CREATE INDEX digest_conversation_range
+    ON digest (conversation_id, from_seq DESC, id DESC)`;
   yield* sql`CREATE TABLE digest_run (
     id INTEGER PRIMARY KEY,
     conversation_id INTEGER,
