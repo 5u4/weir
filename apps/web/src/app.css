@@ -2660,6 +2660,13 @@ mark {
   .cap-in {
     width: 6em;
   }
+  .q-st {
+    flex-shrink: 1;
+  }
+  .q-conv {
+    white-space: normal;
+    line-height: 1.2;
+  }
   .list {
     top: calc(var(--edge) + max(var(--band), calc(var(--cap-h, 0px) + 2 * var(--inset))));
     left: 0;
