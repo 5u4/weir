@@ -421,6 +421,20 @@ describe("manual digest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("redo of the only digest gets a new id, and the old id answers 404", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf } = yield* start();
+      yield* deliver([item("l1", "List news", 100, 1)]);
+      const id = yield* conversationOf("List news");
+      const old = (yield* client.digest({ params: { id }, payload: {} })).digests[0];
+      if (old === undefined) throw new Error("expected a digest");
+
+      const fresh = (yield* client.redo({ params: { id: old.id } })).digests[0];
+      expect(fresh?.id).not.toBe(old.id);
+      expect((yield* Effect.flip(client.redo({ params: { id: old.id } })))._tag).toBe("NotFound");
+    }).pipe(Effect.scoped),
+  );
+
   it.live("one conversation runs one call at a time; two conversations overlap", () =>
     Effect.gen(function* () {
       const { client, deliver, conversationOf, calls } = yield* start({

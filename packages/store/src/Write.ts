@@ -411,15 +411,15 @@ export const writeDigest = Effect.fnUntraced(function* (
   );
   return yield* sql.withTransaction(
     Effect.gen(function* () {
-      if (replaces !== null) {
-        yield* sql`DELETE FROM digest WHERE id = ${replaces}`;
-        yield* sql`DELETE FROM search_fts WHERE rowid = ${-replaces}`;
-      }
       const [written] = yield* decodeDigest(
         yield* sql`INSERT INTO digest ${sql.insert(row)} RETURNING *`,
       );
       yield* sql`INSERT INTO search_fts (rowid, text, conversation_id, item_seq, digest_id)
         VALUES (${-written.id}, ${text}, ${written.conversationId}, NULL, ${written.id})`;
+      if (replaces !== null) {
+        yield* sql`DELETE FROM digest WHERE id = ${replaces}`;
+        yield* sql`DELETE FROM search_fts WHERE rowid = ${-replaces}`;
+      }
       yield* recordDigestRun(run);
       return written;
     }),
