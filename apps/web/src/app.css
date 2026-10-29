@@ -2168,6 +2168,7 @@ button {
   right: 0;
   bottom: calc(100% - 12px);
   display: flex;
+  flex-wrap: wrap;
   justify-content: safe flex-end;
   gap: 6px;
   padding: 0 10px;
