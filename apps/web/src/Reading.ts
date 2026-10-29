@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
@@ -10,12 +11,16 @@ import { conversation, Weir } from "./Weir.ts";
 const debounce = 300;
 
 export const markRead = Weir.runtime
-  .fn<{ readonly id: ConversationId; readonly seq: number }>()(
-    ({ id, seq }) =>
+  .fn<{
+    readonly id: ConversationId;
+    readonly seq: number;
+    readonly settled: (acked: boolean) => void;
+  }>()(
+    ({ id, seq, settled }) =>
       Effect.gen(function* () {
         const client = yield* Weir;
         yield* client.read({ params: { id }, payload: { seq } });
-      }),
+      }).pipe(Effect.onExit((exit) => Effect.sync(() => settled(Exit.isSuccess(exit))))),
     { concurrent: true },
   )
   .pipe(Atom.keepAlive);
@@ -55,7 +60,11 @@ export const reading = Atom.family((id: ConversationId) =>
           break;
         case "Send":
           stop();
-          get.registry.set(markRead, { id, seq: command.seq });
+          get.registry.set(markRead, {
+            id,
+            seq: command.seq,
+            settled: (acked) => dispatch({ _tag: acked ? "Acked" : "Failed", seq: command.seq }),
+          });
           break;
         case "Idle":
           break;

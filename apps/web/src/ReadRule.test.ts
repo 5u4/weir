@@ -24,6 +24,8 @@ const focus = (focused: boolean): Event => ({ _tag: "Focus", focused });
 const visibility = (visible: boolean): Event => ({ _tag: "Visibility", visible });
 const elapsed: Event = { _tag: "Elapsed" };
 const leave: Event = { _tag: "Leave" };
+const acked = (seq: number): Event => ({ _tag: "Acked", seq });
+const failed = (seq: number): Event => ({ _tag: "Failed", seq });
 
 describe("read rule", () => {
   it.each<{
@@ -102,6 +104,21 @@ describe("read rule", () => {
       commands: ["Idle", "Debounce", 18, "Idle", "Idle", "Idle"],
     },
     {
+      name: "a read in flight is not sent twice",
+      events: [input, viewport(18), elapsed, elapsed, leave],
+      commands: ["Idle", "Debounce", 18, "Idle", "Idle"],
+    },
+    {
+      name: "a failed read is sent again on the next trigger",
+      events: [input, viewport(18), elapsed, failed(18), leave, acked(18), leave],
+      commands: ["Idle", "Debounce", 18, "Idle", 18, "Idle", "Idle"],
+    },
+    {
+      name: "a failed full read waits for the next trigger instead of retrying at once",
+      events: [input, viewport(25), failed(25), input, acked(25), input],
+      commands: ["Idle", 25, "Idle", 25, "Idle", "Idle"],
+    },
+    {
       name: "nothing at or below the seen seq is ever sent",
       events: [input, viewport(5), elapsed, leave],
       commands: ["Idle", "Idle", "Idle", "Idle"],
@@ -116,7 +133,17 @@ describe("read rule", () => {
   });
 
   it("sent only ever grows", () => {
-    const { state } = run(opened(), [input, viewport(18), elapsed, viewport(12), leave]);
-    expect(state).toMatchObject({ candidate: 18, sent: 18, armed: true });
+    const { state } = run(opened(), [input, viewport(18), elapsed, acked(18), viewport(12), leave]);
+    expect(state).toMatchObject({ candidate: 18, sent: 18, pending: 0, armed: true });
+  });
+
+  it("the sent seq advances only after the read is acknowledged", () => {
+    const sent = run(opened(), [input, viewport(18), elapsed]).state;
+    expect(sent.sent).toBe(9);
+    const failedOnce = run(sent, [failed(18)]).state;
+    expect(failedOnce.sent).toBe(9);
+    const retried = run(failedOnce, [leave, acked(18)]);
+    expect(retried.commands).toEqual([18, "Idle"]);
+    expect(retried.state.sent).toBe(18);
   });
 });
