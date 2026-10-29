@@ -11,6 +11,7 @@
     ],
     "catalog": {
       "@biomejs/biome": "2.6.3",
+      "@effect/atom-react": "4.0.6",
       "@effect/language-service": "0.87.5",
       "@effect/platform-bun": "4.0.6",
       "@effect/sql-sqlite-bun": "4.0.6",
@@ -32,7 +33,8 @@
     "lint": "biome check",
     "test": "bun --bun run vitest run",
     "vendor:effect": "bun scripts/vendor-effect.ts",
-    "demo": "bun scripts/demo.ts"
+    "build:web": "bun run --cwd apps/web build",
+    "demo": "bun run build:web && bun scripts/demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
