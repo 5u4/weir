@@ -140,19 +140,21 @@ export const live = Weir.runtime.atom((get) =>
         const snapshot = yield* Effect.option(
           AtomRegistry.getResult(get.registry, statusSnapshot, { suspendOnWaiting: true }),
         );
-        const running = new Map(
+        const jobs = new Map(
           Option.match(snapshot, {
             onNone: () => [],
             onSome: ({ digest }) =>
-              (digest?.running ?? []).map((job) => [job.conversation_id, job] as const),
+              [...(digest?.queued ?? []), ...(digest?.running ?? [])].map(
+                (job) => [job.conversation_id, job] as const,
+              ),
           }),
         );
         get.registry.update(
           digestRuns,
           (runs) =>
             new Map(
-              [...new Set([...runs.keys(), ...running.keys()])].flatMap((id) => {
-                const next = Digest.reconciled(runs.get(id) ?? Digest.idle, running.get(id));
+              [...new Set([...runs.keys(), ...jobs.keys()])].flatMap((id) => {
+                const next = Digest.reconciled(runs.get(id) ?? Digest.idle, jobs.get(id));
                 return next._tag === "Idle" ? [] : [[id, next] as const];
               }),
             ),
