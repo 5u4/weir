@@ -145,6 +145,8 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
         deletions: [],
         cursor: "done",
         more: false,
+        kind: cursor === null ? "backfill" : "live",
+        backfill: "done",
       };
     },
   }),
@@ -162,6 +164,8 @@ export const filePlugin = (file: string): SourcePlugin<unknown> => ({
         deletions: [],
         cursor: String(items.length),
         more: false,
+        kind: cursor === null ? "backfill" : "live",
+        backfill: "done",
       };
     },
   }),

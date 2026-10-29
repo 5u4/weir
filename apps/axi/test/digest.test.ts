@@ -76,6 +76,8 @@ const plugin: SourcePlugin<unknown> = {
       deletions: [],
       cursor: "done",
       more: false,
+      kind: cursor === null ? "backfill" : "live",
+      backfill: "done",
     }),
   }),
 };

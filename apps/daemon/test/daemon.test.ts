@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem, SourcePlugin } from "@weir/contract/Source";
+import { deliver as deliverMail, seedMailbox } from "@weir/fixtures";
+import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -266,6 +269,8 @@ const twoStreams = () => {
           deletions: deleted,
           cursor: "done",
           more: false,
+          kind: cursor === null ? "backfill" : "live",
+          backfill: "done",
         };
       },
     }),
@@ -338,6 +343,53 @@ describe("status", () => {
       expect(recovered.sources[0]?.streams).toMatchObject([
         { name: "me@example.com", last_error: null, backfill: "done" },
       ]);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("gws read state", () => {
+  it.live("the backfill lands read and mail delivered after it lands unread", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox, { until: "2026-10-24T12:00:00-07:00" });
+      writeConfig(`[[source]]
+id = "gmail"
+plugin = "gws"
+sync_every = "100ms"
+
+[source.config]
+command = ["${join(import.meta.dirname, "../node_modules/.bin/fake-gws")}", "--mailbox", "${mailbox}"]
+backfill = "newer_than:30d"
+`);
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      const status = yield* eventually(client.status(), ({ sources }) =>
+        sources.every(
+          ({ listing, streams }) =>
+            listing === "ok" &&
+            streams.length > 0 &&
+            streams.every(({ backfill }) => backfill === "done"),
+        ),
+      );
+      expect(status.sources[0]?.streams).toMatchObject([{ last_error: null, backfill: "done" }]);
+      const listed = client.search({ query: { q: "" } }).pipe(Effect.map((r) => r.conversations));
+      const backfilled = yield* listed;
+      expect(backfilled.length).toBeGreaterThan(0);
+      expect(backfilled.every(({ state }) => state === "read")).toBe(true);
+
+      const [delivered] = deliverMail(mailbox);
+      const after = yield* eventually(listed, (rows) =>
+        rows.some(({ state }) => state === "unread"),
+      );
+      const unread = after.filter(({ state }) => state === "unread");
+      expect(unread).toHaveLength(1);
+      expect(after.length - unread.length).toBe(
+        after.filter(({ state }) => state === "read").length,
+      );
+      const detail = yield* client.conversation({ params: { id: unread[0]?.id ?? 0 } });
+      expect(detail.open?.link.endsWith(`#all/${delivered}`)).toBe(true);
+      expect((yield* client.status()).sources[0]?.streams).toMatchObject([{ backfill: "done" }]);
     }).pipe(Effect.scoped),
   );
 });

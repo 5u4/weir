@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { Rule } from "@weir/contract/Rule";
 import type { Source } from "@weir/contract/Source";
-import { search } from "@weir/store/Read";
+import { conversations, search } from "@weir/store/Read";
+import { ConversationId } from "@weir/store/Rows";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -47,9 +48,6 @@ const items = Effect.gen(function* () {
     deletedAt: string | null;
   }>`SELECT external_id, seq, deleted_at FROM item ORDER BY seq`;
 });
-
-const seqOf = (externalId: string) =>
-  items.pipe(Effect.map((rows) => rows.find((row) => row.externalId === externalId)?.seq ?? -1));
 
 const seenByThread = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -157,41 +155,187 @@ describe("syncStream paging", () => {
   );
 });
 
-describe("syncStream cold start", () => {
-  it.effect(
-    "marks backfilled conversations seen and writes backfilled_at only on the last page",
-    () =>
-      Effect.gen(function* () {
-        const script = new Map<string | null, Step>([
-          [null, page({ cursor: "c1", more: true, upserts: [rawItem("a1", { threadId: "t1" })] })],
-          ["c1", new Error("offline")],
-        ]);
-        yield* Effect.flip(run(script));
-        expect(yield* seenByThread).toEqual({ t1: yield* seqOf("a1") });
-        expect((yield* streamState)?.backfilledAt).toBeNull();
+const stateByThread = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ids = (yield* sql<{ id: number }>`SELECT id FROM conversation`).map(({ id }) =>
+    ConversationId.make(id),
+  );
+  const rows = yield* conversations({ _tag: "Ids", ids });
+  return Object.fromEntries(rows.map(({ key, state }) => [key, state]));
+});
 
-        yield* TestClock.setTime(
-          DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T12:00:00Z")),
-        );
-        script.set(
-          "c1",
-          page({
-            cursor: "c2",
+const at = (iso: string) => TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe(iso)));
+
+const backfill = (overrides: Parameters<typeof page>[0]) =>
+  page({ kind: "backfill", backfill: "running", ...overrides });
+
+describe("syncStream read state per page", () => {
+  it.effect("backfill pages leave new conversations read; backfilled_at waits for done", () =>
+    Effect.gen(function* () {
+      const script = new Map<string | null, Step>([
+        [
+          null,
+          backfill({ cursor: "c1", more: true, upserts: [rawItem("a1", { threadId: "t1" })] }),
+        ],
+        ["c1", new Error("offline")],
+      ]);
+      yield* Effect.flip(run(script));
+      expect(yield* stateByThread).toEqual({ t1: "read" });
+      expect((yield* streamState)?.backfilledAt).toBeNull();
+
+      yield* at("2026-10-28T12:00:00Z");
+      script.set(
+        "c1",
+        backfill({
+          cursor: "c2",
+          backfill: "done",
+          upserts: [rawItem("a2", { threadId: "t1" }), rawItem("b1", { threadId: "t2" })],
+        }),
+      );
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "read", t2: "read" });
+      expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a live page after the backfill delivers unread and keeps backfilled_at", () =>
+    Effect.gen(function* () {
+      yield* at("2026-10-28T12:00:00Z");
+      const script = new Map<string | null, Step>([
+        [
+          null,
+          backfill({
+            cursor: "c1",
+            backfill: "done",
+            upserts: [rawItem("a1", { threadId: "t1" })],
+          }),
+        ],
+      ]);
+      yield* run(script);
+
+      yield* at("2026-10-29T08:00:00Z");
+      script.set(
+        "c1",
+        page({
+          cursor: "c2",
+          upserts: [rawItem("a2", { threadId: "t1" }), rawItem("n1", { threadId: "t9" })],
+        }),
+      );
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "unread", t9: "unread" });
+      expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a backfill page re-listing an unread live item leaves it unread", () =>
+    Effect.gen(function* () {
+      const script = new Map<string | null, Step>([
+        [
+          null,
+          backfill({
+            cursor: "c1",
+            backfill: "done",
+            upserts: [rawItem("a1", { threadId: "t1" })],
+          }),
+        ],
+        ["c1", page({ cursor: "c2", upserts: [rawItem("a2", { threadId: "t1" })] })],
+        [
+          "c2",
+          backfill({
+            cursor: "c3",
             upserts: [rawItem("a2", { threadId: "t1" }), rawItem("b1", { threadId: "t2" })],
           }),
-        );
-        yield* run(script);
-        expect(yield* seenByThread).toEqual({ t1: yield* seqOf("a2"), t2: yield* seqOf("b1") });
-        expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
+        ],
+      ]);
+      yield* run(script);
+      yield* run(script);
+      const seenBefore = yield* seenByThread;
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "unread", t2: "read" });
+      expect((yield* seenByThread).t1).toBe(seenBefore.t1);
+    }).pipe(Effect.provide(storeLayer())),
+  );
 
-        yield* TestClock.setTime(
-          DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-29T08:00:00Z")),
-        );
-        script.set("c2", page({ cursor: "c3", upserts: [rawItem("a3", { threadId: "t1" })] }));
-        yield* run(script);
-        expect(yield* seenByThread).toEqual({ t1: yield* seqOf("a2"), t2: yield* seqOf("b1") });
-        expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
-      }).pipe(Effect.provide(storeLayer())),
+  it.effect("a backfill page adding an older message keeps each conversation's read state", () =>
+    Effect.gen(function* () {
+      const older = { occurredAt: "2026-10-01T09:00:00Z" };
+      const script = new Map<string | null, Step>([
+        [
+          null,
+          backfill({
+            cursor: "c1",
+            backfill: "done",
+            upserts: [rawItem("a1", { threadId: "t1" }), rawItem("b1", { threadId: "t2" })],
+          }),
+        ],
+        ["c1", page({ cursor: "c2", upserts: [rawItem("a2", { threadId: "t1" })] })],
+        [
+          "c2",
+          backfill({
+            cursor: "c3",
+            upserts: [
+              rawItem("a0", { threadId: "t1", ...older }),
+              rawItem("b0", { threadId: "t2", ...older }),
+            ],
+          }),
+        ],
+      ]);
+      yield* run(script);
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "unread", t2: "read" });
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "unread", t2: "read" });
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a live page between backfill pages delivers unread while the backfill runs", () =>
+    Effect.gen(function* () {
+      const script = new Map<string | null, Step>([
+        [null, backfill({ cursor: "c1", upserts: [rawItem("a1", { threadId: "t1" })] })],
+        [
+          "c1",
+          page({ cursor: "c2", backfill: "running", upserts: [rawItem("n1", { threadId: "t9" })] }),
+        ],
+        [
+          "c2",
+          backfill({
+            cursor: "c3",
+            backfill: "done",
+            upserts: [rawItem("b1", { threadId: "t2" })],
+          }),
+        ],
+      ]);
+      yield* run(script);
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "read", t9: "unread" });
+      expect((yield* streamState)?.backfilledAt).toBeNull();
+
+      yield* at("2026-10-28T12:00:00Z");
+      yield* run(script);
+      expect(yield* stateByThread).toEqual({ t1: "read", t2: "read", t9: "unread" });
+      expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a running page after done clears backfilled_at until the next done", () =>
+    Effect.gen(function* () {
+      yield* at("2026-10-28T12:00:00Z");
+      const script = new Map<string | null, Step>([
+        [null, backfill({ cursor: "c1", backfill: "done", upserts: [rawItem("a1")] })],
+        ["c1", backfill({ cursor: "c2", upserts: [rawItem("a1")] })],
+        ["c2", backfill({ cursor: "c3", backfill: "done", upserts: [rawItem("a2")] })],
+      ]);
+      yield* run(script);
+      expect((yield* streamState)?.backfilledAt).toBe("2026-10-28T12:00:00.000Z");
+
+      yield* at("2026-10-29T08:00:00Z");
+      yield* run(script);
+      expect((yield* streamState)?.backfilledAt).toBeNull();
+
+      yield* at("2026-10-29T09:00:00Z");
+      yield* run(script);
+      expect((yield* streamState)?.backfilledAt).toBe("2026-10-29T09:00:00.000Z");
+    }).pipe(Effect.provide(storeLayer())),
   );
 });
 

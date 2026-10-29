@@ -1,4 +1,4 @@
-import type { RawItem, StreamDescriptor } from "@weir/contract/Source";
+import type { RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -29,6 +29,8 @@ export interface WrittenItem {
   readonly seq: Seq;
   readonly conversationId: ConversationId;
   readonly previousConversationId: ConversationId | null;
+  readonly inserted: boolean;
+  readonly conversationWasRead: boolean;
 }
 
 const decodeStreamIds = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: StreamId })));
@@ -160,6 +162,19 @@ export const writeItems = Effect.fnUntraced(function* (
   const latest = [...new Map(items.map((item) => [item.externalId, item])).values()];
   return yield* sql.withTransaction(
     Effect.gen(function* () {
+      const unreadBefore = new Set(
+        (yield* decodeConversationIds(
+          yield* sql`SELECT c.id FROM conversation c
+            LEFT JOIN conversation_state s ON s.conversation_id = c.id
+            WHERE c.source_id = ${stream.sourceId}
+              AND ${sql.in(
+                "c.key",
+                latest.map((item) => item.threadId ?? item.containerId),
+              )}
+              AND c.last_seq > coalesce(s.seen_seq, 0)
+              AND EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)`,
+        )).map(({ id }) => id),
+      );
       const touched = new Set<ConversationId>();
       const written = yield* Effect.forEach(latest, (item) =>
         Effect.gen(function* () {
@@ -217,7 +232,13 @@ export const writeItems = Effect.fnUntraced(function* (
           const previousConversationId = prior[0]?.conversationId ?? null;
           touched.add(conversationId);
           if (previousConversationId !== null) touched.add(previousConversationId);
-          return { seq, conversationId, previousConversationId } satisfies WrittenItem;
+          return {
+            seq,
+            conversationId,
+            previousConversationId,
+            inserted: prior.length === 0,
+            conversationWasRead: !unreadBefore.has(conversationId),
+          } satisfies WrittenItem;
         }),
       );
       yield* indexItems(
@@ -376,13 +397,14 @@ export const clear = Effect.fnUntraced(function* (view: Read.TagFilter, seq: Seq
 export const saveCursor = Effect.fnUntraced(function* (
   streamId: StreamId,
   cursor: string,
-  { backfilled }: { readonly backfilled: boolean },
+  backfill: SyncPage["backfill"],
 ) {
   const sql = yield* SqlClient.SqlClient;
-  const backfilledAt = backfilled ? yield* Schema.encodeEffect(UtcIso)(yield* DateTime.now) : null;
-  yield* sql`UPDATE stream SET
-      cursor = ${cursor},
-      backfilled_at = coalesce(backfilled_at, ${backfilledAt})
+  const backfilledAt =
+    backfill === "done"
+      ? sql`coalesce(backfilled_at, ${yield* Schema.encodeEffect(UtcIso)(yield* DateTime.now)})`
+      : sql`NULL`;
+  yield* sql`UPDATE stream SET cursor = ${cursor}, backfilled_at = ${backfilledAt}
     WHERE id = ${streamId}`;
 });
 

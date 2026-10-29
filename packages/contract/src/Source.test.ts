@@ -60,18 +60,31 @@ describe("RawItem", () => {
 });
 
 describe("SyncPage", () => {
+  const valid = {
+    upserts: [item],
+    deletions: ["msg-0"],
+    cursor: "c1",
+    more: false,
+    kind: "backfill",
+    backfill: "done",
+  };
+
   it("decodes a page of items", () => {
-    const page = { upserts: [item], deletions: ["msg-0"], cursor: "c1", more: false };
-    expect(decodeSyncPage(page)).toEqual(page);
+    expect(decodeSyncPage(valid)).toEqual(valid);
   });
 
   it("rejects a page with an invalid nested item", () => {
-    const page = {
-      upserts: [{ ...item, from: { name: "Ada" } }],
-      deletions: [],
-      cursor: "c1",
-      more: true,
-    };
+    expect(() =>
+      decodeSyncPage({ ...valid, upserts: [{ ...item, from: { name: "Ada" } }] }),
+    ).toThrow();
+  });
+
+  it.each([
+    ["without kind", { ...valid, kind: undefined }],
+    ["with an unknown kind", { ...valid, kind: "history" }],
+    ["without backfill", { ...valid, backfill: undefined }],
+    ["with an unknown backfill", { ...valid, backfill: "paused" }],
+  ])("rejects a page %s", (_name, page) => {
     expect(() => decodeSyncPage(page)).toThrow();
   });
 });

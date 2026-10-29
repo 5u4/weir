@@ -86,7 +86,14 @@ const create = ({ command, backfill }: GwsConfig) => {
       list.nextPageToken === undefined
         ? { phase: "incremental", historyId: startHistoryId, pageToken: null }
         : { phase: "backfill", startHistoryId, pageToken: list.nextPageToken };
-    return { ...page, cursor: encodeCursor(next), more: next.phase === "backfill" };
+    const more = next.phase === "backfill";
+    return {
+      ...page,
+      cursor: encodeCursor(next),
+      more,
+      kind: "backfill",
+      backfill: more ? "running" : "done",
+    };
   };
 
   const incrementalPage = async (
@@ -128,6 +135,8 @@ const create = ({ command, backfill }: GwsConfig) => {
       deletions: [...new Set([...deleted, ...page.deletions])],
       cursor: encodeCursor(next),
       more: next.pageToken !== null,
+      kind: "live",
+      backfill: "done",
     };
   };
 

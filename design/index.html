@@ -273,6 +273,8 @@ flowchart TD
   deletions: string[]
   cursor: string
   more: boolean
+  kind: "live" | "backfill"
+  backfill: "running" | "done"
 }
 
 <span class="k">type</span> RawItem = {
@@ -298,6 +300,8 @@ flowchart TD
 <li>daemon 启动和 reload 时，用 <code>configSchema</code> 校验 <code>[source.config]</code>。校验失败的报错里带上出错的 config 路径。</li>
 <li><code>cursor</code> 的内容由 plugin 决定，比如 Gmail 的 historyId，或者 Graph 的 delta token。core 只负责保存，不解析。</li>
 <li><code>more = true</code> 表示还有下一页，core 立刻用新 cursor 再调一次。这样冷启动拉一万封邮件时，每一页都单独落盘，中途崩溃也能从上一页接着来。</li>
+<li><code>kind</code> 说明这一页是回填还是实时。回填页是列出已有的历史，实时页是 source 上新发生的变化。core 按每一页的 <code>kind</code> 决定已读状态，规则见<a href="#visibility">第 08 节</a>。plugin 可以在回填没结束时插入实时页。</li>
+<li><code>backfill</code> 说明这一页提交之后，这个 stream 的回填是还在进行还是已经完成。core 在同一个事务里据此写 <code>stream.backfilled_at</code>：<code>running</code> 把它清空，<code>done</code> 在它为空时写入当前时间，已有值就保留。所以重新回填时状态页会再显示回填中。</li>
 <li><code>body</code> 和 <code>bodyNew</code> 都是 markdown。把 source 的原始格式转成 markdown 是 plugin 的事，core 和 UI 只认 markdown。<code>bodyNew</code> 是去掉引用历史和签名后的正文。plugin 可以自己算，返回 <code>null</code> 时 core 用通用实现。</li>
 <li><code>openLabel</code> 是 dock 上「在 Gmail 中打开」按钮里的来源名。</li>
 <li><code>me</code> 列出这个 stream 里代表你的地址或 handle。core 用它算 <code>fromMe</code>。你发的消息靠右显示，digest 里用「你」称呼你。</li>
@@ -314,7 +318,7 @@ flowchart TD
 <li><code>thread_id</code> 是 Gmail 的 <code>threadId</code>。<code>container_id</code> 是邮箱地址，<code>container_name</code> 是 <code>Gmail</code>。每封 Gmail 都有 threadId，所以对 gws 来说，container 不会决定 conversation 的 key。</li>
 <li><code>link</code> 是 <code>https://mail.google.com/mail/?authuser=&lt;邮箱地址&gt;#all/&lt;message id&gt;</code>。<code>occurred_at</code> 取 <code>internalDate</code>，写成 UTC 的 ISO 时间。</li>
 <li><code>cursor</code> 是一段 JSON，记录当前阶段。冷启动时是 <code>{"phase":"backfill","startHistoryId":…,"pageToken":…}</code>，之后是 <code>{"phase":"incremental","historyId":…,"pageToken":…}</code>。解析不了的 cursor 直接报错。</li>
-<li>冷启动时，先用 <code>users.getProfile</code> 的 historyId 作为起点，再用 <code>backfill</code> 调 <code>users.messages.list</code>，对每个 id 调 <code>users.messages.get format=full</code>。分页靠 <code>more = true</code>。列表拉完后 cursor 进入 incremental，从这个起点读 history，所以冷启动期间到达的邮件不会漏掉。</li>
+<li>冷启动时，先用 <code>users.getProfile</code> 的 historyId 作为起点，再用 <code>backfill</code> 调 <code>users.messages.list</code>，对每个 id 调 <code>users.messages.get format=full</code>。分页靠 <code>more = true</code>。列表拉完后 cursor 进入 incremental，从这个起点读 history，所以冷启动期间到达的邮件不会漏掉。列表的每一页都是 <code>kind = "backfill"</code>，还有下一页时 <code>backfill = "running"</code>，最后一页是 <code>"done"</code>。history 的每一页都是 <code>kind = "live"</code>、<code>backfill = "done"</code>。</li>
 <li>正文取 <code>text/html</code> 部分，用 turndown 转成 markdown。文字原样保留，不转义 markdown 符号。链接文字和地址相同时只写地址。邮件没有 HTML 部分时，取 <code>text/plain</code>，按原型 <code>originalMd</code> 的规则整理成 markdown。每行保留换行，只有真正的列表、表格、引用和 diff 才按 markdown 结构处理。有文件名或带 <code>Content-Disposition: attachment</code> 的 part 是附件，它和它下面的所有 part 都不算正文。每个 part 按自己 <code>Content-Type</code> 里的 <code>charset</code> 解码，没写或者认不出时按 UTF-8。</li>
 <li><code>bodyNew</code> 由 plugin 自己算，不返回 <code>null</code>。HTML 邮件先删掉 <code>gmail_signature</code>、<code>gmail_quote</code> 和 <code>gmail_attr</code> 这几个 class 的元素再转换。纯文本邮件在第一处 <code>-- </code> 签名分隔行截断；一行 <code>On … wrote:</code> 后面紧跟 <code>&gt;</code> 开头的行时，也在这一行截断。</li>
 <li>之后增量同步，调 <code>users.history.list startHistoryId=&lt;cursor&gt;</code>，读 messageAdded、messageDeleted、labelAdded、labelRemoved 四种记录。新的和 label 变了的 message 都用 <code>messages.get format=full</code> 重新拉一遍，这样 <code>raw.labelIds</code> 总是最新的。一页里同一个 id 只拉一次，同一页里既新增又删除的 id 只算删除。</li>
@@ -365,7 +369,7 @@ erDiagram
 <div class="tw"><table>
 <thead><tr><th>表</th><th>列</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td><code>stream</code></td><td><code>id, source_id, external_id, kind, name, open_label, me, cursor, backfilled_at, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。<code>external_id</code> 是 plugin 给的 stream descriptor 的 <code>id</code>，<code>(source_id, external_id)</code> 唯一。<code>backfilled_at</code> 在冷启动的最后一页（<code>more = false</code>）提交时写入，之前是空的。</td></tr>
+<tr><td><code>stream</code></td><td><code>id, source_id, external_id, kind, name, open_label, me, cursor, backfilled_at, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。<code>external_id</code> 是 plugin 给的 stream descriptor 的 <code>id</code>，<code>(source_id, external_id)</code> 唯一。<code>backfilled_at</code> 跟着每一页的 <code>backfill</code> 字段，和这一页同一个事务提交：<code>running</code> 把它清空，<code>done</code> 在它为空时写入当前时间。它为空时状态页显示回填中。</td></tr>
 <tr><td><code>item</code></td><td><code>seq, stream_id, external_id, kind, conversation_id, thread_id, container_id, container_name, occurred_at, synced_at, title, from_name, from_address, from_me, body, body_new, link, raw, deleted_at</code></td><td><code>seq</code> 是自增主键，也是 item 唯一的 id。<code>(stream_id, external_id)</code> 唯一。发件人直接存成列，不另建表。<code>body</code> 和 <code>body_new</code> 是 markdown。<code>raw</code> 是 plugin 交出的 JSON。删除用软删除。</td></tr>
 <tr><td><code>conversation</code></td><td><code>id, source_id, key, title, first_at, last_at, last_seq</code></td><td><code>(source_id, key)</code> 唯一，<code>key</code> 是 <code>thread_id ?? container_id</code>。</td></tr>
 <tr><td><code>conversation_tag</code></td><td><code>conversation_id, tag</code></td><td>tag 的缓存，给列表查询和计数用。sync 写新 item 时追加。已有 item 再次 upsert 时，重算这个 conversation 的行。启动和 reload 时按当前 config 整表重算。</td></tr>
@@ -634,7 +638,7 @@ stateDiagram-v2
 <tr><td>已读未完成</td><td>其余情况</td><td>同上，变灰，留到你点「完成」。</td></tr>
 </tbody></table></div>
 <p>表格从上到下判断，第一条命中的就是当前状态。「重新出现」不需要后台任务。新 item 让 <code>last_seq</code> 变大，查询结果自然就变了。「标为未读」把 <code>seen_seq</code> 设成 <code>max(0, min(seq, last_seq) - 1)</code>，不带 seq 时 seq 取 <code>last_seq</code>，也就是只有最后一条变成未读。</p>
-<p>冷启动回填的 item 算已读。stream 的 <code>backfilled_at</code> 还是空的时候，也就是冷启动的每一页里，upsert 一条 item 时同一个事务把它所在 conversation 的 <code>seen_seq</code> 推到这条的 seq。cursor 每页都落盘，所以不能拿 cursor 是否为空来判断。最后一页提交、<code>backfilled_at</code> 写入之后，新 item 照常是未读。<code>cleared_seq</code> 不动，所以这些 conversation 留在视图里，是「已读未完成」。historyId 过期后的完整重拉不算冷启动，那时 <code>backfilled_at</code> 已经有值，补回来的 item 是未读。</p>
+<p>回填的 item 算已读，实时的 item 算未读。core 按每一页的 <code>kind</code> 判断，不看 stream 的 <code>backfilled_at</code>。<code>kind = "backfill"</code> 的页只为这一页新插入的 item 推 <code>seen_seq</code>，新插入指之前没存过这个 external id，而且只在写入前已经读完的 conversation 里推。读完指写入前 <code>seen_seq &gt;= last_seq</code>，这一页新建的 conversation 也算读完。同一个事务把这些 conversation 的 <code>seen_seq</code> 推到它们新插入 item 的最大 seq。已存过的 item 再次 upsert，从不改变已读状态。所以回填重新列出一封实时送达、还没读的邮件，它仍是未读。回填把一封更早的邮件插进一个有未读的 conversation，这个 conversation 也仍是未读。<code>kind = "live"</code> 的页不动 <code>seen_seq</code>，新 item 照常是未读。<code>cleared_seq</code> 不动，所以回填的 conversation 留在视图里，是「已读未完成」。historyId 过期后 gws 的完整重拉发的也是回填页，已经存过的 item 状态不变，没存过的算已读。</p>
 
 <h2 id="config"><span class="n">09</span>一个 config.toml 管全部配置，不做设置页</h2>
 <pre><code>~/.weir/
