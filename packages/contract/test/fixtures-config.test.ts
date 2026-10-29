@@ -4,8 +4,18 @@ import * as Effect from "effect/Effect";
 import { expect, it } from "vitest";
 import { decodeConfig } from "../src/Config.ts";
 
-it("decodes the fixtures config with its gmail source and four tags", () => {
+it("decodes the fixtures config with its fake-ai profile, gmail source and four tags", () => {
   const config = Effect.runSync(decodeConfig(Bun.TOML.parse(configToml())));
+  expect(config.ai).toEqual({
+    "fake-ai": { command: ["fake-ai"], timeout: Duration.seconds(30), concurrency: 1 },
+  });
+  expect(config.digest).toEqual({
+    ai: "fake-ai",
+    threshold: 1000,
+    max_input: 24_000,
+    context: 6000,
+    language: "zh-CN",
+  });
   expect(config.source).toEqual([
     {
       id: "gmail",
@@ -15,8 +25,8 @@ it("decodes the fixtures config with its gmail source and four tags", () => {
     },
   ]);
   expect(config.tag.map(({ name, ai }) => [name, ai])).toEqual([
-    ["Me", false],
-    ["On-call", false],
+    ["Me", true],
+    ["On-call", true],
     ["GitHub", false],
     ["Promos", false],
   ]);

@@ -1,0 +1,34 @@
+[
+  {
+    "conversation": "Northwind migration: cutover plan and UAT sign-off",
+    "first_occurred_at": "2026-10-20T18:05:00.000Z",
+    "last_occurred_at": "2026-10-23T15:05:00.000Z",
+    "output": {
+      "headline": "CO-0147已签，37条重复客户记录待你和Ben决定",
+      "topics": [
+        {
+          "title": "UAT与迁移待办",
+          "state": "open",
+          "body": "Lisa已签署CO-0147；UAT目标仍为Oct 24签字。37条重复邮箱记录需你和Ben决定合并还是放宽唯一性规则，并确认哪条记录保留AR历史；Rachel称需在Oct 23前回复，否则Oct 31冻结日期有风险。",
+          "positions": [0, 1, 2, 3]
+        }
+      ]
+    }
+  },
+  {
+    "conversation": "Mom's 60th: plan, dates and money",
+    "first_occurred_at": "2026-10-24T03:15:00.000Z",
+    "last_occurred_at": "2026-10-24T03:15:00.000Z",
+    "output": {
+      "headline": "Daniel拟定12月7日午餐庆生，等你确认宾客和费用分摊",
+      "topics": [
+        {
+          "title": "生日午餐安排",
+          "state": "open",
+          "body": "Daniel建议12月7日在Fennel & Rye办午餐，需在Nov 7前付$500订金；他等你下周五前确认宾客名单和是否各付一半。你还需准备照片幻灯片和简短致辞。",
+          "positions": [0]
+        }
+      ]
+    }
+  }
+]

@@ -7,7 +7,11 @@
     ".": "./src/index.ts"
   },
   "bin": {
+    "fake-ai": "./src/bin/fake-ai.ts",
     "fake-gws": "./src/bin/fake-gws.ts",
     "fake-gws-seed": "./src/bin/fake-gws-seed.ts"
+  },
+  "devDependencies": {
+    "@weir/contract": "workspace:*"
   }
 }
