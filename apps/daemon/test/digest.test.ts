@@ -506,7 +506,7 @@ describe("manual digest", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("status lists a job queued behind a running one, then runs it", () =>
+  it.live("status lists a titled job queued behind a running one, then runs it", () =>
     Effect.gen(function* () {
       const { client, deliver, conversationOf, detail } = yield* start({
         args: ["--delay", "800"],
@@ -521,8 +521,25 @@ describe("manual digest", () => {
       if (aSeq === undefined || bFrom === undefined || bTo === undefined) {
         throw new Error("expected items in A and B");
       }
-      const jobA = { conversation_id: a, from_seq: aSeq, to_seq: aSeq, trigger: "manual" };
-      const jobB = { conversation_id: b, from_seq: bFrom, to_seq: bTo, trigger: "manual" };
+      const listed = (yield* client.conversations({
+        query: { view: { _tag: "Tag", name: "Lists" } },
+      })).conversations;
+      const titleOf = (id: number) => listed.find((row) => row.id === id)?.title;
+      const jobA = {
+        conversation_id: a,
+        from_seq: aSeq,
+        to_seq: aSeq,
+        trigger: "manual",
+        title: titleOf(a),
+      };
+      const jobB = {
+        conversation_id: b,
+        from_seq: bFrom,
+        to_seq: bTo,
+        trigger: "manual",
+        title: titleOf(b),
+      };
+      expect([jobA.title, jobB.title]).toEqual(["List A", "List B"]);
 
       const fiberA = yield* Effect.forkChild(client.digest({ params: { id: a }, payload: {} }));
       yield* eventually(client.status(), ({ digest }) => (digest?.running.length ?? 0) === 1);
