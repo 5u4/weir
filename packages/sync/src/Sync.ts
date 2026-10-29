@@ -88,13 +88,14 @@ export const syncStream = Effect.fnUntraced(function* (
   let streamId = Option.getOrNull(yield* Read.streamId(sourceId, descriptor.id));
   let counts: SyncCounts = { upserts: 0, deletions: 0 };
   return yield* Effect.gen(function* () {
-    const stream = yield* sql.withTransaction(
+    const { stream, fromMeChanged } = yield* sql.withTransaction(
       Effect.gen(function* () {
-        const { stream, fromMeChanged } = yield* Write.upsertStream(sourceId, descriptor);
-        yield* recomputeTags(tags, fromMeChanged);
-        return stream;
+        const upserted = yield* Write.upsertStream(sourceId, descriptor);
+        yield* recomputeTags(tags, upserted.fromMeChanged);
+        return upserted;
       }),
     );
+    if (fromMeChanged.length > 0) yield* onWritten(fromMeChanged);
     streamId = stream.id;
     let cursor = stream.cursor;
     let backfilling = stream.backfilledAt === null;

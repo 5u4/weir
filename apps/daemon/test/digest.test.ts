@@ -20,6 +20,7 @@ import {
   type FakeSource,
   fakePlugin,
   fakeSource,
+  mailStream,
   makeHome,
   processesMentioning,
   rawItem,
@@ -36,6 +37,11 @@ match = { type = "regex", target = "/title", regex = "work", flags = "i" }
 [[tag]]
 name = "Lists"
 match = { type = "regex", target = "/title", regex = "list", flags = "i" }
+
+[[tag]]
+name = "Sent"
+ai = true
+match = { type = "eq", target = "/fromMe", is = true }
 `;
 
 const item = (externalId: string, title: string, chars: number, minute: number): RawItem => {
@@ -266,6 +272,20 @@ describe("auto digest", () => {
           ],
         ]);
       }).pipe(Effect.scoped),
+  );
+
+  it.live("a new own address that makes a conversation AI-tagged gets an auto digest", () =>
+    Effect.gen(function* () {
+      const { deliver, conversationOf, detail, source } = yield* start();
+      yield* deliver([item("l1", "List news", 1100, 1)]);
+      const id = yield* conversationOf("List news");
+      expect((yield* detail(id)).digest.backlog).toBeNull();
+
+      source.streams = async () => [{ ...mailStream, me: [...mailStream.me, "ada@example.com"] }];
+      const digested = yield* eventually(detail(id), ({ digests }) => digests.length > 0);
+      const seq = digested.items[0]?.seq;
+      expect(ranges(digested.digests)).toEqual([[seq, seq, "auto"]]);
+    }).pipe(Effect.scoped),
   );
 });
 
