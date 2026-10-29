@@ -4,6 +4,7 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import * as AtomHttpApi from "effect/reactivity/AtomHttpApi";
+import * as Reactivity from "effect/reactivity/Reactivity";
 import * as Schema from "effect/Schema";
 import { now } from "./Health.ts";
 import { statusOpen, type View } from "./Route.ts";
@@ -86,7 +87,8 @@ export const dismiss = Weir.runtime
       Effect.gen(function* () {
         const client = yield* Weir;
         const before = get.registry.get(intents).get(row.id);
-        get.registry.update(intents, (map) => changed(map, row.id, intentFor(view, row)));
+        const intent = intentFor(view, row);
+        get.registry.update(intents, (map) => changed(map, row.id, intent));
         const request =
           view === "cleared"
             ? client.restore({ params: { id: row.id } })
@@ -96,8 +98,13 @@ export const dismiss = Weir.runtime
             Effect.sync(() => get.registry.update(intents, (map) => changed(map, row.id, before))),
           ),
         );
+        yield* Reactivity.invalidate(["counts", "list"]);
+        yield* Effect.ignore(get.result(viewList(view), { suspendOnWaiting: true }));
+        get.registry.update(intents, (map) =>
+          map.get(row.id) === intent ? changed(map, row.id, undefined) : map,
+        );
       }),
-    { concurrent: true, reactivityKeys: ["counts", "list"] },
+    { concurrent: true },
   )
   .pipe(Atom.keepAlive);
 
