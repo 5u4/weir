@@ -508,7 +508,7 @@ flowchart TD
 </ul>
 
 <h3 id="auto">自动 digest 只看数据库里已有的行</h3>
-<p>只有带 <code>ai = true</code> tag 的 conversation 自动 digest。每次 sync 写完，core 对受影响的 conversation 算下面几个值：</p>
+<p>只有带 <code>ai = true</code> tag 的 conversation 自动 digest。每次 sync 写完，core 对受影响的 conversation 算下面几个值。stream 代表「我」的地址变了、因此重新打 tag 的 conversation，也在那次提交之后算一次：</p>
 <ol>
 <li><code>since</code> 是这个 conversation 上所有 AI tag 的 <code>ai_since</code> 里最早的一个。</li>
 <li><code>floor</code> 是这个 conversation 所有 digest 的 <code>to_seq</code> 最大值，自动和手动的都算。没有 digest 时是 0。</li>
@@ -540,9 +540,10 @@ flowchart TD
 <tr><td>Digest now</td><td><code>(floor, last_seq]</code>，也就是最后一份 digest 之后还没 digest 的尾巴，不管字数够不够。</td></tr>
 <tr><td>Digest from here</td><td>还没 digest 的每条原文气泡，不管是排在某份 digest 前面的一段，还是最后的尾巴，悬停或聚焦时都显示这个按钮，按钮上写它覆盖几条。窄屏上点一下气泡显示它。范围从这条到下一份 digest 的 <code>from_seq - 1</code>，后面没有 digest 时到 <code>last_seq</code>。</td></tr>
 <tr><td>Digest earlier</td><td>Digest now 的反方向。排在某份 digest 前面的一段原文，底部紧挨着那份 digest 的地方有一条 <code>Not digested</code>、<code>N messages above</code> 和这个按钮。范围从这段的最后一条往前数，正文累计到一次调用的上限 24000 字符为止，至少一条，不越过上一份 digest。一次装不下整段时，按钮写成 <code>Digest K earlier</code>。写完后条子留在新卡片上面，数字变小，再点就继续往前。这段原文全部 digest 完，条子就消失。</td></tr>
-<tr><td>Redo</td><td>在 digest 卡片上点它。用当前的 prompt 和模型重写同一个范围，替换原来那一行。</td></tr>
+<tr><td>Redo</td><td>在 digest 卡片上点它。用当前的 prompt 和模型重写同一个范围，替换原来那一行：同一个事务里先插入新行，再删掉旧行和它的搜索索引行。新行拿新的 id，id 不复用，旧 id 之后返回 404。原来的范围按当前的 <code>max_input</code> 一次装不下时，不调用 AI，直接返回 409 <code>DigestConflict</code>，消息是 <code>#a-#b is over max_input N; raise max_input to redo it</code>。</td></tr>
 </tbody></table></div>
 <p>前三个入口只填空隙，Redo 只替换同一个范围，所以 digest 之间从不重叠。手动写的 digest 也算进 <code>floor</code>。所以自动链条会从它之后接着算，不会重复覆盖。悬停在 Digest from here 或 Digest earlier 上时，要被 digest 的那几条原文会被标出来。</p>
+<p>手动 digest 的范围超过一次调用的上限时，按顺序分段调用。某一段失败时请求返回 502 <code>DigestFailed</code>，带上 <code>error</code> 和原始输出的 <code>log_path</code>；它之前已经写好的段保留。</p>
 
 <h3 id="recompute">改了 prompt 或换了模型，旧 digest 原样保留</h3>
 <p>改动只影响之后写的 digest，不自动重算。想让旧内容用上新的 prompt，就对那份 digest 点 Redo，一次一份。</p>
