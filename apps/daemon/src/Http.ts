@@ -1,9 +1,15 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { untagged } from "@weir/contract/Config";
+import { type Config, untagged } from "@weir/contract/Config";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
-import { ConversationId, type ConversationRow, Seq } from "@weir/store/Rows";
+import {
+  ConversationId,
+  type ConversationRow,
+  type ListedConversationRow,
+  Seq,
+} from "@weir/store/Rows";
+import * as Write from "@weir/store/Write";
 import { match, ruleInput } from "@weir/sync/Match";
 import type * as Scheduler from "@weir/sync/Scheduler";
 import * as Arr from "effect/Array";
@@ -18,7 +24,17 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { Api, type ConversationSummary, NotFound, type Status, type TagTest } from "./Api.ts";
+import type * as SqlError from "effect/sql/SqlError";
+import {
+  Api,
+  type ConversationSummary,
+  type Counts,
+  NotFound,
+  type Row,
+  type Status,
+  type TagTest,
+  type View,
+} from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
@@ -144,7 +160,123 @@ const tagTest = Effect.fnUntraced(function* (file: string, name: string | undefi
   } satisfies TagTest;
 });
 
-const handlers = HttpApiBuilder.group(
+const row = (conversation: ListedConversationRow): Row => ({
+  id: conversation.id,
+  source: conversation.sourceId,
+  title: conversation.title,
+  tags: conversation.tags,
+  first_at: DateTime.formatIso(conversation.firstAt),
+  last_at: DateTime.formatIso(conversation.lastAt),
+  last_seq: conversation.lastSeq,
+  seen_seq: conversation.seenSeq,
+  cleared_seq: conversation.clearedSeq,
+  muted: conversation.muted,
+  state: conversation.state,
+  new: conversation.newItems,
+  items: conversation.items,
+  participants: conversation.participants,
+});
+
+const sendersPerView = 3;
+
+const listed = Effect.fnUntraced(function* (id: number) {
+  const found = yield* Read.conversation(ConversationId.make(id));
+  if (Option.isNone(found)) return yield* new NotFound({ message: `no conversation ${id}` });
+  return found.value;
+});
+
+const knownView = Effect.fnUntraced(function* (config: Config, view: View) {
+  if (view._tag === "Tag" && !config.tag.some(({ name }) => name === view.name)) {
+    return yield* new NotFound({ message: `no tag "${view.name}"` });
+  }
+});
+
+const counts = Effect.fnUntraced(function* (config: Config) {
+  const tagCounts = yield* Read.tagCounts();
+  const senders = yield* Read.unreadSenders(sendersPerView);
+  const totals = yield* Read.stateTotals();
+  const summaryOf = (tag: string | null) => {
+    const count = tagCounts.find((candidate) => candidate.tag === tag);
+    return {
+      unread: count?.unread ?? 0,
+      open: count?.open ?? 0,
+      senders: senders
+        .filter((sender) => sender.tag === tag)
+        .map(({ name, address }) => ({ name, address })),
+    };
+  };
+  return {
+    unread: totals.unread,
+    tags: config.tag.map(({ name }) => ({ name, ...summaryOf(name) })),
+    untagged: summaryOf(null),
+    cleared: totals.cleared,
+  } satisfies Counts;
+});
+
+const changeState = Effect.fnUntraced(function* (id: number, change: Write.StateChange) {
+  yield* listed(id);
+  yield* Write.changeState([ConversationId.make(id)], change);
+  return row(yield* listed(id));
+});
+
+const dieOnStoreError = <A, R>(
+  effect: Effect.Effect<A, NotFound | SqlError.SqlError | Schema.SchemaError, R>,
+) => effect.pipe(Effect.catchTag(["SqlError", "SchemaError"], Effect.die));
+
+const viewHandlers = HttpApiBuilder.group(
+  Api,
+  "view",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    return handlers.handleAll({
+      conversations: ({ query: { view } }) =>
+        Effect.gen(function* () {
+          yield* knownView((yield* daemon.state).config, view);
+          const seq = yield* Read.maxSeq();
+          const conversations = yield* Read.conversations(view);
+          return { seq, conversations: conversations.map(row) };
+        }).pipe(withSql, dieOnStoreError),
+      counts: () =>
+        daemon.state.pipe(
+          Effect.flatMap(({ config }) => counts(config)),
+          withSql,
+          Effect.orDie,
+        ),
+    });
+  }),
+);
+
+const stateHandlers = HttpApiBuilder.group(
+  Api,
+  "state",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    return handlers.handleAll({
+      read: ({ params: { id }, payload: { seq } }) =>
+        changeState(id, { _tag: "Read", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
+      unread: ({ params: { id }, payload: { seq } }) =>
+        changeState(
+          id,
+          seq === undefined ? { _tag: "Unread" } : { _tag: "Unread", seq: Seq.make(seq) },
+        ).pipe(withSql, dieOnStoreError),
+      done: ({ params: { id }, payload: { seq } }) =>
+        changeState(id, { _tag: "Done", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
+      mute: ({ params: { id } }) =>
+        changeState(id, { _tag: "Mute" }).pipe(withSql, dieOnStoreError),
+      restore: ({ params: { id } }) =>
+        changeState(id, { _tag: "Restore" }).pipe(withSql, dieOnStoreError),
+      clear: ({ payload: { view, seq } }) =>
+        Effect.gen(function* () {
+          yield* knownView((yield* daemon.state).config, view);
+          return { cleared: yield* Write.clear(view, Seq.make(seq)) };
+        }).pipe(withSql, dieOnStoreError),
+    });
+  }),
+);
+
+const weirHandlers = HttpApiBuilder.group(
   Api,
   "weir",
   Effect.fnUntraced(function* (handlers) {
@@ -179,18 +311,23 @@ const handlers = HttpApiBuilder.group(
         }).pipe(withSql, Effect.orDie),
       conversation: ({ params: { id } }) =>
         Effect.gen(function* () {
-          const detail = yield* Read.getConversation(ConversationId.make(id)).pipe(
-            withSql,
-            Effect.orDie,
-          );
+          const state = yield* listed(id);
+          const detail = yield* Read.getConversation(state.id);
           if (Option.isNone(detail)) {
             return yield* new NotFound({ message: `no conversation ${id}` });
           }
           const { conversation, items, tags } = detail.value;
+          const digests = yield* Read.digests(conversation.id);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
             tags,
+            state: {
+              seen_seq: state.seenSeq,
+              cleared_seq: state.clearedSeq,
+              muted: state.muted,
+              state: state.state,
+            },
             items: items.map((item) => ({
               seq: item.seq,
               occurred_at: DateTime.formatIso(item.occurredAt),
@@ -199,8 +336,19 @@ const handlers = HttpApiBuilder.group(
               title: item.title,
               body_new: item.bodyNew,
             })),
+            digests: digests.map((digest) => ({
+              id: digest.id,
+              conversation_id: digest.conversationId,
+              from_seq: digest.fromSeq,
+              to_seq: digest.toSeq,
+              headline: digest.headline,
+              topics: digest.topics,
+              trigger: digest.trigger,
+              ai_profile: digest.aiProfile,
+              created_at: DateTime.formatIso(digest.createdAt),
+            })),
           };
-        }),
+        }).pipe(withSql, dieOnStoreError),
       item: ({ params: { seq } }) =>
         Effect.gen(function* () {
           const found = yield* Read.getItem(Seq.make(seq)).pipe(withSql, Effect.orDie);
@@ -237,6 +385,8 @@ const handlers = HttpApiBuilder.group(
     });
   }),
 );
+
+const handlers = Layer.mergeAll(weirHandlers, viewHandlers, stateHandlers);
 
 const advertise = (home: WeirHome) =>
   Layer.effectDiscard(
