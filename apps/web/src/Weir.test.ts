@@ -22,6 +22,7 @@ const daemon = vi.hoisted(() => {
   const requests: Array<string> = [];
   const digests: Array<unknown> = [];
   const replies: Array<Response | TypeError> = [];
+  const details = new Map<number, Record<string, unknown>>();
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -71,6 +72,7 @@ const daemon = vi.hoisted(() => {
         items: [],
         digests: [],
         digest: { backlog: null, earlier: null, now: null, last_failure: null },
+        ...details.get(open),
       });
     }
     return new Response(null, { status: 404 });
@@ -102,7 +104,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  return { rows, requests, digests, replies, Source, location };
+  return { rows, requests, digests, replies, details, Source, location };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -134,6 +136,7 @@ afterEach(() => {
   daemon.rows.clear();
   daemon.requests.length = 0;
   daemon.digests.length = 0;
+  daemon.details.clear();
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
@@ -287,6 +290,66 @@ it("a digest request that never reaches the daemon fails as Unreachable, not Int
   registry.set(runDigest, { id, action, range: { from: 1, to: 3 }, items: 3, land });
   await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
   expect(daemon.digests).toEqual([{}, {}]);
+  registry.dispose();
+});
+
+it("a Digest from here that lands earlier chunks keeps its failure on the first undigested message", async () => {
+  const id = ConversationId.make(5);
+  const item = (seq: number) => ({
+    seq,
+    occurred_at: `2026-10-25T09:0${seq}:00.000Z`,
+    from: { name: "Ada", address: "ada@example.com" },
+    from_me: false,
+    title: null,
+    body_new: `message ${seq}`,
+  });
+  const items = [1, 2, 3, 4].map(item);
+  daemon.details.set(5, { items });
+  const registry = AtomRegistry.make();
+  const open = conversation(id);
+  const run = digestRun(id);
+  registry.mount(open);
+  registry.mount(run);
+  await settled(registry, open);
+
+  daemon.details.set(5, {
+    items,
+    digests: [
+      {
+        id: 1,
+        conversation_id: 5,
+        from_seq: 1,
+        to_seq: 2,
+        headline: "first chunk",
+        topics: [],
+        trigger: "manual",
+        ai_profile: "fake-ai",
+        created_at: "2026-10-25T16:00:00.000Z",
+      },
+    ],
+  });
+  daemon.replies.push(
+    Response.json(
+      { _tag: "DigestFailed", error: "fake-ai: exiting with 3", log_path: "/tmp/3-4.log" },
+      { status: 502 },
+    ),
+  );
+  const land = () => () => {};
+  const action = { _tag: "From", seq: 1 } as const;
+  registry.set(runDigest, { id, action, range: { from: 1, to: 4 }, items: 4, land });
+  const anchored = {
+    _tag: "Failed",
+    action: { _tag: "From", seq: 3 },
+    range: { from: 3, to: 4 },
+    items: 2,
+    cause: { _tag: "Failed", error: "fake-ai: exiting with 3", log_path: "/tmp/3-4.log" },
+  } as const;
+  await vi.waitFor(() => expect(registry.get(run)).toEqual(anchored));
+
+  daemon.replies.push(Response.json({ digests: [] }));
+  registry.set(runDigest, { id, action: anchored.action, range: anchored.range, items: 2, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  expect(daemon.digests).toEqual([{ from: 1 }, { from: 3 }]);
   registry.dispose();
 });
 

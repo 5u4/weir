@@ -182,7 +182,20 @@ export const runDigest = Weir.runtime
           Effect.catch((error) => Effect.succeed(Digest.cause(error))),
         );
         if (outcome._tag !== "Landed") {
-          settle({ _tag: "Failed", action, range, items, cause: outcome });
+          const failed: Digest.Run = { _tag: "Failed", action, range, items, cause: outcome };
+          settle(failed);
+          if (action._tag !== "From") return;
+          yield* Reactivity.invalidate({ conversation: [id] });
+          const detail = yield* Effect.option(
+            get.result(conversation(id), { suspendOnWaiting: true }),
+          );
+          if (Option.isNone(detail)) return;
+          const { items: fresh, digests } = detail.value;
+          get.registry.update(digestRuns, (runs) =>
+            runs.get(id) === failed
+              ? withRun(runs, id, Digest.reanchored(failed, fresh, digests))
+              : runs,
+          );
           return;
         }
         const release = land(outcome.digests.map((digest) => digest.id));

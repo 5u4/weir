@@ -160,6 +160,26 @@ export const seeded = (
   };
 };
 
+export const reanchored = (
+  run: Run,
+  items: ReadonlyArray<{ readonly seq: number }>,
+  digests: ReadonlyArray<{ readonly from_seq: number; readonly to_seq: number }>,
+): Run => {
+  if (run._tag !== "Failed" || run.action._tag !== "From") return run;
+  const digested = (seq: number) =>
+    digests.some((digest) => within({ from: digest.from_seq, to: digest.to_seq }, seq));
+  if (!digested(run.action.seq)) return run;
+  const rest = items.filter(({ seq }) => within(run.range, seq) && !digested(seq));
+  const first = rest[0];
+  if (first === undefined) return idle;
+  return {
+    ...run,
+    action: { _tag: "From", seq: first.seq },
+    range: { from: first.seq, to: run.range.to },
+    items: rest.length,
+  };
+};
+
 const actionKey = (action: Action) =>
   action._tag === "Now"
     ? "Now"
