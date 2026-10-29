@@ -441,6 +441,17 @@ export const Event = Schema.Union([
     log_path: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("state"), ids: Schema.Array(Schema.Int) }),
+  Schema.Struct({
+    type: Schema.Literal("reload"),
+    status: Schema.Literal("ok"),
+    at: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("reload"),
+    status: Schema.Literal("failed"),
+    error: ConfigProblem,
+    at: Schema.String,
+  }),
 ]);
 export type Event = typeof Event.Type;
 

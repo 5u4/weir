@@ -173,10 +173,26 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           yield* FiberHandle.clear(scheduler);
           const loaded = yield* ConfigFile.load(home.config, registry).pipe(
             Effect.tapError((configError) =>
-              Ref.update(state, (current) => ({ ...current, configError })),
+              Ref.update(state, (current) => ({ ...current, configError })).pipe(
+                Effect.andThen(DateTime.now),
+                Effect.flatMap((at) =>
+                  events.publish({
+                    type: "reload",
+                    status: "failed",
+                    error: {
+                      file: configError.file,
+                      message: configError.message,
+                      issues: configError.issues,
+                    },
+                    at: DateTime.formatIso(at),
+                  }),
+                ),
+              ),
             ),
           );
           yield* start(loaded).pipe(Effect.orDie);
+          const at = yield* DateTime.now;
+          yield* events.publish({ type: "reload", status: "ok", at: DateTime.formatIso(at) });
           return yield* Ref.get(state);
         }),
       );

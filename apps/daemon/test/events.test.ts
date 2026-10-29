@@ -5,6 +5,7 @@ import type { RawItem } from "@weir/contract/Source";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import type { Event } from "../src/Api.ts";
@@ -373,6 +374,38 @@ describe("events", () => {
       yield* client.reload();
       yield* client.read({ params: { id }, payload: { seq: last_seq } });
       expect(yield* events.state).toEqual({ type: "state", ids: [id] });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("e11: a reload publishes its failure with the config problem, then its recovery", () =>
+    Effect.gen(function* () {
+      const { home, port, client, writeConfig } = yield* start({ syncEvery: "1h" });
+      const events = yield* openEvents(port);
+      expect(yield* events.take).toEqual({ kind: "event", event: { type: "ready" } });
+      const reloadEvent = events.until(
+        (event): event is Extract<Event, { type: "reload" }> => event.type === "reload",
+      );
+
+      writeConfig(
+        `${sourceConfig("1h")}${workTag}[[tag]]\nname = "Bad"\nmatch = { type = "nope" }\n`,
+      );
+      const failing = yield* Effect.forkChild(Effect.flip(client.reload()));
+      const failed = yield* reloadEvent;
+      const whenFailed = yield* client.status();
+      expect(failed.status).toBe("failed");
+      expect(failed.status === "failed" && failed.error.file).toBe(home.config);
+      expect(failed.status === "failed" && failed.error.issues.length).toBeGreaterThan(0);
+      expect(whenFailed.config.error?.file).toBe(home.config);
+      const error = yield* Fiber.join(failing);
+      expect(error._tag).toBe("ConfigInvalid");
+
+      writeConfig(sourceConfig("1h") + workTag);
+      const recovering = yield* Effect.forkChild(client.reload());
+      const ok = yield* reloadEvent;
+      const whenOk = yield* client.status();
+      expect(ok).toEqual({ type: "reload", status: "ok", at: expect.any(String) });
+      expect(whenOk.config.error).toBeNull();
+      yield* Fiber.join(recovering);
     }).pipe(Effect.scoped),
   );
 
