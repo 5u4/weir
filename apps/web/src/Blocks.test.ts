@@ -164,6 +164,15 @@ describe("reader blocks", () => {
     ]);
   });
 
+  it.each([
+    ["all unread", 0, ["all-new(6)", "Skeleton(6)", "Ada Lovelace[1,2,3,4,5,6]"]],
+    ["crossing Last read", 2, ["last-read(4)", "Skeleton(6)", "Ada Lovelace[1,2,3,4,5,6]"]],
+    ["all read", 6, ["Skeleton(6)", "Ada Lovelace[1,2,3,4,5,6]"]],
+  ])("a running range %s puts the marker before its skeleton", (_, seen, expected) => {
+    const chat = detail([1, 2, 3, 4, 5, 6].map((seq) => item(seq, seq)));
+    expect(shape(reader(chat, seen, closedUi, { from: 1, to: 6 }))).toEqual(expected);
+  });
+
   it("more than four read rows fold the leading ones into earlier digests", () => {
     const items = [1, 2, 3, 4, 5, 6].map((seq) => item(seq, seq * 5));
     const digests = items.map(({ seq }) => digest(seq, seq, seq));

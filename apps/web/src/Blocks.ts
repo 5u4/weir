@@ -201,7 +201,7 @@ export const reader = (
     if (from > to || (from === first) !== (at === "start")) return [];
     const count = items.filter(({ seq }) => within({ from, to }, seq)).length;
     if (count === 0) return [];
-    if (at === "start") mark(first > frozenSeen);
+    if (at === "start") mark(to > frozenSeen);
     return [{ _tag: "Skeleton", items: count }];
   };
 
