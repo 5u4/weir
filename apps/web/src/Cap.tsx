@@ -404,11 +404,8 @@ function SearchSentence() {
       ) : (
         <>
           <p className="s-main">
-            {enumerate(
-              groups(list, tags),
-              `${quoted} ${query.text === "" ? "matches" : "appears in"} `,
-              ".",
-            ).map(({ lead, widget, end }, at) => (
+            <span className="glue">{`${quoted} ${query.text === "" ? "matches" : "appears in"} `}</span>
+            {enumerate(groups(list, tags), "", ".").map(({ lead, widget, end }, at) => (
               <Fragment key={widget.view}>
                 {at > 0 && " "}
                 <span className="grp">
