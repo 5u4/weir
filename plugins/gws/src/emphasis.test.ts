@@ -1,8 +1,13 @@
 import type { Nodes } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import { describe, expect, it } from "vitest";
 import type { Message, MessagePart } from "./gws.ts";
 import { toRawItem } from "./item.ts";
+
+const parse = (markdown: string) =>
+  fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
 
 const text = (mimeType: string, content: string): MessagePart => ({
   mimeType,
@@ -34,7 +39,7 @@ const rendered = (markdown: string) => {
     if (node.type === "strong" || node.type === "emphasis") emphasized.add(textOf(node));
     if ("children" in node) node.children.forEach(walk);
   };
-  walk(fromMarkdown(markdown));
+  walk(parse(markdown));
   return { text: text.join(" "), emphasized: [...emphasized] };
 };
 
@@ -109,7 +114,7 @@ describe("html emphasis", () => {
   ] as const)("keeps %s inside bold as a block", (_, html, type) => {
     const item = itemOf(text("text/html", html));
     for (const markdown of [item.body, item.bodyNew ?? ""]) {
-      expect(fromMarkdown(markdown).children.map((node) => node.type)).toEqual([type]);
+      expect(parse(markdown).children.map((node) => node.type)).toEqual([type]);
       expect(rendered(markdown).text).not.toMatch(/[*_]/);
     }
   });
@@ -122,8 +127,13 @@ describe("html emphasis", () => {
     ],
     [
       "literal characters",
-      "<p>\uE000one\uE001 \uE002two\uE003 \uE004three\uE005</p>",
-      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD \uFFFDthree\uFFFD",
+      "<p>\uE000one\uE001 \uE002two\uE003 \uE004three\uE005 \uE006four\uE007</p>",
+      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD \uFFFDthree\uFFFD \uFFFDfour\uFFFD",
+    ],
+    [
+      "URL and autolink sentinel references",
+      "<p>&#xE006;one&#57351; &#57350;two&#xe007;</p>",
+      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD",
     ],
     [
       "references rebuilt around a removed one",
@@ -135,7 +145,7 @@ describe("html emphasis", () => {
       '<p><img alt="&#xE002;Logo&#xE003;" src="https://cdn.example/a.png"> next</p>',
       "![\uFFFDLogo\uFFFD](https://cdn.example/a.png) next",
     ],
-    ["neighbouring code points", "<p>&#xE0001;&#xE006;&#57350;</p>", "\u{E0001}\uE006\uE006"],
+    ["neighbouring code points", "<p>&#xE0001;&#xE008;&#57352;</p>", "\u{E0001}\uE008\uE008"],
   ])("replaces emphasis sentinel code points in %s", (_, html, body) => {
     expect(itemOf(text("text/html", html)).body).toBe(body);
   });
@@ -157,7 +167,7 @@ type Inline =
   | { readonly kind: "br" }
   | { readonly kind: "paragraph"; readonly children: readonly Inline[] }
   | { readonly kind: "code"; readonly children: readonly Inline[] }
-  | { readonly kind: "link"; readonly children: readonly Inline[] };
+  | { readonly kind: "link"; readonly href: string; readonly children: readonly Inline[] };
 
 type Case = { readonly quoted: boolean; readonly content: readonly Inline[] };
 
@@ -177,7 +187,15 @@ type Context = {
 
 const IMG = '<img src="https://cdn.example/i(1).png" alt="Logo">';
 const HREF = "https://example.com/p";
-const MARKERS = /[\uE000-\uE005]/u;
+const SLASH_HREF = "https://example.com/";
+const TEXT_URLS = [
+  "https://example.com/q",
+  "https://example.com/q*r",
+  "https://example.com/q_r",
+  "https://example.com/(q)",
+  "https://example.com/q*",
+];
+const MARKERS = /[\uE000-\uE007]/u;
 const invisible = /[\s\u200B\u200C\u2060\uFEFF]/u;
 const wordChar = /[\p{L}\p{N}]/u;
 const isStrong = (tag: Tag) => tag === "b" || tag === "strong";
@@ -199,7 +217,7 @@ const htmlOf = (nodes: readonly Inline[]): string =>
         case "code":
           return `<code>${htmlOf(node.children)}</code>`;
       }
-      return `<a href="${HREF}">${htmlOf(node.children)}</a>`;
+      return `<a href="${node.href}">${htmlOf(node.children)}</a>`;
     })
     .join("");
 
@@ -270,26 +288,69 @@ const describeStyled = (styled: Styled | undefined) =>
     ? `${JSON.stringify(styled.char)}${styled.strong ? " strong" : ""}${styled.em ? " em" : ""}`
     : "end";
 
+const plainOf = (node: Nodes): string =>
+  node.type === "text" || node.type === "inlineCode"
+    ? node.value
+    : "children" in node
+      ? node.children.map(plainOf).join("")
+      : "";
+
+const linksOf = (node: Nodes): { url: string; label: string }[] =>
+  node.type === "link"
+    ? [{ url: node.url, label: plainOf(node) }]
+    : "children" in node
+      ? node.children.flatMap(linksOf)
+      : [];
+
+const anchorsOf = (html: string) =>
+  [...html.matchAll(/<a href="([^"]*)"/g)].map((match) => match[1] ?? "").sort();
+
+const linkProblem = (anchors: readonly string[], tree: Nodes) => {
+  const links = linksOf(tree);
+  const stray = links.find(({ url, label }) => !anchors.includes(url) && url !== label);
+  if (stray) return `link to ${JSON.stringify(stray.url)} matches no anchor or literal URL`;
+  const kept = links
+    .map(({ url }) => url)
+    .filter((url) => anchors.includes(url))
+    .sort();
+  return kept.join(" ") === anchors.join(" ")
+    ? null
+    : `link destinations ${JSON.stringify(kept)}, want ${JSON.stringify(anchors)}`;
+};
+
+// micromark counts U+FEFF as whitespace; the CommonMark spec does not, and classes it like U+2060.
+const parsings = (field: string, markdown: string) =>
+  markdown.includes("\uFEFF")
+    ? [
+        [field, markdown],
+        [`${field} (U+FEFF as non-space)`, markdown.replaceAll("\uFEFF", "\u2060")],
+      ]
+    : [[field, markdown]];
+
 const checkTree = (html: string, expectedChars: readonly Styled[]): string[] => {
   const expected = visible(expectedChars);
+  const anchors = anchorsOf(html);
   const item = itemOf(text("text/html", html));
-  const fields = [
+  return [
     ["body", item.body],
     ["bodyNew", item.bodyNew ?? ""],
-  ] as const;
-  return fields.flatMap(([field, markdown]) => {
+  ].flatMap(([field = "", markdown = ""]) => {
     const problems: string[] = [];
     if (MARKERS.test(markdown)) problems.push(`${field}: emphasis marker code point in markdown`);
-    const actual = visible(actualOf(fromMarkdown(markdown)));
-    const found = mismatch(expected, actual);
-    if (found) {
-      const context = expected
-        .slice(Math.max(0, found.index - 8), found.index + 8)
-        .map(({ char }) => char)
-        .join("");
-      problems.push(
-        `${field}: ${found.reason} at visible index ${found.index} (near ${JSON.stringify(context)}): want ${describeStyled(found.want)}, got ${describeStyled(found.got)}`,
-      );
+    for (const [label = "", parsed = ""] of parsings(field, markdown)) {
+      const tree = parse(parsed);
+      const found = mismatch(expected, visible(actualOf(tree)));
+      if (found) {
+        const context = expected
+          .slice(Math.max(0, found.index - 8), found.index + 8)
+          .map(({ char }) => char)
+          .join("");
+        problems.push(
+          `${label}: ${found.reason} at visible index ${found.index} (near ${JSON.stringify(context)}): want ${describeStyled(found.want)}, got ${describeStyled(found.got)}`,
+        );
+      }
+      const links = linkProblem(anchors, tree);
+      if (links) problems.push(`${label}: ${links}`);
     }
     return problems.length === 0
       ? []
@@ -300,19 +361,21 @@ const checkTree = (html: string, expectedChars: readonly Styled[]): string[] => 
 const parseHtmlTree = (html: string): Inline[] => {
   type Open = Tag | "a" | "p" | "code";
   const root: Inline[] = [];
-  const stack: { tag: Open; children: Inline[] }[] = [];
+  const stack: { tag: Open; href: string; children: Inline[] }[] = [];
   const top = () => stack.at(-1)?.children ?? root;
   for (const token of html.match(/<[^>]+>|[^<]+/g) ?? []) {
     const open = /^<(b|strong|i|em|a|p|code)\b[^>]*>$/.exec(token);
     const close = /^<\/(b|strong|i|em|a|p|code)>$/.exec(token);
-    if (open) stack.push({ tag: open[1] as Open, children: [] });
-    else if (close) {
+    if (open) {
+      const href = /href="([^"]*)"/.exec(token)?.[1] ?? "";
+      stack.push({ tag: open[1] as Open, href, children: [] });
+    } else if (close) {
       const frame = stack.pop();
       if (!frame) throw new Error(`unbalanced ${html}`);
-      const { tag, children } = frame;
+      const { tag, href, children } = frame;
       top().push(
         tag === "a"
-          ? { kind: "link", children }
+          ? { kind: "link", href, children }
           : tag === "p"
             ? { kind: "paragraph", children }
             : tag === "code"
@@ -348,7 +411,7 @@ const generator = (seed: number) => {
     if (roll < 0.6) return " ";
     if (roll < 0.8) return pick(["!", "?", ".", ",", "-", "(", ")", "'", '"', ":", ";"]);
     if (roll < 0.94) return pick(["*", "**", "_", "__"]);
-    return pick(["\u200B", "\u200C"]);
+    return pick(["\u200B", "\u200C", "\uFEFF", "\u2060"]);
   };
   const textNode = (): Inline => ({
     kind: "text",
@@ -387,24 +450,38 @@ const generator = (seed: number) => {
     const cut = int(1, HREF.length - 1);
     const children =
       random() < 0.3 ? [piece(HREF)] : [piece(HREF.slice(0, cut)), piece(HREF.slice(cut))];
-    return { kind: "link", children: random() < 0.3 ? [{ kind: "img" }, ...children] : children };
+    return {
+      kind: "link",
+      href: HREF,
+      children: random() < 0.3 ? [{ kind: "img" }, ...children] : children,
+    };
+  };
+  const autolink = (): Inline => {
+    const href = pick([HREF, SLASH_HREF]);
+    return { kind: "link", href, children: [{ kind: "text", value: href }] };
   };
   const inline = (context: Context): Inline[] => {
     if (context.depth >= 4) return [textNode()];
     const plain = context.inLink || context.inCode;
     const roll = random();
-    if (roll < 0.27) return [textNode()];
-    if (roll < 0.55) return [span(context)];
-    if (roll < 0.66) {
+    if (roll < 0.25) return [textNode()];
+    if (roll < 0.5) return [span(context)];
+    if (roll < 0.6) {
       const first = tag();
       const second = random() < 0.5 ? first : tag();
       return [span(context, first), span(context, second)];
     }
-    if (roll < 0.76) {
+    if (roll < 0.68) {
       if (plain) return [span(context)];
-      return [{ kind: "link", children: inlines(int(1, 3), deeper(context, { inLink: true })) }];
+      const children = inlines(int(1, 3), deeper(context, { inLink: true }));
+      return [{ kind: "link", href: HREF, children }];
     }
-    if (roll < 0.81) return plain ? [textNode()] : [urlLink()];
+    if (roll < 0.72) return plain ? [textNode()] : [urlLink()];
+    if (roll < 0.77) {
+      if (plain) return [{ kind: "text", value: pick(TEXT_URLS) }];
+      return pick([[autolink()], [autolink(), lineStart()], [lineStart(), autolink()]]);
+    }
+    if (roll < 0.82) return [{ kind: "text", value: pick(TEXT_URLS) }];
     if (roll < 0.87) {
       if (context.inCode) return [textNode()];
       return [{ kind: "code", children: inlines(int(1, 3), deeper(context, { inCode: true })) }];
@@ -437,12 +514,31 @@ const visibleText = (nodes: readonly Inline[]) =>
     .map(({ char }) => char)
     .join("");
 
+const isAutolink = (node: Inline | undefined) =>
+  node?.kind === "link" &&
+  node.children.every((child) => child.kind === "text") &&
+  textOf(node.children) === node.href;
+
 const featuresOf = (nodes: readonly Inline[]) => {
   const tags = new Set<string>();
-  const visit = (siblings: readonly Inline[], families: ReadonlySet<string>) => {
+  const visit = (siblings: readonly Inline[], families: ReadonlySet<string>, inLink: boolean) => {
     siblings.forEach((node, index) => {
       const next = siblings[index + 1];
+      const previous = siblings[index - 1];
       if (node.kind === "text" && /[*_]/.test(node.value)) tags.add("star-or-underscore-in-text");
+      if (node.kind === "text" && /[\uFEFF\u2060]/.test(node.value)) {
+        tags.add("non-space-invisible");
+      }
+      if (node.kind === "text" && node.value.includes("https://")) {
+        tags.add(inLink ? "url-text-in-label" : "url-text");
+      }
+      if (isAutolink(node)) {
+        if (families.size > 0) tags.add("emphasized-autolink");
+        const glued =
+          (next?.kind === "text" && wordChar.test(next.value[0] ?? "")) ||
+          (previous?.kind === "text" && wordChar.test(previous.value.at(-1) ?? ""));
+        if (glued) tags.add("autolink-glued-to-word");
+      }
       if (next && family(node) && family(next)) {
         tags.add(family(node) === family(next) ? "adjacent-same-kind" : "adjacent-mixed-kinds");
       }
@@ -463,7 +559,7 @@ const featuresOf = (nodes: readonly Inline[]) => {
       }
       if (
         node.kind === "link" &&
-        textOf(node.children) === HREF &&
+        node.href === textOf(node.children) &&
         node.children.some((child) => child.kind !== "text")
       ) {
         tags.add("url-labelled-link-with-markup");
@@ -485,7 +581,7 @@ const featuresOf = (nodes: readonly Inline[]) => {
         }
         const own = family(node) ?? "";
         if (families.has(own)) tags.add("nested-same-kind");
-        visit(node.children, new Set([...families, own]));
+        visit(node.children, new Set([...families, own]), inLink);
       } else if ("children" in node) {
         if (
           node.kind === "link" &&
@@ -493,11 +589,11 @@ const featuresOf = (nodes: readonly Inline[]) => {
         ) {
           tags.add("link-edge");
         }
-        visit(node.children, families);
+        visit(node.children, families, inLink || node.kind === "link");
       }
     });
   };
-  visit(nodes, new Set());
+  visit(nodes, new Set(), false);
   return [...tags];
 };
 
@@ -525,6 +621,16 @@ describe("emphasis oracle", () => {
     ["italic inside code", "<p>a <code>b<i>c</i></code> d</p>"],
     ["a bold URL label", `<p><a href="${HREF}"><b>${HREF}</b></a> next</p>`],
     ["a URL label split by italic", `<p><a href="${HREF}"><i>https://ex</i>ample.com/p</a></p>`],
+    [
+      "an italic URL inside an explicit link",
+      '<p><a href="https://example.com/t"><i>https://example.com/a*b</i></a></p>',
+    ],
+    ["a byte order mark before bold opening with punctuation", "<p>x\uFEFF<b>!a</b></p>"],
+    [
+      "a bold URL-labelled link glued to a word",
+      '<p><b><a href="https://example.com/">https://example.com/</a></b>next</p>',
+    ],
+    ["a bold URL glued to a word", "<p><b>https://example.com/q</b>next end</p>"],
   ])("renders %s with the same text and emphasis", (_, html) => {
     expect(check(html).join("\n")).toBe("");
   });
@@ -532,7 +638,7 @@ describe("emphasis oracle", () => {
   it("keeps a literal backtick before inline code in reading order", () => {
     const item = itemOf(text("text/html", "<p>a`<code>b</code></p>"));
     for (const markdown of [item.body, item.bodyNew ?? ""]) {
-      const order = visible(actualOf(fromMarkdown(markdown))).map(({ char }) => char);
+      const order = visible(actualOf(parse(markdown))).map(({ char }) => char);
       expect(order.slice(0, 2)).toEqual(["a", "`"]);
     }
   });
@@ -540,7 +646,7 @@ describe("emphasis oracle", () => {
   it("keeps an image inside a URL-labelled link", () => {
     const item = itemOf(text("text/html", `<p><a href="${HREF}">${IMG}${HREF}</a></p>`));
     for (const markdown of [item.body, item.bodyNew ?? ""]) {
-      const [paragraph] = fromMarkdown(markdown).children;
+      const [paragraph] = parse(markdown).children;
       const link = paragraph?.type === "paragraph" ? paragraph.children[0] : undefined;
       expect(link?.type).toBe("link");
       expect(link?.type === "link" && link.children.map((child) => child.type)).toEqual([
@@ -565,7 +671,7 @@ describe("emphasis oracle", () => {
         if (!("children" in node)) return;
         for (const child of node.children) walk(child, strong || node.type === "strong");
       };
-      walk(fromMarkdown(markdown), false);
+      walk(parse(markdown), false);
       expect(bold).toEqual(["x"]);
       expect(check(html).join("\n")).toBe("");
     }

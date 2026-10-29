@@ -10,22 +10,30 @@ const BOTH = [0, 1] as const;
 type Kind = (typeof BOTH)[number];
 const ATOM_OPEN = "\uE004";
 const ATOM_CLOSE = "\uE005";
+const TEXT_URL = "\uE006";
+const AUTOLINK = "\uE007";
 const WORD_JOINER = "\u2060";
-const SENTINELS = /[\uE000-\uE005]|&#(?:x0*e00[0-5](?![\da-f])|0*5734[4-9](?!\d));?/gi;
-const MARKERS = /[\uE000-\uE005]/g;
+const SENTINELS = /[\uE000-\uE007]|&#(?:x0*e00[0-7](?![\da-f])|0*57(?:34[4-9]|35[01])(?!\d));?/gi;
+const MARKERS = /[\uE000-\uE007]/g;
 const BLANK = /^[\s\u200b\u200c\u2060\ufeff]+$/u;
 const INVISIBLES = /[\s\u200b\u200c\u2060\ufeff]/g;
 const PARAGRAPH_BREAK = /(\n\s*\n)/;
 const BLOCK_LINE =
   /\n[ \t]*(?:#{1,6}(?:[ \t]|$)|[-+*][ \t]|\d{1,9}[.)][ \t]|>|```|~~~|(?:-+|=+)[ \t]*(?:\n|$))/;
 const BLOCKS = "h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr";
+const DELIMITING = /[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
 const ESCAPED =
-  /((?<=^|[\s*_~(])(?:https?:\/\/|www\.)\S*)|[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/giu;
+  /((?<![A-Za-z])[hH][tT][tT][pP][sS]?:\/\/\S*|(?<=^|[\s*_~(])[wW]{3}\.\S*)|[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
+const LABEL_UNSAFE = /[\\*[\]`]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
+const BARE_URL =
+  /^(?:https?:\/\/|www\.)[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+(?::\d+)?(?:[/?#][^\s<>\\`[\]]*)?$/u;
+const URL_TRAIL = "?!.,:*_~)";
+const DROPPED_TRAIL = `!"',.:;?*_~`;
 
 type Class = "space" | "punctuation" | "other";
 
 const classOf = (char: string): Class =>
-  /\s/u.test(char) ? "space" : /[\p{P}\p{S}]/u.test(char) ? "punctuation" : "other";
+  /[\p{Zs}\t\n\f\r]/u.test(char) ? "space" : /[\p{P}\p{S}]/u.test(char) ? "punctuation" : "other";
 
 interface Unit {
   text: string;
@@ -114,6 +122,60 @@ const tokenize = (marked: string): Array<Unit> => {
   flush();
   endPrefix();
   return units;
+};
+
+const endsUrl = (units: ReadonlyArray<Unit>, from: number) => {
+  for (let index = from; index < units.length; index++) {
+    for (const char of units[index]?.text ?? "") {
+      if (" \t\n".includes(char)) return true;
+      if (!URL_TRAIL.includes(char)) return false;
+    }
+  }
+  return true;
+};
+
+const count = (text: string, char: string) => text.split(char).length - 1;
+
+const urlEnd = (url: string) => {
+  let end = url.length;
+  let unmatched = count(url, ")") - count(url, "(");
+  for (;;) {
+    const char = url[end - 1] ?? "";
+    if (char !== "" && DROPPED_TRAIL.includes(char)) end--;
+    else if (char === ")" && unmatched > 0) {
+      end--;
+      unmatched--;
+    } else return end;
+  }
+};
+
+const bare = (url: string, autolink: boolean) =>
+  BARE_URL.test(url) &&
+  (!autolink || url.startsWith("http")) &&
+  urlEnd(url) === url.length &&
+  count(url, "(") === count(url, ")");
+
+const anchor = (units: ReadonlyArray<Unit>) => {
+  let depth = 0;
+  return units.flatMap((unit, index) => {
+    depth += unit.link;
+    const kind = unit.solid ? unit.text[0] : undefined;
+    if (kind !== AUTOLINK && kind !== TEXT_URL) return [unit];
+    const url = unit.text.slice(1);
+    const before = units[index - 1]?.text.at(-1) ?? " ";
+    const opens = url.startsWith("www.") ? /[ \t\n(*_~]/.test(before) : !/[A-Za-z]/.test(before);
+    const safe = depth === 0 && opens && endsUrl(units, index + 1);
+    if (safe && bare(url, kind === AUTOLINK)) return [{ ...unit, text: url }];
+    const label = url.replace(LABEL_UNSAFE, "\\$&");
+    const markdown =
+      kind === AUTOLINK
+        ? `${atom("[")}${label}${atom(`](${url.replace(/[()]/g, "\\$&")})`)}`
+        : label.replace(/(https?(?=:)|www(?=\.))(.)/gi, "$1\\$2");
+    return tokenize(markdown).map((part) => ({
+      ...part,
+      marks: [...unit.marks] as [boolean, boolean],
+    }));
+  });
 };
 
 const runs = (units: ReadonlyArray<Unit>, kind: Kind) => {
@@ -263,7 +325,11 @@ const turndown = (dropQuoted: boolean) => {
     builtIn.rules.forNode(node).replacement?.(content, node, settings) ?? content;
   const service = new TurndownService(options);
   service.escape = (text) =>
-    text.replace(ESCAPED, (match, url: string | undefined) => url ?? `\\${match}`);
+    text.replace(ESCAPED, (match, url: string | undefined) => {
+      if (url === undefined) return `\\${match}`;
+      const end = urlEnd(url);
+      return `${atom(`${TEXT_URL}${url.slice(0, end)}`)}${url.slice(end).replace(DELIMITING, "\\$&")}`;
+    });
   service.remove(["style", "script", "head", "title"]);
   service.addRule("atomicCode", {
     filter: (node) =>
@@ -286,7 +352,7 @@ const turndown = (dropQuoted: boolean) => {
       node.nodeName === "A" &&
       node.children.length === 0 &&
       node.getAttribute("href") === node.textContent,
-    replacement: (_, node) => atom(node.textContent ?? ""),
+    replacement: (_, node) => atom(node.textContent ? `${AUTOLINK}${node.textContent}` : ""),
   });
   for (const kind of KINDS) {
     service.addRule(kind.tags[0], { filter: [...kind.tags], replacement: emphasis(kind) });
@@ -298,7 +364,7 @@ const turndown = (dropQuoted: boolean) => {
     });
   }
   return (html: string) =>
-    serialize(settle(tokenize(service.turndown(html.replace(SENTINELS, "\uFFFD")))));
+    serialize(settle(anchor(tokenize(service.turndown(html.replace(SENTINELS, "\uFFFD"))))));
 };
 
 export const htmlBody = turndown(false);
