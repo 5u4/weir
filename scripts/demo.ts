@@ -272,6 +272,7 @@ const demo = Effect.gen(function* () {
         continue;
       }
       const k = key(conversation.title, first.occurred_at, last.occurred_at);
+      if (got.has(k)) problems.push(`"${conversation.title}" has duplicate auto digest ${k}`);
       got.add(k);
       const expected = want.get(k);
       if (!isAi) problems.push(`"${conversation.title}" has no AI tag but has auto digest ${k}`);
