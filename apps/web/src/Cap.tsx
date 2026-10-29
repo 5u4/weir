@@ -17,6 +17,57 @@ const measureCap = (cap: HTMLDivElement) => {
   return () => observer.disconnect();
 };
 
+const fadeStrip = (strip: HTMLElement) => {
+  const fade = () => {
+    strip.classList.toggle("fl", strip.scrollLeft > 1);
+    strip.classList.toggle("fr", strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
+  };
+  const resized = new ResizeObserver(fade);
+  const observeChips = () => {
+    for (const chip of strip.children) resized.observe(chip);
+  };
+  const mutated = new MutationObserver(() => {
+    observeChips();
+    fade();
+  });
+  resized.observe(strip);
+  observeChips();
+  mutated.observe(strip, { childList: true });
+  strip.addEventListener("scroll", fade, { passive: true });
+  return () => {
+    resized.disconnect();
+    mutated.disconnect();
+    strip.removeEventListener("scroll", fade);
+  };
+};
+
+const scrollStrip = (arrow: HTMLElement, direction: 1 | -1) => {
+  const strip = arrow.parentElement?.querySelector(".cws");
+  if (!(strip instanceof HTMLElement)) return;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  strip.scrollBy({
+    left: (strip.clientWidth - 64) * direction,
+    behavior: reduce ? "auto" : "smooth",
+  });
+};
+
+function StripArrow(props: { readonly direction: 1 | -1 }) {
+  const prev = props.direction === -1;
+  return (
+    <button
+      type="button"
+      className={prev ? "cws-a prev" : "cws-a next"}
+      tabIndex={-1}
+      aria-label={prev ? "Scroll tags left" : "Scroll tags right"}
+      onClick={({ currentTarget }) => scrollStrip(currentTarget, props.direction)}
+    >
+      <svg className="ch-i" viewBox="0 0 16 16" aria-hidden="true">
+        <path d={prev ? "M10 3.5L5.5 8l4.5 4.5" : "M6 3.5L10.5 8 6 12.5"} />
+      </svg>
+    </button>
+  );
+}
+
 const viewRoute = (view: View): Route => ({ view, query: "", conversation: Option.none() });
 
 function SearchIcon() {
@@ -141,15 +192,19 @@ export function Cap({ compact, alert }: { compact: boolean; alert: boolean }) {
             onChange={({ target: { value } }) => navigate({ _tag: "Type", query: value })}
           />
           <span className="cap-div" />
-          <nav className="cws" aria-label="Views">
-            {Option.match(loaded, {
-              onNone: () => null,
-              onSome: (value) =>
-                chips(value).map((widget) => (
-                  <Chip key={widget.view} widget={widget} active={active} />
-                )),
-            })}
-          </nav>
+          <span className="cws-w">
+            <nav className="cws" aria-label="Views" ref={fadeStrip}>
+              {Option.match(loaded, {
+                onNone: () => null,
+                onSome: (value) =>
+                  chips(value).map((widget) => (
+                    <Chip key={widget.view} widget={widget} active={active} />
+                  )),
+              })}
+            </nav>
+            <StripArrow direction={-1} />
+            <StripArrow direction={1} />
+          </span>
           <span className="cap-div" />
           {Option.isSome(loaded) && <Chip widget={clearedWidget(loaded.value)} active={active} />}
           <StatusButton className="cw cw-st" alert={alert} />
