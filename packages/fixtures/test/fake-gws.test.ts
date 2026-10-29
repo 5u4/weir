@@ -8,7 +8,6 @@ import {
   relabel,
   remove,
   seedMailbox,
-  seedThreads,
   setDelay,
   setNow,
 } from "@weir/fixtures";
@@ -237,22 +236,5 @@ describe("fake-gws --mailbox", () => {
     expect(list.answer.messages).toHaveLength(10);
     expect(profile.ms).toBeLessThan(1500);
     expect(profile.answer.messagesTotal).toBe(31);
-  });
-
-  it("seeds given threads as delivered mail with the given page size", () => {
-    const dir = tempMailbox();
-    const threads = Array.from({ length: 3 }, (_, i) => ({
-      id: `bulk-${i}`,
-      subject: `Bulk ${i}`,
-      labels: ["INBOX"],
-      messages: [
-        { at: `2026-10-2${i}T09:00:00-07:00`, from: "priya", to: ["me"], text: "Question" },
-        { at: `2026-10-2${i}T10:00:00-07:00`, from: "me", to: ["priya"], text: "Answer" },
-      ],
-    }));
-    expect(seedThreads(dir, threads, { now: FIXTURE_NOW, pageSize: 4 })).toEqual({ delivered: 6 });
-    const { messages, pages } = listAllIds("", dir);
-    expect(pages).toBe(2);
-    expect(new Set(messages.map((m) => m.threadId)).size).toBe(3);
   });
 });

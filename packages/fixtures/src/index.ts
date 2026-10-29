@@ -8,12 +8,8 @@ import {
   relabelMessage,
   removeMessage,
   seed,
-  seedWith,
   writeMailbox,
 } from "./mailbox.ts";
-import type { Thread } from "./scenarios.ts";
-
-export type { Thread };
 
 export const FIXTURE_NOW = "2026-10-25T09:00:00-07:00";
 
@@ -126,17 +122,6 @@ export const seedMailbox = (dir: string, options: { until?: string } = {}) => {
     delivered: Object.keys(mailbox.messages).length,
     pending: mailbox.pending.length,
   };
-};
-
-export const seedThreads = (
-  dir: string,
-  threads: ReadonlyArray<Thread>,
-  options: { now: string; pageSize: number },
-) => {
-  const mailbox = seedWith(options.now, threads);
-  mailbox.pageSize = options.pageSize;
-  writeMailbox(dir, mailbox);
-  return { delivered: Object.keys(mailbox.messages).length };
 };
 
 export const deliver = (dir: string, n = 1): string[] => {

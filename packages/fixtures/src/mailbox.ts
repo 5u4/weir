@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type GeneratedMessage, gmailMessages, type Message } from "./gmail.ts";
-import { scenarios, type Thread } from "./scenarios.ts";
+import { scenarios } from "./scenarios.ts";
 
 export type HistoryMessage = { id: string; threadId: string; labelIds?: string[] };
 export type HistoryLabelChange = { message: HistoryMessage; labelIds: string[] };
@@ -120,15 +120,6 @@ export const seed = (now: string): Mailbox => {
     if (Number(m.internalDate) <= cutoff) deliverOne(mailbox, m);
     else mailbox.pending.push(m.id);
   }
-  return mailbox;
-};
-
-export const seedWith = (now: string, threads: ReadonlyArray<Thread>): Mailbox => {
-  const mailbox = empty(now);
-  const messages = gmailMessages({ ...scenarios, threads: [...threads] }).sort(
-    (a, b) => Number(a.internalDate) - Number(b.internalDate) || a.id.localeCompare(b.id),
-  );
-  for (const m of messages) deliverOne(mailbox, m);
   return mailbox;
 };
 

@@ -302,7 +302,7 @@ flowchart TD
 <li><code>more = true</code> 表示还有下一页，core 立刻用新 cursor 再调一次。这样冷启动拉一万封邮件时，每一页都单独落盘，中途崩溃也能从上一页接着来。</li>
 <li>一页是一个写事务：这一页的 item、tag、已读状态和新 cursor 一起提交。core 在两页之间可以停下这一轮 sync，一页的事务写到一半时不停。reload 或 daemon 关闭时，正在写的那一页写完提交；正在拉的那一页，core 中断 <code>sync</code> 调用，<code>signal</code> 随之 abort，这一页不写。plugin 收到 abort 应当停下这一页的工作，gws plugin 会杀掉它为这一页起的 gws 子进程。下一轮从已保存的 cursor 接着拉。</li>
 <li>被中断的那个 stream 这一轮不算一次 sync：不写 <code>sync_run</code>，<code>last_sync_at</code> 和 <code>last_error</code> 保持上一轮完成时的值。整个 source 也不发 <code>sync</code> 的 <code>done</code> 或 <code>failed</code> 事件。</li>
-<li>daemon 只有一个 SQLite 连接，读请求碰上正在提交的一页要排队，所以一页有多大决定了前台读最多多等多久。<code>bun run bench:read</code> 量这件事。它用 fake-gws 造 1000 个 thread、2000 封邮件，每页 100 封，和 gws plugin 一样。每封新写的正文长度按作者邮箱的 <code>body_new</code> 分布生成，中位数约 3.2k 字符，p90 约 9k，这组数仓库内不可复现；回复里还带着上一封的引用。它在单独的进程里启动 daemon，用一个客户端轮流请求 <code>/conversations?view=untagged</code>、<code>/counts</code>、<code>/conversations/:id</code>、<code>/search</code> 和 <code>/status</code>，回填期间和回填之后各测一段，按最近秩算 p95。回填期间整体 p95 超过 100 ms，或者有请求没返回 2xx，退出码为 1。加 <code>--url &lt;daemon&gt;</code> 时不造数据，测一个已经在跑的 daemon；那个 daemon 的回填已经结束时，只测回填之后一段，退出码为 2，表示门槛没有检查。开发机上跑了 5 轮，机器同时有别的负载：回填期间整体 p95 是 31 到 41 ms，中位数 33 ms；回填之后是 38 到 39 ms。p95 由 <code>GET /conversations</code> 决定，它返回整个视图，不分页。回填之后它的中位数约 37 ms；回填期间 conversation 还没到齐，中位数是 10 到 16 ms。回填期间最慢的请求是 110 到 172 ms，回填之后是 42 到 63 ms。</li>
+<li>daemon 只有一个 SQLite 连接，读请求碰上正在提交的一页要排队，所以一页有多大决定了前台读最多多等多久。</li>
 <li><code>kind</code> 说明这一页是回填还是实时。回填页是列出已有的历史，实时页是 source 上新发生的变化。core 按每一页的 <code>kind</code> 决定已读状态，规则见<a href="#visibility">第 08 节</a>。plugin 可以在回填没结束时插入实时页。</li>
 <li><code>backfill</code> 说明这一页提交之后，这个 stream 的回填是还在进行还是已经完成。core 在同一个事务里据此写 <code>stream.backfilled_at</code>：<code>running</code> 把它清空，<code>done</code> 在它为空时写入当前时间，已有值就保留。所以重新回填时只要发出一页 <code>running</code>，状态页就会再显示回填中。</li>
 <li><code>body</code> 和 <code>bodyNew</code> 都是 markdown。把 source 的原始格式转成 markdown 是 plugin 的事，core 和 UI 只认 markdown。<code>bodyNew</code> 是去掉引用历史和签名后的正文。plugin 可以自己算，返回 <code>null</code> 时 core 用通用实现。</li>
@@ -1056,7 +1056,6 @@ help[2]:
 <li><code>deliver</code>、<code>remove</code>、<code>relabel</code> 每次让 <code>historyId</code> 加 1，追加一条 history 记录。<code>deliver</code> 和 <code>relabel</code> 还把那封邮件的 <code>historyId</code> 设成新值，<code>remove</code> 直接删掉那封邮件。<code>relabel</code> 没有改变任何 label 时什么都不记。<code>expireHistory</code> 让 <code>historyId</code> 加 1、清空 history，之后比当前 <code>historyId</code> 旧的 <code>startHistoryId</code> 都返回 404，当前的 <code>historyId</code> 仍然有效，plugin 重新列一遍之后就能接着增量同步。</li>
 <li>写 <code>mailbox.json</code> 时先写临时文件再 rename。</li>
 <li><code>setDelay(dir, { "messages list": 2000 })</code> 让 fake-gws 回答这些命令之前先睡这么多毫秒。键是去掉 <code>gmail users</code> 的命令名。测试用它把一页拉长，好在页中间 reload 或关掉 daemon。</li>
-<li><code>seedThreads(dir, threads, { now, pageSize })</code> 把调用方给的 thread 全部送达，写成一个邮箱。thread 的格式和 <code>scenarios.json</code> 的一样，人名用其中的 <code>people</code>。<code>pageSize</code> 替换默认的每页 10 条。</li>
 </ul>
 
 <h3 id="fixture-config">config.toml、FIXTURE_NOW 和预期的 tag 数</h3>
