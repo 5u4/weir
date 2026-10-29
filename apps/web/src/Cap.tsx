@@ -68,7 +68,8 @@ const fadeStrip = (strip: HTMLElement) => {
     if (event.ctrlKey || strip.scrollWidth <= strip.clientWidth) return;
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
     event.preventDefault();
-    strip.scrollLeft += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+    const unit = event.deltaMode === 2 ? strip.clientWidth : event.deltaMode === 1 ? 16 : 1;
+    strip.scrollLeft += event.deltaY * unit;
   };
   strip.addEventListener("scroll", fade, { passive: true });
   strip.addEventListener("wheel", turn, { passive: false });
