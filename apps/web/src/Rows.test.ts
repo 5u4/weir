@@ -66,6 +66,7 @@ describe("row face", () => {
   const ada = { name: "Ada Lovelace", address: "ada@example.com", me: false };
   const bo = { name: "Bo", address: "bo@example.com", me: false };
   const nameless = { name: " ", address: "carol.k@example.com", me: false };
+  const self = { name: "Sen Hung Wong", address: "sen@example.com", me: true };
   it.each([
     ["no senders, nobody else", [], 0, "", ""],
     ["no senders, three participants", [], 3, "+3", ""],
@@ -74,13 +75,28 @@ describe("row face", () => {
     ["two senders, two participants", [ada, bo], 2, "Ada, Bo", "Ada, Bo"],
     ["two senders of five", [ada, bo], 5, "Ada, Bo +3", "Ada, Bo"],
     ["empty name uses the address local part", [nameless, bo], 2, "carol.k, Bo", "carol.k, Bo"],
+    ["my own party reads Me", [self, ada], 2, "Me, Ada", "Me, Ada"],
+    ["only me", [self], 1, "Me", "Me"],
   ])("%s", (_, senders, participants, who, names) => {
     expect(face({ ...row(1, 1), senders, participants })).toMatchObject({ who, names });
   });
 
   it("passes the daemon's sender and preview through", () => {
     const value = { ...row(1, 1), from: bo, preview: "Ship it" };
-    expect(face(value)).toMatchObject({ from: bo, preview: "Ship it" });
+    expect(face(value)).toMatchObject({ from: bo, mark: "B", preview: "Ship it" });
+  });
+
+  it("marks the avatar Me when the daemon sends my own party", () => {
+    const value = { ...row(1, 1), from: self, senders: [self] };
+    expect(face(value)).toMatchObject({ from: self, mark: "Me", who: "Me" });
+  });
+
+  it("never matches Me by address", () => {
+    const other = { ...self, me: false };
+    expect(face({ ...row(1, 1), from: other, senders: [other] })).toMatchObject({
+      mark: "S",
+      who: "Sen",
+    });
   });
 });
 

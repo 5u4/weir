@@ -1,6 +1,6 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
-import type { Sender } from "./Notch.ts";
+import { monogram, type Sender } from "./Notch.ts";
 import type { View } from "./Route.ts";
 
 export type Intent =
@@ -31,21 +31,26 @@ export const neighbor = (rows: ReadonlyArray<Row>, id: number) => {
 
 type Face = {
   readonly from: Sender;
+  readonly mark: string;
   readonly preview: string;
   readonly who: string;
   readonly names: string;
 };
 
+const me = "Me";
+
+const short = (party: Row["from"]) => {
+  if (party.me) return me;
+  const label = party.name.trim() === "" ? (party.address.split("@")[0] ?? "") : party.name.trim();
+  return label.split(/\s+/)[0] ?? "";
+};
+
 export const face = (row: Row): Face => {
-  const names = row.senders
-    .map(({ name, address }) => {
-      const label = name.trim() === "" ? (address.split("@")[0] ?? "") : name.trim();
-      return label.split(/\s+/)[0] ?? "";
-    })
-    .join(", ");
+  const names = row.senders.map(short).join(", ");
   const more = row.participants - row.senders.length;
   return {
     from: row.from,
+    mark: row.from.me ? me : monogram(row.from),
     preview: row.preview,
     who: more > 0 ? (names === "" ? `+${more}` : `${names} +${more}`) : names,
     names,

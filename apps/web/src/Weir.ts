@@ -1,13 +1,19 @@
-import { Api, View as ApiView, ClearableView, type Row } from "@weir/daemon/Api";
+import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daemon/Api";
+import * as Cause from "effect/Cause";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import * as AtomHttpApi from "effect/reactivity/AtomHttpApi";
 import * as Reactivity from "effect/reactivity/Reactivity";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
-import { now } from "./Health.ts";
-import { statusOpen, type View } from "./Route.ts";
+import * as Stream from "effect/Stream";
+import { refetches } from "./Live.ts";
+import { type ConversationId, route, statusOpen, type View } from "./Route.ts";
 import { type Intents, intentFor } from "./Rows.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
@@ -18,13 +24,9 @@ export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
 
 const statusSnapshot = Weir.query("weir", "status", {});
 
-// TODO: when `Api` includes `EventsGroup`, invalidate on `sync` events instead of polling.
 export const status = Atom.transform(
   statusSnapshot,
   (get) => {
-    // Atom subscribers fire when an unbuilt atom first builds, so build `now` before subscribing.
-    get.once(now);
-    get.subscribe(now, () => get.refresh(statusSnapshot));
     get.subscribe(statusOpen, (open) => {
       if (open) get.refresh(statusSnapshot);
     });
@@ -44,30 +46,63 @@ export const reload = Weir.runtime.fn<void>()(
   { reactivityKeys: ["counts", "list"] },
 );
 
-const polled = <A>(atom: Atom.Atom<A>) =>
-  Atom.transform(
-    atom,
-    (get) => {
-      get.once(now);
-      get.subscribe(now, () => get.refresh(atom));
-      get.subscribe(atom, (value) => get.setSelf(value));
-      return get.once(atom);
-    },
-    { initialValueTarget: atom },
-  );
-
 export const searchOpen = Atom.make(false);
 
-export const counts = polled(Weir.query("view", "counts", { reactivityKeys: ["counts"] }));
+export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
 
 const toApiView = Schema.decodeSync(ApiView);
 const toClearableView = Schema.decodeSync(ClearableView);
 
 export const viewList = Atom.family((view: View) =>
-  polled(
-    Weir.query("view", "conversations", {
-      query: { view: toApiView(view) },
-      reactivityKeys: ["list"],
+  Weir.query("view", "conversations", {
+    query: { view: toApiView(view) },
+    reactivityKeys: ["list"],
+  }),
+);
+
+export const conversation = Atom.family((id: ConversationId) =>
+  Weir.query("weir", "conversation", {
+    params: { id },
+    reactivityKeys: { conversation: [id] },
+  }),
+);
+
+class Disconnected extends Data.TaggedError("Disconnected") {}
+
+const decodeEvent = Schema.decodeUnknownEffect(Schema.fromJsonString(Event));
+
+const events = Stream.callback<string, Disconnected>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const source = new EventSource(new URL("/events", location.origin));
+      source.addEventListener("message", ({ data }: MessageEvent<string>) => {
+        Queue.offerUnsafe(queue, data);
+      });
+      source.addEventListener("error", () => {
+        Queue.failCauseUnsafe(queue, Cause.fail(new Disconnected()));
+      });
+      return source;
+    }),
+    (source) => Effect.sync(() => source.close()),
+  ),
+).pipe(
+  Stream.mapEffect((data) => decodeEvent(data)),
+  Stream.retry(Schedule.min([Schedule.exponential("500 millis"), Schedule.spaced("10 seconds")])),
+);
+
+export const live = Weir.runtime.atom((get) =>
+  Stream.runForEach(events, (event) =>
+    Effect.gen(function* () {
+      const open = get.registry.get(route).conversation;
+      const refetch = refetches(event, open);
+      if (refetch.status) get.registry.refresh(statusSnapshot);
+      yield* Reactivity.invalidate([
+        ...(refetch.counts ? ["counts"] : []),
+        ...(refetch.list ? ["list"] : []),
+      ]);
+      if (refetch.conversation && Option.isSome(open)) {
+        yield* Reactivity.invalidate({ conversation: [open.value] });
+      }
     }),
   ),
 );

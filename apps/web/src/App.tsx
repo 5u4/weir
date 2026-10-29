@@ -7,11 +7,12 @@ import { List } from "./List.tsx";
 import { route, statusOpen } from "./Route.ts";
 import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
-import { searchOpen, status, tabTitle } from "./Weir.ts";
+import { live, searchOpen, status, tabTitle } from "./Weir.ts";
 
 export function App() {
   useAtomMount(theme);
   useAtomMount(tabTitle);
+  useAtomMount(live);
   const current = useAtomValue(route);
   const searching = useAtomValue(searchOpen);
   const [open, setOpen] = useAtom(statusOpen);

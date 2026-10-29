@@ -1,17 +1,20 @@
-import type { Row } from "@weir/daemon/Api";
+import type { Event, Row } from "@weir/daemon/Api";
 import * as Effect from "effect/Effect";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import type * as Atom from "effect/reactivity/Atom";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, vi } from "vitest";
+import { ConversationId } from "./Route.ts";
 import { shown } from "./Rows.ts";
-import { dismiss, intents, viewList } from "./Weir.ts";
+import { conversation, counts, dismiss, intents, live, viewList } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
   const rows = new Map<number, Row>();
+  const requests: Array<string> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    requests.push(`${method} ${url.pathname}`);
     const done = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]));
     if (method === "POST" && done !== undefined) {
       const next: Row = { ...done, cleared_seq: done.last_seq, state: "done" };
@@ -27,11 +30,58 @@ const daemon = vi.hoisted(() => {
         ),
       });
     }
+    if (method === "GET" && url.pathname === "/counts") {
+      return Response.json({
+        unread: 0,
+        tags: [],
+        untagged: { unread: 0, open: rows.size, senders: [] },
+        cleared: 0,
+      });
+    }
+    const open = Number(url.pathname.match(/^\/conversations\/(\d+)$/)?.[1]);
+    if (method === "GET" && Number.isInteger(open)) {
+      return Response.json({
+        id: open,
+        source: "gmail",
+        title: `#${open}`,
+        first_at: "2026-10-25T09:00:00.000Z",
+        last_at: "2026-10-25T09:00:00.000Z",
+        tags: [],
+        state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "read" },
+        items: [],
+        digests: [],
+        digest: { backlog: null, earlier: null, now: null, last_failure: null },
+      });
+    }
     return new Response(null, { status: 404 });
   };
-  vi.stubGlobal("location", { origin: "http://weir.test" });
+  class Source {
+    static opened: Array<Source> = [];
+    readonly listeners = new Map<string, (event: { readonly data?: string }) => void>();
+    closed = false;
+    readonly url: URL;
+    constructor(url: URL) {
+      this.url = url;
+      Source.opened.push(this);
+    }
+    addEventListener(type: string, listener: (event: { readonly data?: string }) => void) {
+      this.listeners.set(type, listener);
+    }
+    close() {
+      this.closed = true;
+    }
+    send(event: unknown) {
+      this.listeners.get("message")?.({ data: JSON.stringify(event) });
+    }
+    drop() {
+      this.listeners.get("error")?.({});
+    }
+  }
+  const location = { origin: "http://weir.test", search: "" };
+  vi.stubGlobal("location", location);
   vi.stubGlobal("fetch", fetch);
-  return { rows };
+  vi.stubGlobal("EventSource", Source);
+  return { rows, requests, Source, location };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -59,7 +109,53 @@ const settled = <A, E>(
   atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) => Effect.runPromise(AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true }));
 
-afterEach(() => daemon.rows.clear());
+afterEach(() => {
+  daemon.rows.clear();
+  daemon.requests.length = 0;
+  daemon.Source.opened.length = 0;
+  daemon.location.search = "";
+});
+
+const refetched = async (event: Event, expected: ReadonlyArray<string>) => {
+  daemon.requests.length = 0;
+  daemon.Source.opened.at(-1)?.send(event);
+  await vi.waitFor(() => expect(daemon.requests.toSorted()).toEqual(expected));
+};
+
+it("each event refetches only what it changes, and a dropped stream reconnects", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.location.search = "?c=5";
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  const open = conversation(ConversationId.make(5));
+  registry.mount(list);
+  registry.mount(counts);
+  registry.mount(open);
+  registry.mount(live);
+  await Promise.all([settled(registry, list), settled(registry, counts), settled(registry, open)]);
+  expect(daemon.Source.opened.map(({ url }) => url.href)).toEqual(["http://weir.test/events"]);
+
+  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "state", ids: [9] }, ["GET /conversations", "GET /counts"]);
+  await refetched({ type: "state", ids: [5] }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+  ]);
+
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  const first = daemon.Source.opened[0];
+  first?.drop();
+  expect(first?.closed).toBe(true);
+  expect(daemon.Source.opened).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(500);
+  vi.useRealTimers();
+  expect(daemon.Source.opened).toHaveLength(2);
+  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+
+  registry.dispose();
+  expect(daemon.Source.opened.at(-1)?.closed).toBe(true);
+});
 
 it("Done hides the row until the server agrees, then defers to whatever the server says next", async () => {
   daemon.rows.set(1, row(1, 5));
