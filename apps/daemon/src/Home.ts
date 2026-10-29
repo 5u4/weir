@@ -6,6 +6,7 @@ export interface WeirHome {
   readonly config: string;
   readonly db: string;
   readonly daemon: string;
+  readonly digestLogs: string;
 }
 
 export const make = (root: string): WeirHome => ({
@@ -13,6 +14,7 @@ export const make = (root: string): WeirHome => ({
   config: `${root}/config.toml`,
   db: `${root}/weir.db`,
   daemon: `${root}/daemon.json`,
+  digestLogs: `${root}/logs/digest`,
 });
 
 export const fromEnv = Config.NonEmptyString("WEIR_HOME").pipe(

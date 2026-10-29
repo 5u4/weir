@@ -44,6 +44,7 @@
       "dependencies": {
         "@effect/platform-bun": "catalog:",
         "@weir/contract": "workspace:*",
+        "@weir/digest": "workspace:*",
         "@weir/plugin-gws": "workspace:*",
         "@weir/store": "workspace:*",
         "@weir/sync": "workspace:*",
@@ -79,6 +80,18 @@
       },
       "devDependencies": {
         "@weir/fixtures": "workspace:*",
+      },
+    },
+    "packages/digest": {
+      "name": "@weir/digest",
+      "version": "0.1.0",
+      "dependencies": {
+        "@weir/contract": "workspace:*",
+        "@weir/store": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@effect/vitest": "catalog:",
       },
     },
     "packages/fixtures": {
@@ -295,6 +308,8 @@
     "@weir/contract": ["@weir/contract@workspace:packages/contract"],
 
     "@weir/daemon": ["@weir/daemon@workspace:apps/daemon"],
+
+    "@weir/digest": ["@weir/digest@workspace:packages/digest"],
 
     "@weir/fixtures": ["@weir/fixtures@workspace:packages/fixtures"],
 

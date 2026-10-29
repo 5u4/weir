@@ -73,6 +73,23 @@ export const TagStatus = Schema.Struct({
   ...ViewCounts,
 });
 
+export const DigestJob = Schema.Struct({
+  conversation_id: Schema.Int,
+  from_seq: Schema.Int,
+  to_seq: Schema.Int,
+  trigger: Trigger,
+});
+
+export const DigestRun = Schema.Struct({
+  ...DigestJob.fields,
+  at: Schema.String,
+  ms: Schema.Int,
+  ok: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+  log_path: Schema.NullOr(Schema.String),
+});
+export type DigestRun = typeof DigestRun.Type;
+
 export const Status = Schema.Struct({
   home: Schema.String,
   config: Schema.Struct({
@@ -84,6 +101,15 @@ export const Status = Schema.Struct({
   sources: Schema.Array(SourceStatus),
   tags: Schema.Array(TagStatus),
   untagged: Schema.Struct(ViewCounts),
+  digest: Schema.NullOr(
+    Schema.Struct({
+      ai: Schema.String,
+      threshold: Schema.Int,
+      running: Schema.Array(DigestJob),
+      waiting: Schema.Int,
+      last_run: Schema.NullOr(DigestRun),
+    }),
+  ),
 });
 export type Status = typeof Status.Type;
 
@@ -156,6 +182,10 @@ export const Conversation = Schema.Struct({
   }),
   items: Schema.Array(ItemSummary),
   digests: Schema.Array(Digest),
+  digest: Schema.Struct({
+    backlog: Schema.NullOr(Schema.Struct({ chars: Schema.Int, threshold: Schema.Int })),
+    last_failure: Schema.NullOr(DigestRun),
+  }),
 });
 
 export const Item = Schema.Struct({
@@ -336,7 +366,7 @@ export class DigestConflict extends Schema.TaggedError<DigestConflict>()(
 
 export class DigestFailed extends Schema.TaggedError<DigestFailed>()(
   "DigestFailed",
-  { error: Schema.String, log_path: Schema.String },
+  { error: Schema.String, log_path: Schema.NullOr(Schema.String) },
   { httpApiStatus: 502 },
 ) {}
 
@@ -392,4 +422,4 @@ export class EventsGroup extends HttpApiGroup.make("events", { topLevel: true })
   HttpApiEndpoint.get("events", "/events", { success: HttpApiSchema.StreamSse({ data: Event }) }),
 ) {}
 
-export class Api extends HttpApi.make("weir").add(WeirGroup, ViewGroup, StateGroup) {}
+export class Api extends HttpApi.make("weir").add(WeirGroup, ViewGroup, StateGroup, DigestGroup) {}

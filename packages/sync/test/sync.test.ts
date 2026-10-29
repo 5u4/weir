@@ -23,8 +23,10 @@ const tags: Tags = [
 
 const fromGithub = { name: "GitHub", address: "Notifications@GitHub.com" };
 
+const ignoreWritten = () => Effect.void;
+
 const run = (script: Map<string | null, Step>, runTags: Tags = tags) =>
-  syncStream("mail", scriptedSource(script).source, mailStream, runTags);
+  syncStream("mail", scriptedSource(script).source, mailStream, runTags, ignoreWritten);
 
 const streamState = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -87,18 +89,55 @@ describe("syncStream paging", () => {
         ["c1", new Error("page 2 exploded")],
       ]);
       const failed = scriptedSource(script);
-      const error = yield* Effect.flip(syncStream("mail", failed.source, mailStream, tags));
+      const error = yield* Effect.flip(
+        syncStream("mail", failed.source, mailStream, tags, ignoreWritten),
+      );
       expect(error._tag).toBe("SourceError");
       expect((yield* items).map(({ externalId }) => externalId)).toEqual(["m1"]);
       expect((yield* streamState)?.cursor).toBe("c1");
 
       script.set("c1", page({ cursor: "c2", upserts: [rawItem("m2")] }));
       const resumed = scriptedSource(script);
-      yield* syncStream("mail", resumed.source, mailStream, tags);
+      yield* syncStream("mail", resumed.source, mailStream, tags, ignoreWritten);
       expect(failed.calls).toEqual([null, "c1"]);
       expect(resumed.calls).toEqual(["c1"]);
       expect((yield* items).map(({ externalId }) => externalId)).toEqual(["m1", "m2"]);
       expect((yield* streamState)?.cursor).toBe("c2");
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("reports the conversations each committed page wrote, deletions included", () =>
+    Effect.gen(function* () {
+      const reported: Array<ReadonlyArray<number>> = [];
+      const { source } = scriptedSource(
+        new Map<string | null, Step>([
+          [
+            null,
+            page({
+              cursor: "c1",
+              more: true,
+              upserts: [rawItem("m1", { threadId: "t1" }), rawItem("m2", { threadId: "t2" })],
+            }),
+          ],
+          ["c1", page({ cursor: "c2", more: true, deletions: ["m1"] })],
+          ["c2", new Error("page 3 exploded")],
+        ]),
+      );
+      yield* Effect.flip(
+        syncStream("mail", source, mailStream, tags, (ids) =>
+          Effect.sync(() => reported.push(ids)),
+        ),
+      );
+      const sql = yield* SqlClient.SqlClient;
+      const keys = new Map(
+        (yield* sql<{ id: number; key: string }>`SELECT id, key FROM conversation`).map(
+          ({ id, key }) => [id, key],
+        ),
+      );
+      expect(reported.map((ids) => ids.map((id) => keys.get(id)).toSorted())).toEqual([
+        ["t1", "t2"],
+        ["t1"],
+      ]);
     }).pipe(Effect.provide(storeLayer())),
   );
 
@@ -193,14 +232,14 @@ describe("syncStream tags", () => {
           ["c1", page({ cursor: "c1" })],
         ]),
       );
-      yield* syncStream("mail", source, mailStream, fromMeTags);
+      yield* syncStream("mail", source, mailStream, fromMeTags, ignoreWritten);
       expect(yield* tagsByThread).toEqual([]);
 
       const aliased = { ...mailStream, me: [...mailStream.me, "ADA@example.com"] };
-      yield* syncStream("mail", source, aliased, fromMeTags);
+      yield* syncStream("mail", source, aliased, fromMeTags, ignoreWritten);
       expect(yield* tagsByThread).toEqual(["t1:sent"]);
 
-      yield* syncStream("mail", source, mailStream, fromMeTags);
+      yield* syncStream("mail", source, mailStream, fromMeTags, ignoreWritten);
       expect(yield* tagsByThread).toEqual([]);
     }).pipe(Effect.provide(storeLayer())),
   );
@@ -369,13 +408,13 @@ describe("syncStream sync_run", () => {
           ["c1", page({ cursor: "c1" })],
         ]),
       );
-      yield* syncStream("mail", source, mailStream, fromMeTags);
+      yield* syncStream("mail", source, mailStream, fromMeTags, ignoreWritten);
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE item SET raw = 'not json'`;
 
       yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:35:00Z")));
       const aliased = { ...mailStream, me: [...mailStream.me, "ada@example.com"] };
-      yield* Effect.flip(syncStream("mail", source, aliased, fromMeTags));
+      yield* Effect.flip(syncStream("mail", source, aliased, fromMeTags, ignoreWritten));
 
       const runs = yield* syncRuns;
       expect(runs).toHaveLength(2);
@@ -436,6 +475,7 @@ describe("syncSource failures", () => {
         "mail",
         scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
         tags,
+        ignoreWritten,
       );
 
       yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-10-28T09:35:00Z")));
@@ -444,6 +484,7 @@ describe("syncSource failures", () => {
           "mail",
           failingStreams(() => Promise.reject(new Error("token revoked"))),
           tags,
+          ignoreWritten,
         ),
       );
       expect(error.message).toContain("token revoked");
@@ -469,12 +510,14 @@ describe("syncSource failures", () => {
         "mail",
         scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
         tags,
+        ignoreWritten,
       );
       yield* Effect.flip(
         syncSource(
           "mail",
           failingStreams(async () => [{ ...mailStream, extra: true }]),
           tags,
+          ignoreWritten,
         ),
       );
       expect((yield* streamState)?.lastError).toContain("extra");
@@ -487,12 +530,14 @@ describe("syncSource failures", () => {
         "other",
         scriptedSource(new Map([[null, page({ cursor: "c1" })]])).source,
         tags,
+        ignoreWritten,
       );
       yield* Effect.flip(
         syncSource(
           "mail",
           failingStreams(() => Promise.reject(new Error("down"))),
           tags,
+          ignoreWritten,
         ),
       );
       expect(yield* syncRuns).toHaveLength(1);

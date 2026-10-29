@@ -1,7 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DigestInput } from "@weir/contract/Digest";
 import type { RawItem, Source, SourcePlugin, StreamDescriptor } from "@weir/contract/Source";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -146,6 +147,23 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
   }),
 });
 
+export const filePlugin = (file: string): SourcePlugin<unknown> => ({
+  id: "file",
+  configSchema: Schema.toStandardSchemaV1(Schema.Record(Schema.String, Schema.String)),
+  create: (): Source => ({
+    streams: async () => [mailStream],
+    sync: async (_streamId, cursor) => {
+      const items = JSON.parse(readFileSync(file, "utf8")) as Array<RawItem>;
+      return {
+        upserts: items.slice(cursor === null ? 0 : Number(cursor)),
+        deletions: [],
+        cursor: String(items.length),
+        more: false,
+      };
+    },
+  }),
+});
+
 export const sourceConfig = (syncEvery = "50ms") => `[[source]]
 id = "mail"
 plugin = "fake"
@@ -154,3 +172,47 @@ sync_every = "${syncEvery}"
 [source.config]
 mode = "test"
 `;
+
+export interface Capture {
+  readonly input: DigestInput;
+  readonly attempt: number;
+  readonly hasError: boolean;
+}
+
+export const fakeAi = ["bun", join(import.meta.dirname, "fake-ai.ts")];
+
+export interface DigestOptions {
+  readonly capture: string;
+  readonly args?: ReadonlyArray<string>;
+  readonly concurrency?: number;
+  readonly guide?: string;
+}
+
+export const digestConfig = ({ capture, args = [], concurrency = 1, guide }: DigestOptions) => `
+[ai.fake]
+command = ${JSON.stringify([...fakeAi, "--capture", capture, ...args])}
+timeout = "20s"
+concurrency = ${concurrency}
+
+[digest]
+ai = "fake"
+threshold = 1000
+max_input = 24000
+context = 6000
+${guide === undefined ? "" : `guide = ${JSON.stringify(guide)}`}
+`;
+
+export const readCapture = (path: string): Array<Capture> =>
+  existsSync(path)
+    ? readFileSync(path, "utf8")
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => JSON.parse(line) as Capture)
+    : [];
+
+export const processesMentioning = (marker: string) =>
+  new TextDecoder()
+    .decode(Bun.spawnSync(["ps", "-axo", "pid=,command="]).stdout)
+    .split("\n")
+    .filter((line) => line.includes(marker) && !line.includes("ps -axo"))
+    .map((line) => Number.parseInt(line.trim(), 10));

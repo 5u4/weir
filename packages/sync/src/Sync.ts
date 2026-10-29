@@ -23,6 +23,8 @@ export interface SyncCounts {
   readonly deletions: number;
 }
 
+export type Written = (conversationIds: ReadonlyArray<ConversationId>) => Effect.Effect<void>;
+
 const strict = { onExcessProperty: "error" } as const;
 const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamDescriptor), strict);
 const decodePage = Schema.decodeUnknownEffect(SyncPage, strict);
@@ -53,6 +55,7 @@ const writePage = Effect.fnUntraced(function* (
   const recompute = new Set<ConversationId>(
     yield* Write.softDeleteItems(stream.id, page.deletions),
   );
+  const deleted = [...recompute];
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -70,6 +73,7 @@ const writePage = Effect.fnUntraced(function* (
   );
   if (backfilling) yield* Write.advanceSeenSeq(written);
   yield* Write.saveCursor(stream.id, page.cursor, { backfilled: backfilling && !page.more });
+  return [...new Set([...deleted, ...written.map(({ conversationId }) => conversationId)])];
 });
 
 export const syncStream = Effect.fnUntraced(function* (
@@ -77,6 +81,7 @@ export const syncStream = Effect.fnUntraced(function* (
   source: Source,
   descriptor: StreamDescriptor,
   tags: Tags,
+  onWritten: Written,
 ) {
   const sql = yield* SqlClient.SqlClient;
   const startedAt = yield* DateTime.now;
@@ -98,7 +103,7 @@ export const syncStream = Effect.fnUntraced(function* (
       const page = yield* callSource(sourceId, () => source.sync(descriptor.id, cursor)).pipe(
         Effect.flatMap(decodePage),
       );
-      yield* sql.withTransaction(writePage(stream, page, tags, backfilling));
+      yield* onWritten(yield* sql.withTransaction(writePage(stream, page, tags, backfilling)));
       counts = {
         upserts: counts.upserts + page.upserts.length,
         deletions: counts.deletions + page.deletions.length,
@@ -132,6 +137,7 @@ export const syncSource = Effect.fnUntraced(function* (
   sourceId: string,
   source: Source,
   tags: Tags,
+  onWritten: Written,
 ) {
   const sql = yield* SqlClient.SqlClient;
   const startedAt = yield* DateTime.now;
@@ -155,7 +161,7 @@ export const syncSource = Effect.fnUntraced(function* (
   yield* Effect.forEach(
     descriptors,
     (descriptor) =>
-      syncStream(sourceId, source, descriptor, tags).pipe(
+      syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
         Effect.catch((error) =>
           Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error),
         ),

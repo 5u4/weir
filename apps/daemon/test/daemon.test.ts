@@ -73,6 +73,22 @@ describe("startup", () => {
         [sourceConfig() + tag("Untagged", invoiceTitle), '["tag"][0]["name"]'],
         [sourceConfig() + tag("untagged", invoiceTitle), '["tag"][0]["name"]'],
         ["[[source]\n", "invalid TOML"],
+        [
+          `${sourceConfig()}
+[ai.fake]
+command = ["fake-ai"]
+timeout = "30s"
+concurrency = 1
+
+[digest]
+ai = "fake"
+threshold = 1000
+max_input = 24000
+context = 6000
+guide = "prompts/missing.md"
+`,
+          '["digest"]["guide"]',
+        ],
       ] as const;
       for (const [body, expected] of cases) {
         const { home } = makeHome(body);

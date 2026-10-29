@@ -1,12 +1,17 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
 import { type Config, untagged } from "@weir/contract/Config";
+import type { Digest } from "@weir/contract/Digest";
+import type * as Digester from "@weir/digest/Digester";
+import { backlog } from "@weir/digest/Range";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import {
   ConversationId,
   type ConversationRow,
+  DigestId,
   type DigestRow,
+  type DigestRunRow,
   type ListedConversationRow,
   Seq,
 } from "@weir/store/Rows";
@@ -30,6 +35,9 @@ import {
   Api,
   type ConversationSummary,
   type Counts,
+  DigestConflict,
+  DigestFailed,
+  type DigestRun,
   type Line,
   NotFound,
   type Row,
@@ -54,7 +62,35 @@ const summary = (row: ConversationRow): ConversationSummary => ({
   last_at: DateTime.formatIso(row.lastAt),
 });
 
-const status = Effect.fnUntraced(function* (home: WeirHome, state: State) {
+const digestJson = (digest: DigestRow): Digest => ({
+  id: digest.id,
+  conversation_id: digest.conversationId,
+  from_seq: digest.fromSeq,
+  to_seq: digest.toSeq,
+  headline: digest.headline,
+  topics: digest.topics,
+  trigger: digest.trigger,
+  ai_profile: digest.aiProfile,
+  created_at: DateTime.formatIso(digest.createdAt),
+});
+
+const runJson = (run: DigestRunRow): DigestRun => ({
+  conversation_id: run.conversationId,
+  from_seq: run.fromSeq,
+  to_seq: run.toSeq,
+  trigger: run.trigger,
+  at: DateTime.formatIso(run.startedAt),
+  ms: run.ms,
+  ok: run.ok,
+  error: run.error,
+  log_path: run.logPath,
+});
+
+const status = Effect.fnUntraced(function* (
+  home: WeirHome,
+  state: State,
+  digester: Option.Option<Digester.Digester>,
+) {
   const streams = yield* Read.streams();
   const aiSince = new Map(
     (yield* Read.tagStates()).map(({ name, aiSince }) => [name, DateTime.formatIso(aiSince)]),
@@ -68,6 +104,8 @@ const status = Effect.fnUntraced(function* (home: WeirHome, state: State) {
       open: row?.open ?? 0,
     };
   };
+  const queue = Option.isNone(digester) ? { running: [], waiting: 0 } : yield* digester.value.queue;
+  const lastRun = yield* Read.lastDigestRun();
   return {
     home: home.root,
     config: {
@@ -108,6 +146,21 @@ const status = Effect.fnUntraced(function* (home: WeirHome, state: State) {
       ...countsOf(name),
     })),
     untagged: countsOf(null),
+    digest:
+      state.config.digest === undefined
+        ? null
+        : {
+            ai: state.config.digest.ai,
+            threshold: state.config.digest.threshold,
+            running: queue.running.map(({ conversationId, range, trigger }) => ({
+              conversation_id: conversationId,
+              from_seq: range.fromSeq,
+              to_seq: range.toSeq,
+              trigger,
+            })),
+            waiting: queue.waiting,
+            last_run: Option.getOrNull(Option.map(lastRun, runJson)),
+          },
   } satisfies Status;
 });
 
@@ -417,11 +470,9 @@ const weirHandlers = HttpApiBuilder.group(
     const withSql = Effect.provideService(SqlClient.SqlClient, sql);
     return handlers.handleAll({
       status: () =>
-        daemon.state.pipe(
-          Effect.flatMap((state) => status(daemon.home, state)),
-          withSql,
-          Effect.orDie,
-        ),
+        Effect.gen(function* () {
+          return yield* status(daemon.home, yield* daemon.state, yield* daemon.digester);
+        }).pipe(withSql, Effect.orDie),
       search: ({ query: { q, tag, since, ...filters } }) =>
         Effect.gen(function* () {
           const found = yield* Read.search({
@@ -477,6 +528,9 @@ const weirHandlers = HttpApiBuilder.group(
           }
           const { conversation, items, tags } = detail.value;
           const digests = yield* Read.digests([conversation.id]);
+          const { config } = yield* daemon.state;
+          const since = yield* Read.aiSince(conversation.id);
+          const lastRun = yield* Read.lastDigestRun(conversation.id);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
@@ -495,17 +549,30 @@ const weirHandlers = HttpApiBuilder.group(
               title: item.title,
               body_new: item.bodyNew,
             })),
-            digests: digests.map((digest) => ({
-              id: digest.id,
-              conversation_id: digest.conversationId,
-              from_seq: digest.fromSeq,
-              to_seq: digest.toSeq,
-              headline: digest.headline,
-              topics: digest.topics,
-              trigger: digest.trigger,
-              ai_profile: digest.aiProfile,
-              created_at: DateTime.formatIso(digest.createdAt),
-            })),
+            digests: digests.map(digestJson),
+            digest: {
+              backlog:
+                config.digest === undefined || Option.isNone(since)
+                  ? null
+                  : {
+                      chars: backlog(
+                        items.map(({ seq, occurredAt, bodyNew }) => ({
+                          seq,
+                          occurredAt,
+                          chars: [...bodyNew].length,
+                        })),
+                        digests,
+                        since.value,
+                      ).chars,
+                      threshold: config.digest.threshold,
+                    },
+              last_failure: Option.getOrNull(
+                Option.map(
+                  Option.filter(lastRun, ({ ok }) => !ok),
+                  runJson,
+                ),
+              ),
+            },
           };
         }).pipe(withSql, dieOnStoreError),
       item: ({ params: { seq } }) =>
@@ -545,7 +612,54 @@ const weirHandlers = HttpApiBuilder.group(
   }),
 );
 
-const handlers = Layer.mergeAll(weirHandlers, viewHandlers, stateHandlers);
+const digestHandlers = HttpApiBuilder.group(
+  Api,
+  "digest",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const run = (
+      digest: (
+        digester: Digester.Digester,
+      ) => Effect.Effect<ReadonlyArray<DigestRow>, Digester.ManualError>,
+    ) =>
+      Effect.gen(function* () {
+        const current = yield* daemon.digester;
+        if (Option.isNone(current)) {
+          const { configError } = yield* daemon.state;
+          return yield* new DigestConflict({
+            message:
+              configError === null
+                ? `no [digest] section in ${daemon.home.config}`
+                : `digests are stopped until ${configError.file} loads; fix it and reload`,
+          });
+        }
+        return { digests: (yield* digest(current.value)).map(digestJson) };
+      }).pipe(
+        Effect.catchTags({
+          DigestNotFound: ({ message }) => Effect.fail(new NotFound({ message })),
+          DigestRejected: ({ message }) => Effect.fail(new DigestConflict({ message })),
+          DigestRunFailed: ({ error, logPath }) =>
+            Effect.fail(new DigestFailed({ error, log_path: logPath })),
+        }),
+      );
+    return handlers.handleAll({
+      digest: ({ params: { id }, payload: { from, up_to } }) =>
+        run((digester) =>
+          digester.manual(
+            ConversationId.make(id),
+            from !== undefined
+              ? { _tag: "From", seq: Seq.make(from) }
+              : up_to !== undefined
+                ? { _tag: "UpTo", seq: Seq.make(up_to) }
+                : { _tag: "Now" },
+          ),
+        ),
+      redo: ({ params: { id } }) => run((digester) => digester.redo(DigestId.make(id))),
+    });
+  }),
+);
+
+const handlers = Layer.mergeAll(weirHandlers, viewHandlers, stateHandlers, digestHandlers);
 
 const advertise = (home: WeirHome) =>
   Layer.effectDiscard(
