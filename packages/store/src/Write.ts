@@ -9,6 +9,10 @@ import {
   ConversationId,
   ConversationStateRow,
   ConversationTagRow,
+  type DigestId,
+  DigestInsert,
+  DigestRow,
+  DigestRunInsert,
   ItemInsert,
   Seq,
   StreamId,
@@ -386,4 +390,38 @@ export const reconcileTagState = Effect.fnUntraced(function* (aiTags: ReadonlyAr
   const aiSince = yield* DateTime.now;
   const rows = yield* encodeTagStates(aiTags.map((name) => ({ name, aiSince })));
   yield* sql`INSERT INTO tag_state ${sql.insert(rows)} ON CONFLICT (name) DO NOTHING`;
+});
+
+export const recordDigestRun = Effect.fnUntraced(function* (run: DigestRunInsert) {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`INSERT INTO digest_run ${sql.insert(yield* Schema.encodeEffect(DigestRunInsert)(run))}`;
+});
+
+const decodeDigest = Schema.decodeUnknownEffect(Schema.Tuple([DigestRow]));
+
+export const writeDigest = Effect.fnUntraced(function* (
+  digest: DigestInsert,
+  run: DigestRunInsert,
+  replaces: DigestId | null,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const row = yield* Schema.encodeEffect(DigestInsert)(digest);
+  const text = [digest.headline, ...digest.topics.flatMap(({ title, body }) => [title, body])].join(
+    "\n",
+  );
+  return yield* sql.withTransaction(
+    Effect.gen(function* () {
+      if (replaces !== null) {
+        yield* sql`DELETE FROM digest WHERE id = ${replaces}`;
+        yield* sql`DELETE FROM search_fts WHERE rowid = ${-replaces}`;
+      }
+      const [written] = yield* decodeDigest(
+        yield* sql`INSERT INTO digest ${sql.insert(row)} RETURNING *`,
+      );
+      yield* sql`INSERT INTO search_fts (rowid, text, conversation_id, item_seq, digest_id)
+        VALUES (${-written.id}, ${text}, ${written.conversationId}, NULL, ${written.id})`;
+      yield* recordDigestRun(run);
+      return written;
+    }),
+  );
 });

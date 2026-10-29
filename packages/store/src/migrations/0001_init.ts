@@ -93,6 +93,7 @@ export const migration = Effect.gen(function* () {
     to_seq INTEGER,
     "trigger" TEXT,
     ai TEXT,
+    started_at TEXT,
     ms INTEGER,
     ok INTEGER,
     error TEXT,
