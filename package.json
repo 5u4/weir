@@ -34,7 +34,8 @@
     "test": "bun --bun run vitest run",
     "vendor:effect": "bun scripts/vendor-effect.ts",
     "build:web": "bun run --cwd apps/web build",
-    "demo": "bun run build:web && bun scripts/demo.ts"
+    "demo": "bun run build:web && bun scripts/demo.ts",
+    "bench:read": "bun scripts/bench-read.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
