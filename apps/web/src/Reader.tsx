@@ -757,7 +757,7 @@ function Dock({ id }: { id: ConversationId }) {
   const { unread } = useAtomValue(reading(id));
   const run = useAtomSet(dismiss);
   if (Option.isNone(shown)) return null;
-  const { actions, target } = shown.value;
+  const { actions, target, open } = shown.value;
   return (
     <div className="r-dock" role="group" aria-label="Conversation actions">
       <button
@@ -782,6 +782,14 @@ function Dock({ id }: { id: ConversationId }) {
           {action === "Done" && <kbd aria-hidden="true">e</kbd>}
         </button>
       ))}
+      {open !== null && (
+        <a className="ext" href={open.link} target="_blank" rel="noopener noreferrer">
+          Open in {open.label}
+          <svg className="ext-i" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M5.5 4.5h6v6M11.2 4.8L4.5 11.5" />
+          </svg>
+        </a>
+      )}
     </div>
   );
 }

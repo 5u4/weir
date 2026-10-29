@@ -860,7 +860,8 @@ button {
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   box-shadow: var(--shadow-float);
 }
-.r-dock button {
+.r-dock button,
+.r-dock .ext {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -871,6 +872,7 @@ button {
   font-weight: 600;
   color: var(--ink);
   white-space: nowrap;
+  text-decoration: none;
   transition:
     background-color 140ms,
     transform 120ms;
@@ -891,6 +893,23 @@ button {
 }
 .r-dock .back {
   display: none;
+}
+.r-dock .ext {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.r-dock .ext:hover {
+  color: var(--ink);
+}
+.ext-i {
+  width: 13px;
+  height: 13px;
+  margin-left: -4px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .r-dock kbd {
   padding: 2px 4px;
@@ -2247,6 +2266,7 @@ button {
     display: inline-flex;
     padding: 0 10px;
   }
+  .r-dock .ext,
   .r-dock kbd,
   .r-dock ~ .r-x {
     display: none;

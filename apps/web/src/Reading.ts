@@ -164,7 +164,11 @@ export const reading = Atom.family((id: ConversationId) =>
   }).pipe(Atom.setIdleTTL(0)),
 );
 
-export type Dock = { readonly actions: ReadonlyArray<DockAction>; readonly target: Target };
+export type Dock = {
+  readonly actions: ReadonlyArray<DockAction>;
+  readonly target: Target;
+  readonly open: Detail["open"];
+};
 
 export const dock = Atom.family((id: ConversationId) =>
   Atom.make((get): Option.Option<Dock> => {
@@ -183,6 +187,7 @@ export const dock = Atom.family((id: ConversationId) =>
     return Option.some({
       actions: dockActions({ state, read: get(reading(id)).seen >= last }),
       target: { id, last_seq: last, cleared_seq: detail.value.state.cleared_seq },
+      open: detail.value.open,
     });
   }),
 );
