@@ -379,12 +379,35 @@ export const aiConversations = Effect.fnUntraced(function* () {
 
 const decodeDigestRuns = Schema.decodeUnknownEffect(Schema.Array(DigestRunRow));
 
-export const lastDigestRun = Effect.fnUntraced(function* (conversationId?: ConversationId) {
+export const lastDigestRun = Effect.fnUntraced(function* (conversationId: ConversationId) {
   const sql = yield* SqlClient.SqlClient;
-  const scope =
-    conversationId === undefined ? sql.literal("") : sql`WHERE conversation_id = ${conversationId}`;
   return Arr.head(
-    yield* decodeDigestRuns(yield* sql`SELECT * FROM digest_run ${scope} ORDER BY id DESC LIMIT 1`),
+    yield* decodeDigestRuns(
+      yield* sql`SELECT * FROM digest_run WHERE conversation_id = ${conversationId}
+        ORDER BY id DESC LIMIT 1`,
+    ),
+  );
+});
+
+export const DigestRunTotals = Schema.Struct({
+  at: UtcIso,
+  written: Schema.Int,
+  failed: Schema.Int,
+  avgMs: Schema.NullOr(Schema.Int),
+});
+export type DigestRunTotals = typeof DigestRunTotals.Type;
+
+const decodeDigestRunTotals = Schema.decodeUnknownEffect(Schema.Array(DigestRunTotals));
+
+export const digestRunsSince = Effect.fnUntraced(function* (since: DateTime.Utc) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeDigestRunTotals(
+      yield* sql`SELECT max(started_at) AS at, sum(ok = 1) AS written, sum(ok = 0) AS failed,
+          CAST(round(avg(CASE WHEN ok = 1 THEN ms END)) AS INTEGER) AS avg_ms
+        FROM digest_run WHERE started_at >= ${yield* Schema.encodeEffect(UtcIso)(since)}
+        HAVING count(*) > 0`,
+    ),
   );
 });
 

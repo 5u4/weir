@@ -107,7 +107,14 @@ export const Status = Schema.Struct({
       threshold: Schema.Int,
       running: Schema.Array(DigestJob),
       waiting: Schema.Int,
-      last_run: Schema.NullOr(DigestRun),
+      last_run: Schema.NullOr(
+        Schema.Struct({
+          at: Schema.String,
+          written: Schema.Int,
+          failed: Schema.Int,
+          avg_ms: Schema.NullOr(Schema.Int),
+        }),
+      ),
     }),
   ),
 });

@@ -54,6 +54,7 @@ import * as Web from "./Web.ts";
 
 const tagTestBatch = 200;
 const tagTestSamples = 3;
+const lastRunHours = 24;
 
 const summary = (row: ConversationRow): ConversationSummary => ({
   id: row.id,
@@ -105,7 +106,9 @@ const status = Effect.fnUntraced(function* (
     };
   };
   const queue = Option.isNone(digester) ? { running: [], waiting: 0 } : yield* digester.value.queue;
-  const lastRun = yield* Read.lastDigestRun();
+  const lastRun = yield* Read.digestRunsSince(
+    DateTime.subtract(yield* DateTime.now, { hours: lastRunHours }),
+  );
   return {
     home: home.root,
     config: {
@@ -159,7 +162,14 @@ const status = Effect.fnUntraced(function* (
               trigger,
             })),
             waiting: queue.waiting,
-            last_run: Option.getOrNull(Option.map(lastRun, runJson)),
+            last_run: Option.getOrNull(
+              Option.map(lastRun, ({ at, written, failed, avgMs }) => ({
+                at: DateTime.formatIso(at),
+                written,
+                failed,
+                avg_ms: avgMs,
+              })),
+            ),
           },
   } satisfies Status;
 });

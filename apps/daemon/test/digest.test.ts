@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
 import * as Database from "@weir/store/Database";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -11,6 +12,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { WeirHome } from "../src/Home.ts";
 import * as Http from "../src/Http.ts";
 import {
+  adjustableClock,
   apiClient,
   type DigestOptions,
   digestConfig,
@@ -178,7 +180,7 @@ describe("auto digest", () => {
         "Keep people's names in English.",
         "Keep people's names in English.",
       ]);
-      expect((yield* client.status()).digest?.last_run).toMatchObject({ ok: true, error: null });
+      expect((yield* client.status()).digest?.last_run).toMatchObject({ written: 1, failed: 0 });
     }).pipe(Effect.scoped),
   );
 
@@ -190,12 +192,9 @@ describe("auto digest", () => {
       const w1 = item("w1", "Work plan", 1100, 1);
       yield* deliver([w1]);
       const work = yield* conversationOf("Work plan");
-      const status = yield* eventually(
-        client.status(),
-        ({ digest }) => digest?.last_run?.ok === false,
-      );
-      const seq = (yield* detail(work)).items[0]?.seq;
-      const run = status.digest?.last_run;
+      const failed = yield* eventually(detail(work), ({ digest }) => digest.last_failure !== null);
+      const seq = failed.items[0]?.seq;
+      const run = failed.digest.last_failure;
       expect(run).toMatchObject({
         conversation_id: work,
         from_seq: seq,
@@ -209,9 +208,12 @@ describe("auto digest", () => {
       expect(existsSync(logPath)).toBe(true);
       expect(readFileSync(logPath, "utf8")).toContain("===== attempt 3");
       expect(calls().map(({ hasError }) => hasError)).toEqual([false, true, true]);
-      const failed = yield* detail(work);
       expect(failed.digests).toEqual([]);
-      expect(failed.digest.last_failure).toEqual(run);
+      expect((yield* client.status()).digest?.last_run).toMatchObject({
+        written: 0,
+        failed: 1,
+        avg_ms: null,
+      });
 
       const syncs = source.syncCalls;
       source.pending.push(w1);
@@ -262,6 +264,48 @@ describe("auto digest", () => {
           ],
         ]);
       }).pipe(Effect.scoped),
+  );
+});
+
+describe("status", () => {
+  it.live("last_run sums the digest runs of the last 24 hours by the daemon clock", () =>
+    Effect.gen(function* () {
+      const { clock, set } = yield* adjustableClock("2030-01-02T12:00:00Z");
+      yield* Effect.gen(function* () {
+        const { client, home } = yield* start();
+        expect((yield* client.status()).digest?.last_run).toBeNull();
+        yield* Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          for (const [startedAt, ms, ok] of [
+            ["2030-01-02T11:00:00.000Z", 1000, 1],
+            ["2030-01-02T10:00:00.000Z", 2001, 1],
+            ["2030-01-01T12:30:00.000Z", 500, 0],
+            ["2030-01-01T11:59:59.999Z", 9000, 1],
+            ["2030-01-01T00:00:00.000Z", 700, 0],
+          ] as const) {
+            yield* sql`INSERT INTO digest_run
+              (conversation_id, from_seq, to_seq, "trigger", ai, started_at, ms, ok, error, log_path)
+              VALUES (1, 1, 1, 'auto', 'fake', ${startedAt}, ${ms}, ${ok}, NULL, NULL)`;
+          }
+        }).pipe(Effect.provide(Database.layer(home.db)));
+
+        expect((yield* client.status()).digest?.last_run).toEqual({
+          at: "2030-01-02T11:00:00.000Z",
+          written: 2,
+          failed: 1,
+          avg_ms: 1501,
+        });
+        yield* set("2030-01-03T10:30:00Z");
+        expect((yield* client.status()).digest?.last_run).toEqual({
+          at: "2030-01-02T11:00:00.000Z",
+          written: 1,
+          failed: 0,
+          avg_ms: 1000,
+        });
+        yield* set("2030-01-03T11:00:00.001Z");
+        expect((yield* client.status()).digest?.last_run).toBeNull();
+      }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
+    }),
   );
 });
 
