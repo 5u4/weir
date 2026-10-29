@@ -17,16 +17,17 @@ export const hitKey = (
 const covering = (detail: Detail, seq: number) =>
   detail.digests.find(({ from_seq, to_seq }) => from_seq <= seq && seq <= to_seq);
 
+export const matches = (text: string, pattern: RegExp) => text.search(pattern) !== -1;
+
 export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit> => {
   if (pattern === null) return [];
-  const matches = (text: string) => text.search(pattern) !== -1;
   const placed: Array<{ readonly at: ReadonlyArray<number>; readonly hit: Hit }> = [];
   for (const digest of detail.digests) {
-    if (matches(digest.headline)) {
+    if (matches(digest.headline, pattern)) {
       placed.push({ at: [digest.from_seq, 0, 0, 0], hit: { _tag: "Headline", digest: digest.id } });
     }
     digest.topics.forEach((topic, index) => {
-      if (matches(topic.title) || matches(topic.body)) {
+      if (matches(topic.title, pattern) || matches(topic.body, pattern)) {
         placed.push({
           at: [digest.from_seq, 1, index, 0],
           hit: { _tag: "Topic", key: topicKey(digest, index) },
@@ -35,9 +36,9 @@ export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit>
     });
   }
   for (const { seq, from, body_new } of detail.items) {
-    const field = matches(body_new)
+    const field = matches(body_new, pattern)
       ? "body"
-      : matches(senderLabel(from.name, from.address))
+      : matches(senderLabel(from.name, from.address), pattern)
         ? "from"
         : null;
     if (field === null) continue;

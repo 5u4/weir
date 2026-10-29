@@ -1635,6 +1635,9 @@ button {
   font-size: 16px;
   color: var(--ink);
 }
+.tp.solo > .tp-t {
+  margin-bottom: 4px;
+}
 .tsm {
   display: inline-block;
   font: 700 11.5px / 20px var(--sans);

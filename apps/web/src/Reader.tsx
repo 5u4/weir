@@ -31,7 +31,7 @@ import {
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
 import { clockTime, dayAndTime, plural } from "./Health.ts";
-import { type Hit, hitKey } from "./Hits.ts";
+import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
 import {
@@ -384,7 +384,7 @@ function Topic({
       className={`tp${view.open ? " open" : ""}${solo ? " solo" : ""}`}
       {...hitProps(found, hitKey({ _tag: "Topic", key: view.key }))}
     >
-      {!solo && (
+      {!solo ? (
         <header className={`tp-h${view.open ? " pin" : ""}`} data-key={view.key}>
           <i className={`tsm tsm-${view.topic.state}`}>{stateNames[view.topic.state]}</i>
           <h4 className="tp-t">
@@ -392,6 +392,13 @@ function Topic({
           </h4>
           {view.open && <Pin id={id} unfold={toggle} view={view} />}
         </header>
+      ) : (
+        found.pattern !== null &&
+        matches(view.topic.title, found.pattern) && (
+          <h4 className="tp-t">
+            <Highlighted text={view.topic.title} pattern={found.pattern} />
+          </h4>
+        )
       )}
       <p className="tp-b">
         <Highlighted text={view.topic.body} pattern={found.pattern} />
@@ -524,7 +531,7 @@ function DigestCard({
   );
 }
 
-function BlockView({
+export function BlockView({
   id,
   block,
   watch,

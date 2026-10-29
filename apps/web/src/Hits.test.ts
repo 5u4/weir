@@ -1,7 +1,21 @@
 import { termPattern } from "@weir/daemon/Match";
-import { describe, expect, it } from "vitest";
-import { closedUi, type Detail, type Digest, type ItemSummary, topicKey } from "./Blocks.ts";
-import { type Hit, hits, reveal } from "./Hits.ts";
+import { createElement, Fragment } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import {
+  closedUi,
+  type Detail,
+  type Digest,
+  type ItemSummary,
+  lastSeq,
+  reader,
+  topicKey,
+} from "./Blocks.ts";
+import { type Hit, hitKey, hits, reveal } from "./Hits.ts";
+import { BlockView } from "./Reader.tsx";
+import { ConversationId } from "./Route.ts";
+
+vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
 const rachel = { name: "Rachel Gomez", address: "rachel.gomez@northwind.example" };
 const ben = { name: "Ben Foster", address: "ben.foster@example.com" };
@@ -86,6 +100,15 @@ const ledger = detail([
   item(26, ben, "Unrelated follow-up."),
 ]);
 
+const venue = detail(
+  [item(29, daniel, "Booked the place by the river for Dec 7.")],
+  [
+    digest(5, 29, 29, "Mom's 60th lunch is set", [
+      { title: "Venue booked", body: "Daniel booked a riverside place for Dec 7.", seqs: [29] },
+    ]),
+  ],
+);
+
 const found = (of: Detail, query: string) => hits(of, termPattern(query));
 
 const describeHit = (hit: Hit) =>
@@ -94,6 +117,50 @@ const describeHit = (hit: Hit) =>
     : hit._tag === "Topic"
       ? `topic ${hit.key}`
       : `headline ${hit.digest}`;
+
+const outer = (markup: string, key: string) => {
+  const at = markup.indexOf(`data-hit="${key}"`);
+  if (at === -1) return null;
+  const rest = markup.slice(markup.lastIndexOf("<", at));
+  const tag = /^<(\w+)/.exec(rest)?.[1] ?? "";
+  let depth = 0;
+  for (const match of rest.matchAll(new RegExp(`<(/?)${tag}\\b[^>]*>`, "g"))) {
+    depth += match[1] === "/" ? -1 : 1;
+    if (depth === 0) return rest.slice(0, match.index + match[0].length);
+  }
+  return null;
+};
+
+const landedOn = (of: Detail, query: string) => {
+  const pattern = termPattern(query);
+  const all = hits(of, pattern);
+  const keyed = new Map(all.map((hit) => [hitKey(hit), hit]));
+  return all.map((hit) => {
+    const key = hitKey(hit);
+    const blocks = reader(of, lastSeq(of), reveal(closedUi, of, hit), null);
+    const markup = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        blocks.map((block, at) =>
+          createElement(BlockView, {
+            key: at,
+            id: ConversationId.make(of.id),
+            block,
+            watch: () => () => {},
+            mark: { seen: lastSeq(of), unread: () => {} },
+            found: { pattern, hits: keyed, current: key },
+            controls: null,
+          }),
+        ),
+      ),
+    );
+    const target = outer(markup, key);
+    const state =
+      target === null ? "missing" : /<mark>|class="bh"/.test(target) ? "marked" : "unmarked";
+    return `${key} ${state}`;
+  });
+};
 
 describe("hits", () => {
   it.each([
@@ -155,6 +222,24 @@ describe("hits", () => {
   it("finds nothing without a text term", () => {
     expect(hits(northwind, termPattern(""))).toEqual([]);
     expect(hits(northwind, null)).toEqual([]);
+  });
+});
+
+describe("landing on a hit", () => {
+  it.each([
+    ["migrat", northwind],
+    ["northwind", northwind],
+    ["lisa", northwind],
+    ["signed", northwind],
+    ["duplicate", northwind],
+    ["60", momsBirthday],
+    ["dan.ellis", momsBirthday],
+    ["idempotency backfill", ledger],
+    ["venue", venue],
+  ] as const)("%s: every counted hit shows a marked target once revealed", (query, of) => {
+    const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
+    expect(counted.length).toBeGreaterThan(0);
+    expect(landedOn(of, query)).toEqual(counted);
   });
 });
 
