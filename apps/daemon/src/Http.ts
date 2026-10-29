@@ -37,6 +37,7 @@ import {
   type Counts,
   DigestConflict,
   DigestFailed,
+  DigestInterrupted,
   type DigestRun,
   type Line,
   NotFound,
@@ -650,6 +651,7 @@ const digestHandlers = HttpApiBuilder.group(
           DigestRejected: ({ message }) => Effect.fail(new DigestConflict({ message })),
           DigestRunFailed: ({ error, logPath }) =>
             Effect.fail(new DigestFailed({ error, log_path: logPath })),
+          DigestInterrupted: ({ message }) => Effect.fail(new DigestInterrupted({ message })),
         }),
       );
     return handlers.handleAll({

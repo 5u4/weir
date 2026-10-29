@@ -377,6 +377,12 @@ export class DigestFailed extends Schema.TaggedError<DigestFailed>()(
   { httpApiStatus: 502 },
 ) {}
 
+export class DigestInterrupted extends Schema.TaggedError<DigestInterrupted>()(
+  "DigestInterrupted",
+  { message: Schema.String },
+  { httpApiStatus: 503 },
+) {}
+
 export const DigestList = Schema.Struct({ digests: Schema.Array(Digest) });
 
 export class DigestGroup extends HttpApiGroup.make("digest", { topLevel: true }).add(
@@ -394,12 +400,12 @@ export class DigestGroup extends HttpApiGroup.make("digest", { topLevel: true })
       ),
     ),
     success: DigestList,
-    error: [NotFound, DigestConflict, DigestFailed],
+    error: [NotFound, DigestConflict, DigestFailed, DigestInterrupted],
   }),
   HttpApiEndpoint.post("redo", "/digests/:id/redo", {
     params: { id: Schema.Int },
     success: DigestList,
-    error: [NotFound, DigestConflict, DigestFailed],
+    error: [NotFound, DigestConflict, DigestFailed, DigestInterrupted],
   }),
 ) {}
 

@@ -100,6 +100,8 @@ const start = (options: Omit<DigestOptions, "capture"> = {}) =>
     return {
       ...served,
       home,
+      port,
+      capture,
       source,
       calls: () => readCapture(capture),
       reconfigure: (next: Omit<DigestOptions, "capture">) =>
@@ -462,5 +464,44 @@ describe("cancellation", () => {
         expect(readCapture(third)).toHaveLength(1);
       }).pipe(Effect.scoped);
     }),
+  );
+
+  it.live("reload answers a held manual digest with 503 and the range digests again", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail, home, port, capture, calls, reconfigure } =
+        yield* start({ args: ["--delay", "10000"] });
+      yield* deliver([item("l1", "List news", 100, 1)]);
+      const id = yield* conversationOf("List news");
+      const held = yield* Effect.forkChild(
+        Effect.promise(async () => {
+          const response = await fetch(`http://127.0.0.1:${port}/conversations/${id}/digest`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          return { status: response.status, body: await response.json() };
+        }),
+      );
+      yield* eventually(Effect.sync(calls), (all) => all.length === 1);
+      expect(processesMentioning(capture)).toHaveLength(1);
+
+      reconfigure({});
+      yield* client.reload();
+      expect(yield* Fiber.join(held)).toEqual({
+        status: 503,
+        body: {
+          _tag: "DigestInterrupted",
+          message: "the digest was interrupted by a reload or shutdown; try again",
+        },
+      });
+      expect(processesMentioning(capture)).toEqual([]);
+      expect(yield* storedDigests(home)).toEqual({ digests: 0, fts: 0 });
+      expect((yield* client.status()).digest?.last_run).toBeNull();
+
+      const seq = (yield* detail(id)).items[0]?.seq;
+      const retried = yield* client.digest({ params: { id }, payload: {} });
+      expect(ranges(retried.digests)).toEqual([[seq, seq, "manual"]]);
+      expect(yield* storedDigests(home)).toEqual({ digests: 1, fts: 1 });
+    }).pipe(Effect.scoped),
   );
 });

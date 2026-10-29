@@ -55,7 +55,12 @@ export class DigestRunFailed extends Schema.TaggedError<DigestRunFailed>()("Dige
   logPath: Schema.NullOr(Schema.String),
 }) {}
 
-export type ManualError = DigestNotFound | DigestRejected | DigestRunFailed;
+export class DigestInterrupted extends Schema.TaggedError<DigestInterrupted>()(
+  "DigestInterrupted",
+  { message: Schema.String },
+) {}
+
+export type ManualError = DigestNotFound | DigestRejected | DigestRunFailed | DigestInterrupted;
 
 export interface Digester {
   readonly auto: (conversationIds: ReadonlyArray<ConversationId>) => Effect.Effect<void>;
@@ -288,7 +293,7 @@ export const make = Effect.fnUntraced(function* (settings: Settings, logDir: str
       );
       if (Exit.isSuccess(exit)) return exit.value;
       if (Cause.hasInterruptsOnly(exit.cause)) {
-        return yield* new DigestRejected({
+        return yield* new DigestInterrupted({
           message: "the digest was interrupted by a reload or shutdown; try again",
         });
       }
