@@ -783,8 +783,14 @@ function Dock({ id }: { id: ConversationId }) {
         </button>
       ))}
       {open !== null && (
-        <a className="ext" href={open.link} target="_blank" rel="noopener noreferrer">
-          Open in {open.label}
+        <a
+          className="ext"
+          href={open.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open in ${open.label}`}
+        >
+          <span className="ext-t">Open in {open.label}</span>
           <svg className="ext-i" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M5.5 4.5h6v6M11.2 4.8L4.5 11.5" />
           </svg>

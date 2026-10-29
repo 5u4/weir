@@ -2262,11 +2262,17 @@ button {
   .r-dock button {
     padding: 0 13px;
   }
-  .r-dock .back {
+  .r-dock .back,
+  .r-dock .ext {
     display: inline-flex;
     padding: 0 10px;
   }
-  .r-dock .ext,
+  .r-dock .ext .ext-i {
+    width: 18px;
+    height: 18px;
+    margin-left: 0;
+  }
+  .r-dock .ext-t,
   .r-dock kbd,
   .r-dock ~ .r-x {
     display: none;
