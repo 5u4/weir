@@ -208,6 +208,8 @@ export const expire = (mailbox: Mailbox) => {
   mailbox.history = [];
 };
 
+export const callsFile = (dir: string) => join(dir, "calls.log");
+
 export const mailboxFile = (dir: string) => join(dir, "mailbox.json");
 
 export const readMailbox = (dir: string): Mailbox =>

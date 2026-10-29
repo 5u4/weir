@@ -1,6 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import expectedDigestsJson from "../expected-digests.json" with { type: "json" };
 import expected from "../expected-tags.json" with { type: "json" };
+import type { GwsCall } from "./gws.ts";
 import {
+  callsFile,
   deliverNext,
   expire,
   parseClock,
@@ -176,4 +179,13 @@ export const setDelay = (dir: string, delay: Record<string, number>) => {
   const mailbox = readMailbox(dir);
   mailbox.delay = delay;
   writeMailbox(dir, mailbox);
+};
+
+export const readCalls = (dir: string): GwsCall[] => {
+  const file = callsFile(dir);
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as GwsCall);
 };

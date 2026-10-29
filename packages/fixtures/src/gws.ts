@@ -7,7 +7,14 @@ import {
   parseClock,
 } from "./mailbox.ts";
 
-export type GwsResult = { stdout: string; stderr: string; exitCode: number; delayMs: number };
+export type GwsCall = { command: string; params: Record<string, unknown>; failed: boolean };
+export type GwsResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  delayMs: number;
+  log?: { mailboxDir: string; call: GwsCall };
+};
 type Params = Record<string, unknown>;
 
 class GwsError extends Error {
@@ -262,8 +269,25 @@ export const runGws = (
   load: (mailboxDir: string | undefined) => Mailbox,
 ): GwsResult => {
   let delayMs = 0;
+  let called: { mailboxDir: string; command: string; params: Params } | undefined;
+  const finish = (stdout: string, stderr: string, exitCode: number): GwsResult => ({
+    stdout,
+    stderr,
+    exitCode,
+    delayMs,
+    ...(called
+      ? {
+          log: {
+            mailboxDir: called.mailboxDir,
+            call: { command: called.command, params: called.params, failed: exitCode !== 0 },
+          },
+        }
+      : {}),
+  });
   try {
     const { command, params, mailboxDir } = parseArgs(args);
+    const method = command.replace(/^gmail users /, "");
+    if (mailboxDir !== undefined) called = { mailboxDir, command: method, params };
     const spec = COMMANDS[command];
     if (!spec) throw validation(`error: fake-gws does not support the command '${command}'`);
     const unsupported = Object.keys(params).filter((k) => !spec.params.includes(k));
@@ -278,21 +302,15 @@ export const runGws = (
     } catch (e) {
       throw validation(`fake-gws cannot read mailbox ${mailboxDir}: ${(e as Error).message}`);
     }
-    delayMs = mailbox.delay?.[command.replace(/^gmail users /, "")] ?? 0;
-    return {
-      stdout: `${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`,
-      stderr: "",
-      exitCode: 0,
-      delayMs,
-    };
+    delayMs = mailbox.delay?.[method] ?? 0;
+    return finish(`${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`, "", 0);
   } catch (e) {
     if (!(e instanceof GwsError)) throw e;
     const body = { error: { code: e.code, message: e.message, reason: e.reason } };
-    return {
-      stdout: `${JSON.stringify(body, null, 2)}\n`,
-      stderr: `error[${e.kind}]: ${e.message}\n`,
-      exitCode: e.kind === "api" ? 1 : 3,
-      delayMs,
-    };
+    return finish(
+      `${JSON.stringify(body, null, 2)}\n`,
+      `error[${e.kind}]: ${e.message}\n`,
+      e.kind === "api" ? 1 : 3,
+    );
   }
 };
