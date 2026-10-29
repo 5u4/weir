@@ -29,15 +29,20 @@ const GwsConfig = Schema.Struct({
 });
 export type GwsConfig = typeof GwsConfig.Type;
 
+const Backfill = Schema.Struct({
+  phase: Schema.Literal("backfill"),
+  labels: LabelIds,
+  startHistoryId: Schema.String,
+  listing: LabelIds,
+  pageToken: Schema.NullOr(Schema.String),
+  offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  fetched: Schema.Array(Schema.String),
+});
+type Backfill = typeof Backfill.Type;
+
 const Cursor = Schema.fromJsonString(
   Schema.Union([
-    Schema.Struct({
-      phase: Schema.Literal("backfill"),
-      labels: LabelIds,
-      startHistoryId: Schema.String,
-      listing: LabelIds,
-      pageToken: Schema.NullOr(Schema.String),
-    }),
+    Backfill,
     Schema.Struct({
       phase: Schema.Literal("incremental"),
       labels: LabelIds,
@@ -51,7 +56,18 @@ const encodeCursor = Schema.encodeSync(Cursor);
 const decodeCursor = Schema.decodeUnknownSync(Cursor);
 const sameLabels = Arr.makeEquivalence(Equivalence.String);
 
-const PAGE_SIZE = 100;
+const newPass = (labels: LabelIds, startHistoryId: string): Backfill => ({
+  phase: "backfill",
+  labels,
+  startHistoryId,
+  listing: labels,
+  pageToken: null,
+  offset: 0,
+  fetched: [],
+});
+
+const LIST_SIZE = 100;
+const PAGE_MESSAGES = 100;
 const CONCURRENCY = 8;
 const HIDDEN: Record<string, true> = { SPAM: true, TRASH: true };
 
@@ -68,6 +84,7 @@ const resolveLabels = async (
   const ids = Arr.map(names, (name) => {
     const id = idByName.get(name);
     if (id === undefined) throw new Error(`Gmail has no label named "${name}"`);
+    if (HIDDEN[id]) throw new Error(`weir does not sync the Gmail label "${name}"`);
     return id;
   });
   return Arr.sort(Arr.dedupe(ids), Order.String);
@@ -109,30 +126,42 @@ const fetchThreads = async (
 const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
   const backfillPage = async (
     emailAddress: string,
-    labels: LabelIds,
-    startHistoryId: string,
-    listing: LabelIds,
-    pageToken: string | null,
+    position: Backfill,
     signal: AbortSignal,
   ): Promise<SyncPage> => {
+    const { labels, startHistoryId, listing, pageToken } = position;
     const [label, ...rest] = listing;
-    const list = await listThreads(command, label, backfill, pageToken, PAGE_SIZE, signal);
-    const page = await fetchThreads(
-      command,
-      emailAddress,
-      labels,
-      (list.threads ?? []).map((t) => t.id),
-      signal,
-    );
+    const list = await listThreads(command, label, backfill, pageToken, LIST_SIZE, signal);
+    const listed = (list.threads ?? []).map((t) => t.id);
+    const fetched = new Set(position.fetched);
+    const upserts: RawItem[] = [];
+    const deletions: string[] = [];
+    let offset = position.offset;
+    while (offset < listed.length && upserts.length + deletions.length < PAGE_MESSAGES) {
+      const width = Math.min(CONCURRENCY, PAGE_MESSAGES - upserts.length - deletions.length);
+      const batch: string[] = [];
+      for (; offset < listed.length && batch.length < width; offset++) {
+        const id = listed[offset];
+        if (id !== undefined && !fetched.has(id)) batch.push(id);
+      }
+      const page = await fetchThreads(command, emailAddress, labels, batch, signal);
+      upserts.push(...page.upserts);
+      deletions.push(...page.deletions);
+      for (const id of batch) fetched.add(id);
+    }
+    const carried = { labels, startHistoryId, fetched: [...fetched] };
     const next: Cursor =
-      list.nextPageToken !== undefined
-        ? { phase: "backfill", labels, startHistoryId, listing, pageToken: list.nextPageToken }
-        : Arr.isReadonlyArrayNonEmpty(rest)
-          ? { phase: "backfill", labels, startHistoryId, listing: rest, pageToken: null }
-          : { phase: "incremental", labels, historyId: startHistoryId, pageToken: null };
+      offset < listed.length
+        ? { phase: "backfill", ...carried, listing, pageToken, offset }
+        : list.nextPageToken !== undefined
+          ? { phase: "backfill", ...carried, listing, pageToken: list.nextPageToken, offset: 0 }
+          : Arr.isReadonlyArrayNonEmpty(rest)
+            ? { phase: "backfill", ...carried, listing: rest, pageToken: null, offset: 0 }
+            : { phase: "incremental", labels, historyId: startHistoryId, pageToken: null };
     const more = next.phase === "backfill";
     return {
-      ...page,
+      upserts,
+      deletions,
       cursor: encodeCursor(next),
       more,
       kind: "backfill",
@@ -153,7 +182,7 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       history = await listHistory(command, historyId, pageToken, signal);
     } catch (error) {
       if (isNotFound(error)) {
-        return backfillPage(emailAddress, labels, restartHistoryId, labels, null, signal);
+        return backfillPage(emailAddress, newPass(labels, restartHistoryId), signal);
       }
       throw error;
     }
@@ -212,19 +241,17 @@ const create = ({ command, backfill, labels: labelNames }: GwsConfig) => {
       if (streamId !== profile.emailAddress) {
         throw new Error(`gws has no stream ${streamId}; the mailbox is ${profile.emailAddress}`);
       }
-      if (position === null || !sameLabels(position.labels, labels)) {
-        return backfillPage(profile.emailAddress, labels, profile.historyId, labels, null, signal);
+      if (position === null) {
+        return backfillPage(profile.emailAddress, newPass(labels, profile.historyId), signal);
+      }
+      if (!sameLabels(position.labels, labels)) {
+        const checkpoint =
+          position.phase === "backfill" ? position.startHistoryId : position.historyId;
+        return backfillPage(profile.emailAddress, newPass(labels, checkpoint), signal);
       }
       switch (position.phase) {
         case "backfill":
-          return backfillPage(
-            profile.emailAddress,
-            labels,
-            position.startHistoryId,
-            position.listing,
-            position.pageToken,
-            signal,
-          );
+          return backfillPage(profile.emailAddress, position, signal);
         case "incremental":
           return incrementalPage(
             profile.emailAddress,

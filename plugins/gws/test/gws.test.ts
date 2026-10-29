@@ -2,7 +2,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type RawItem, type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
-import { deliver, expireHistory, relabel, remove, seedMailbox, setDelay } from "@weir/fixtures";
+import {
+  deliver,
+  expireHistory,
+  FIXTURE_NOW,
+  readCalls,
+  relabel,
+  remove,
+  seedMailbox,
+  seedThreads,
+  setDelay,
+} from "@weir/fixtures";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
@@ -146,6 +156,54 @@ describe("gws plugin against fake-gws", () => {
   it("fails the sync naming a label Gmail does not have", async () => {
     const source = sourceFor(seeded(), ["INBOX", "Nope"]);
     await expect(source.sync(ME, null, running)).rejects.toThrow('Gmail has no label named "Nope"');
+  });
+
+  it.each(["SPAM", "TRASH"])("fails the sync naming the hidden label %s", async (label) => {
+    const source = sourceFor(seeded(), ["INBOX", label]);
+    await expect(source.sync(ME, null, running)).rejects.toThrow(
+      `weir does not sync the Gmail label "${label}"`,
+    );
+  });
+
+  it("ends a backfill page at the first batch reaching 100 messages and lands a long thread whole", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "weir-gws-"));
+    dirs.push(dir);
+    const newest = Date.parse(FIXTURE_NOW);
+    const subjects = Array.from({ length: 11 }, (_, i) => (i === 7 ? "Long" : `Short ${i}`));
+    const { delivered } = seedThreads(
+      dir,
+      subjects.map((subject, slot) => {
+        const size = subject === "Long" ? 150 : 12;
+        return {
+          id: subject,
+          subject,
+          labels: ["INBOX"],
+          messages: Array.from({ length: size }, (_, k) => ({
+            at: new Date(newest - (slot + 1) * 86_400_000 - (size - 1 - k) * 60_000)
+              .toISOString()
+              .replace(/\.\d+Z$/, "+00:00"),
+            from: "priya",
+            to: ["me"],
+            text: `${subject} note ${k}`,
+          })),
+        };
+      }),
+      { now: FIXTURE_NOW, pageSize: 100 },
+    );
+
+    const { pages, items } = await syncAll(sourceFor(dir, ["INBOX"]), null);
+    expect(pages.map((page) => [...new Set(page.upserts.map(subjectOf))])).toEqual([
+      subjects.slice(0, 8),
+      subjects.slice(8),
+    ]);
+    expect(pages.map((page) => page.upserts.length)).toEqual([7 * 12 + 150, 3 * 12]);
+    expect(pages[0]?.upserts.filter((item) => subjectOf(item) === "Long")).toHaveLength(150);
+    expect(items.size).toBe(delivered);
+    const fetched = readCalls(dir)
+      .filter(({ command }) => command === "threads get")
+      .map(({ params }) => params.id);
+    expect(fetched).toHaveLength(subjects.length);
+    expect(new Set(fetched).size).toBe(subjects.length);
   });
 
   it("follows history only for threads that carry a configured label", async () => {

@@ -2,7 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem, SourcePlugin } from "@weir/contract/Source";
-import { deliver as deliverMail, remove as removeMail, seedMailbox } from "@weir/fixtures";
+import {
+  deliver as deliverMail,
+  readCalls,
+  remove as removeMail,
+  seedMailbox,
+} from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Clock from "effect/Clock";
@@ -394,10 +399,10 @@ backfill = "newer_than:30d"
   );
 });
 
-const gwsSource = (mailbox: string, labels: ReadonlyArray<string>) => `[[source]]
+const gwsSource = (mailbox: string, labels: ReadonlyArray<string>, every = "100ms") => `[[source]]
 id = "gmail"
 plugin = "gws"
-sync_every = "100ms"
+sync_every = "${every}"
 
 [source.config]
 command = ["${join(import.meta.dirname, "../node_modules/.bin/fake-gws")}", "--mailbox", "${mailbox}"]
@@ -455,6 +460,65 @@ describe("gws labels", () => {
       expect(widened[saltmarsh]).toBe("read");
       expect(widened[ridgeway]).toBeUndefined();
       expect(widened[northwind]).toBe("unread");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a thread under both INBOX and SENT is fetched once in a backfill pass", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox);
+      writeConfig(gwsSource(mailbox, ["INBOX", "SENT"]));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      yield* eventually(
+        client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0])),
+        (s) => s?.backfill === "done",
+      );
+      const thread = yield* client.search({ query: { q: "cutover plan" } });
+      const detail = yield* client.conversation({
+        params: { id: thread.conversations[0]?.id ?? 0 },
+      });
+      expect(detail.items.filter(({ from_me }) => from_me)).toHaveLength(3);
+      expect(detail.items.filter(({ from_me }) => !from_me).length).toBeGreaterThan(0);
+
+      const fetched = readCalls(mailbox)
+        .filter(({ command }) => command === "threads get")
+        .map(({ params }) => params.id);
+      const conversations = (yield* client.search({ query: { q: "" } })).conversations;
+      expect(fetched).toHaveLength(conversations.length);
+      expect(new Set(fetched).size).toBe(conversations.length);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a label change replays history from the last checkpoint, so a deletion lands", () =>
+    Effect.gen(function* () {
+      const { home, port, writeConfig } = makeHome("");
+      const mailbox = join(home.root, "mailbox");
+      seedMailbox(mailbox);
+      writeConfig(gwsSource(mailbox, ["INBOX"], "1h"));
+      yield* Layer.build(Http.layer(home, { gws }));
+      const client = yield* apiClient(port);
+      const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
+
+      yield* eventually(stream, (s) => s?.backfill === "done");
+      const thread = yield* client.search({ query: { q: "cutover plan" } });
+      const detail = yield* client.conversation({
+        params: { id: thread.conversations[0]?.id ?? 0 },
+      });
+      const seq = detail.items[0]?.seq ?? 0;
+      const stored = yield* client.item({ params: { seq } });
+      expect(stored.deleted_at).toBeNull();
+      removeMail(mailbox, stored.link?.split("#all/")[1] ?? "");
+
+      writeConfig(gwsSource(mailbox, ["INBOX", "CATEGORY_PROMOTIONS"]));
+      yield* client.reload();
+      const after = yield* eventually(
+        client.item({ params: { seq } }),
+        ({ deleted_at }) => deleted_at !== null,
+      );
+      expect(after.deleted_at).not.toBeNull();
+      expect(yield* stream).toMatchObject({ backfill: "done", last_error: null });
     }).pipe(Effect.scoped),
   );
 
