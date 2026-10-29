@@ -106,7 +106,7 @@ export const Status = Schema.Struct({
       ai: Schema.String,
       threshold: Schema.Int,
       running: Schema.Array(DigestJob),
-      waiting: Schema.Int,
+      queued: Schema.Array(DigestJob),
       last_run: Schema.NullOr(
         Schema.Struct({
           at: Schema.String,

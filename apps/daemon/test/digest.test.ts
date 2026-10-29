@@ -505,6 +505,84 @@ describe("manual digest", () => {
       expect(written.map(({ digests }) => digests.length)).toEqual([1, 1]);
     }).pipe(Effect.scoped),
   );
+
+  it.live("status lists a job queued behind a running one, then runs it", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail } = yield* start({
+        args: ["--delay", "800"],
+        concurrency: 1,
+      });
+      yield* deliver([item("a1", "List A", 100, 1), item("b1", "List B", 100, 2)]);
+      yield* deliver([item("b2", "List B", 100, 3)]);
+      const a = yield* conversationOf("List A");
+      const b = yield* conversationOf("List B");
+      const [aSeq] = (yield* detail(a)).items.map(({ seq }) => seq);
+      const [bFrom, bTo] = (yield* detail(b)).items.map(({ seq }) => seq);
+      if (aSeq === undefined || bFrom === undefined || bTo === undefined) {
+        throw new Error("expected items in A and B");
+      }
+      const jobA = { conversation_id: a, from_seq: aSeq, to_seq: aSeq, trigger: "manual" };
+      const jobB = { conversation_id: b, from_seq: bFrom, to_seq: bTo, trigger: "manual" };
+
+      const fiberA = yield* Effect.forkChild(client.digest({ params: { id: a }, payload: {} }));
+      yield* eventually(client.status(), ({ digest }) => (digest?.running.length ?? 0) === 1);
+      const fiberB = yield* Effect.forkChild(client.digest({ params: { id: b }, payload: {} }));
+      const waiting = yield* eventually(
+        client.status(),
+        ({ digest }) => (digest?.queued.length ?? 0) === 1,
+      );
+      expect(waiting.digest?.running).toEqual([jobA]);
+      expect(waiting.digest?.queued).toEqual([jobB]);
+
+      yield* Fiber.join(fiberA);
+      const next = yield* eventually(
+        client.status(),
+        ({ digest }) => digest?.running[0]?.conversation_id === b,
+      );
+      expect(next.digest?.running).toEqual([jobB]);
+      expect(next.digest?.queued).toEqual([]);
+
+      yield* Fiber.join(fiberB);
+      const idle = (yield* client.status()).digest;
+      expect(idle?.running).toEqual([]);
+      expect(idle?.queued).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("status lists queued jobs in the order they were enqueued", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf } = yield* start({
+        args: ["--delay", "800"],
+        concurrency: 1,
+      });
+      yield* deliver([
+        item("a1", "List A", 100, 1),
+        item("b1", "List B", 100, 2),
+        item("c1", "List C", 100, 3),
+      ]);
+      const a = yield* conversationOf("List A");
+      const b = yield* conversationOf("List B");
+      const c = yield* conversationOf("List C");
+
+      const fibers = [];
+      for (const [id, queuedBefore] of [
+        [a, 0],
+        [b, 1],
+        [c, 2],
+      ] as const) {
+        fibers.push(yield* Effect.forkChild(client.digest({ params: { id }, payload: {} })));
+        yield* eventually(
+          client.status(),
+          ({ digest }) =>
+            (digest?.running.length ?? 0) === 1 && (digest?.queued.length ?? 0) === queuedBefore,
+        );
+      }
+      const status = (yield* client.status()).digest;
+      expect(status?.running.map(({ conversation_id }) => conversation_id)).toEqual([a]);
+      expect(status?.queued.map(({ conversation_id }) => conversation_id)).toEqual([b, c]);
+      yield* Fiber.joinAll(fibers);
+    }).pipe(Effect.scoped),
+  );
 });
 
 describe("cancellation", () => {

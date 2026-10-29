@@ -754,7 +754,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <p>点状态按钮后，状态视图在阅读岛里替换阅读内容，就像打开一个 conversation。它不加第三栏，两栏也不动。按 Esc 或关闭按钮，回到原来的内容和阅读区的滚动位置。视图分四块：</p>
 <ul>
 <li><strong>Sources。</strong>每个 stream 上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，以及 item 数。出错时显示 <code>Sync failed</code> 和最近一次错误的原文。</li>
-<li><strong>Digests。</strong>AI on 列出每个 <code>ai = true</code> 的 tag、它的 <code>ai_since</code> 和 conversation 数。Queue 列出正在跑的 digest 和等待的 conversation 数。Last run 汇总最近 24 小时的运行：最近一次的开始时间、写了几份、失败几次，以及成功运行的平均耗时。还有 Threshold 阈值和 AI profile。这些来自 <code>GET /status</code> 的 <code>digest</code>：<code>{ai, threshold, running, waiting, last_run: {at, written, failed, avg_ms}}</code>，没配 <code>[digest]</code> 时是 <code>null</code>。</li>
+<li><strong>Digests。</strong>AI on 列出每个 <code>ai = true</code> 的 tag、它的 <code>ai_since</code> 和 conversation 数。Queue 列出正在跑的 digest 和排队中的 digest。Last run 汇总最近 24 小时的运行：最近一次的开始时间、写了几份、失败几次，以及成功运行的平均耗时。还有 Threshold 阈值和 AI profile。这些来自 <code>GET /status</code> 的 <code>digest</code>：<code>{ai, threshold, running, queued, last_run: {at, written, failed, avg_ms}}</code>，<code>running</code> 和 <code>queued</code> 的每一项是 <code>{conversation_id, from_seq, to_seq, trigger}</code>，<code>queued</code> 按入队顺序排列，不含正在跑的。没配 <code>[digest]</code> 时是 <code>null</code>。</li>
 <li><strong>Config。</strong><code>config.toml</code> 的路径，加载时间，Reload 按钮。点 Reload 后按钮显示 <code>Reloading…</code>，daemon 先等正在跑的 sync 结束，正在跑的 AI 调用被中断。成功时显示 <code>Config loaded</code> 和新的加载时间。失败时列出每个错误的文件和 config 路径，显示 <code>Sync and digests stopped</code>，灵动岛上出现琥珀色圆点。conversation 照样能读。改好后再点一次 Reload，错误就清掉。</li>
 <li><strong>Appearance。</strong>主题，三个选项 <code>System</code>、<code>Light</code>、<code>Dark</code>，选择存在 localStorage。</li>
 </ul>

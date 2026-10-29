@@ -72,7 +72,7 @@ const daemon = vi.hoisted(() => {
           ai: "fake-ai",
           threshold: 1000,
           running: running.map((job) => ({ ...job, trigger: "manual" })),
-          waiting: 0,
+          queued: [],
           last_run: null,
         },
       });
