@@ -25,9 +25,9 @@ export function App() {
   return (
     <>
       <div id="app" className={open ? "reading" : undefined}>
-        <div className="list">
+        <main className="list">
           <List />
-        </div>
+        </main>
         <section className={`reader${open ? " sv-open" : ""}`} aria-label="Reader">
           <div className="r-scroll">
             {AsyncResult.isFailure(result) && Option.isNone(loaded) ? (

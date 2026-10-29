@@ -1,7 +1,7 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { type Intents, intentFor, neighbor, shown } from "./Rows.ts";
+import { face, type Intents, intentFor, neighbor, shown } from "./Rows.ts";
 
 const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   id,
@@ -18,6 +18,9 @@ const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   new: 0,
   items: 1,
   participants: 1,
+  from: { name: "Ada Lovelace", address: "ada@example.com" },
+  preview: "Ada: hello",
+  senders: [{ name: "Ada Lovelace", address: "ada@example.com" }],
 });
 
 const ids = (rows: ReadonlyArray<Row>) => rows.map(({ id }) => id);
@@ -56,5 +59,27 @@ describe("next row after Done", () => {
 
   it("the only row has no next", () => {
     expect(neighbor([row(1, 1)], 1)).toEqual(Option.none());
+  });
+});
+
+describe("row face", () => {
+  const ada = { name: "Ada Lovelace", address: "ada@example.com" };
+  const bo = { name: "Bo", address: "bo@example.com" };
+  const nameless = { name: " ", address: "carol.k@example.com" };
+  it.each([
+    ["no senders, nobody else", [], 0, "", ""],
+    ["no senders, three participants", [], 3, "+3", ""],
+    ["one sender, alone", [ada], 1, "Ada", "Ada"],
+    ["one sender of two", [ada], 2, "Ada +1", "Ada"],
+    ["two senders, two participants", [ada, bo], 2, "Ada, Bo", "Ada, Bo"],
+    ["two senders of five", [ada, bo], 5, "Ada, Bo +3", "Ada, Bo"],
+    ["empty name uses the address local part", [nameless, bo], 2, "carol.k, Bo", "carol.k, Bo"],
+  ])("%s", (_, senders, participants, who, names) => {
+    expect(face({ ...row(1, 1), senders, participants })).toMatchObject({ who, names });
+  });
+
+  it("passes the daemon's sender and preview through", () => {
+    const value = { ...row(1, 1), from: bo, preview: "Ship it" };
+    expect(face(value)).toMatchObject({ from: bo, preview: "Ship it" });
   });
 });

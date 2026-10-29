@@ -27,7 +27,7 @@ function ListRow({
   const [current] = useAtom(route);
   const at = useAtomValue(now);
   const last = DateTime.makeUnsafe(row.last_at);
-  const { from, preview, who } = face(row);
+  const { from, preview, who, names } = face(row);
   const cleared = view === "cleared";
   return (
     <li className={`row${row.state === "unread" ? " unread" : ""}${selected ? " sel" : ""}`}>
@@ -40,10 +40,17 @@ function ListRow({
           <Avatar sender={from} />
         </span>
         <span className="row-title">{row.title}</span>
-        {preview !== null && <span className="row-line">{preview}</span>}
+        <span className="row-line">{preview}</span>
         <span className="row-meta">
-          {who} · {plural(row.items, "message")}
-          {row.new > 0 && `, ${row.new} new`} · {row.source}
+          {who !== "" && (
+            <span className="row-who" title={names}>
+              {who}
+            </span>
+          )}
+          <span className="row-n">
+            {plural(row.items, "message")}
+            {row.new > 0 && `, ${row.new} new`} · {row.source}
+          </span>
         </span>
         {cleared ? (
           <span className="row-badge">{row.muted ? "Muted" : "Done"}</span>

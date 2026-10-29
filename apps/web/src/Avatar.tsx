@@ -1,8 +1,7 @@
 import type { CSSProperties } from "react";
 import { hue, monogram, type Sender } from "./Notch.ts";
 
-export function Avatar({ sender }: { sender: Sender | null }) {
-  if (sender === null) return <span className="av blank" aria-hidden="true" />;
+export function Avatar({ sender }: { sender: Sender }) {
   return (
     <span
       className="av"

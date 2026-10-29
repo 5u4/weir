@@ -304,9 +304,6 @@ button {
   font: 700 0.46em / 1 var(--sans);
   letter-spacing: 0;
 }
-.av.blank {
-  background: var(--g-line);
-}
 .row-av .av {
   font-size: 32px;
   margin-top: 2px;
@@ -650,6 +647,10 @@ button {
   padding-right: 80px;
   font-size: 12.5px;
   color: var(--ink-3);
+}
+.row-who + .row-n::before {
+  content: "·";
+  margin: 0 0.5em;
 }
 .row-time,
 .row-badge {

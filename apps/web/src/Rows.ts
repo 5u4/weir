@@ -1,6 +1,5 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
-import { plural } from "./Health.ts";
 import type { Sender } from "./Notch.ts";
 import type { View } from "./Route.ts";
 
@@ -31,13 +30,24 @@ export const neighbor = (rows: ReadonlyArray<Row>, id: number) => {
 };
 
 type Face = {
-  readonly from: Sender | null;
-  readonly preview: string | null;
+  readonly from: Sender;
+  readonly preview: string;
   readonly who: string;
+  readonly names: string;
 };
 
-export const face = (row: Row): Face => ({
-  from: null,
-  preview: null,
-  who: plural(row.participants, "person", "people"),
-});
+export const face = (row: Row): Face => {
+  const names = row.senders
+    .map(({ name, address }) => {
+      const label = name.trim() === "" ? (address.split("@")[0] ?? "") : name.trim();
+      return label.split(/\s+/)[0] ?? "";
+    })
+    .join(", ");
+  const more = row.participants - row.senders.length;
+  return {
+    from: row.from,
+    preview: row.preview,
+    who: more > 0 ? (names === "" ? `+${more}` : `${names} +${more}`) : names,
+    names,
+  };
+};

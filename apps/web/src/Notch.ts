@@ -114,7 +114,7 @@ export const widgetLabel = ({ kind, name, count }: Widget) => {
     case "clear":
       return `${name} is clear`;
     case "cleared":
-      return `${count} cleared`;
+      return `${name} ${count}`;
   }
 };
 
