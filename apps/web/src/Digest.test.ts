@@ -26,8 +26,8 @@ import {
   payload,
   type Run,
   reason,
+  reconciled,
   seeded,
-  settle,
 } from "./Digest.ts";
 
 const item = (seq: number): ItemSummary => ({
@@ -245,10 +245,17 @@ describe("run state", () => {
     }
   });
 
-  it("ready clears only remote runs", () => {
-    expect(settle(remote)).toEqual(idle);
-    expect(settle(tab)).toBe(tab);
-    expect(settle(failed)).toBe(failed);
+  it("ready rebuilds remote runs from the daemon's running jobs and keeps this tab's own", () => {
+    const job = { from_seq: 3, to_seq: 6 };
+    const running: Run = { _tag: "Running", range: { from: 3, to: 6 }, origin: { _tag: "Remote" } };
+    expect(reconciled(remote, undefined)).toEqual(idle);
+    expect(reconciled(remote, job)).toEqual(running);
+    expect(reconciled(idle, job)).toEqual(running);
+    expect(reconciled(failed, job)).toEqual(running);
+    expect(reconciled(tab, job)).toBe(tab);
+    expect(reconciled(tab, undefined)).toBe(tab);
+    expect(reconciled(failed, undefined)).toBe(failed);
+    expect(reconciled(idle, undefined)).toBe(idle);
   });
 
   it("a last failure seeds an idle conversation with a retry from its first message", () => {

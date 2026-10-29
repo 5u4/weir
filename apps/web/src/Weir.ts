@@ -8,6 +8,7 @@ import * as Queue from "effect/Queue";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import * as AtomHttpApi from "effect/reactivity/AtomHttpApi";
+import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import * as Reactivity from "effect/reactivity/Reactivity";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -134,19 +135,29 @@ export const live = Weir.runtime.atom((get) =>
           ),
         );
       }
+      if (refetch.status) get.registry.refresh(statusSnapshot);
       if (event.type === "ready") {
+        const snapshot = yield* Effect.option(
+          AtomRegistry.getResult(get.registry, statusSnapshot, { suspendOnWaiting: true }),
+        );
+        const running = new Map(
+          Option.match(snapshot, {
+            onNone: () => [],
+            onSome: ({ digest }) =>
+              (digest?.running ?? []).map((job) => [job.conversation_id, job] as const),
+          }),
+        );
         get.registry.update(
           digestRuns,
           (runs) =>
             new Map(
-              [...runs].flatMap(([id, run]) => {
-                const next = Digest.settle(run);
+              [...new Set([...runs.keys(), ...running.keys()])].flatMap((id) => {
+                const next = Digest.reconciled(runs.get(id) ?? Digest.idle, running.get(id));
                 return next._tag === "Idle" ? [] : [[id, next] as const];
               }),
             ),
         );
       }
-      if (refetch.status) get.registry.refresh(statusSnapshot);
       yield* Reactivity.invalidate([
         ...(refetch.counts ? ["counts"] : []),
         ...(refetch.list ? ["list"] : []),

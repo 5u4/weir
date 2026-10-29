@@ -126,8 +126,20 @@ export const observe = (run: Run, event: DigestEvent): Run => {
   }
 };
 
-export const settle = (run: Run): Run =>
-  run._tag === "Running" && run.origin._tag === "Remote" ? idle : run;
+export const reconciled = (
+  run: Run,
+  job: { readonly from_seq: number; readonly to_seq: number } | undefined,
+): Run => {
+  if (run._tag === "Running" && run.origin._tag === "Tab") return run;
+  if (job !== undefined) {
+    return {
+      _tag: "Running",
+      range: { from: job.from_seq, to: job.to_seq },
+      origin: { _tag: "Remote" },
+    };
+  }
+  return run._tag === "Running" ? idle : run;
+};
 
 export const seeded = (
   run: Run,

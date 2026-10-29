@@ -23,6 +23,7 @@ const daemon = vi.hoisted(() => {
   const digests: Array<unknown> = [];
   const replies: Array<Response | TypeError> = [];
   const details = new Map<number, Record<string, unknown>>();
+  const running: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -57,6 +58,23 @@ const daemon = vi.hoisted(() => {
         tags: [],
         untagged: { unread: 0, open: rows.size, senders: [] },
         cleared: 0,
+      });
+    }
+    if (method === "GET" && url.pathname === "/status") {
+      return Response.json({
+        home: "/h",
+        config: { path: "/h/config.toml", loaded_at: "2026-10-25T16:00:00.000Z", error: null },
+        sync: "running",
+        sources: [],
+        tags: [],
+        untagged: { conversations: 0, unread: 0, open: 0 },
+        digest: {
+          ai: "fake-ai",
+          threshold: 1000,
+          running: running.map((job) => ({ ...job, trigger: "manual" })),
+          waiting: 0,
+          last_run: null,
+        },
       });
     }
     const open = Number(url.pathname.match(/^\/conversations\/(\d+)$/)?.[1]);
@@ -104,7 +122,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  return { rows, requests, digests, replies, details, Source, location };
+  return { rows, requests, digests, replies, details, running, Source, location };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -137,6 +155,7 @@ afterEach(() => {
   daemon.requests.length = 0;
   daemon.digests.length = 0;
   daemon.details.clear();
+  daemon.running.length = 0;
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
@@ -161,7 +180,12 @@ it("each event refetches only what it changes, and a dropped stream reconnects",
   await Promise.all([settled(registry, list), settled(registry, counts), settled(registry, open)]);
   expect(daemon.Source.opened.map(({ url }) => url.href)).toEqual(["http://weir.test/events"]);
 
-  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "ready" }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+    "GET /status",
+  ]);
   await refetched({ type: "state", ids: [9] }, ["GET /conversations", "GET /counts"]);
   await refetched({ type: "state", ids: [5] }, [
     "GET /conversations",
@@ -177,7 +201,12 @@ it("each event refetches only what it changes, and a dropped stream reconnects",
   await vi.advanceTimersByTimeAsync(500);
   vi.useRealTimers();
   expect(daemon.Source.opened).toHaveLength(2);
-  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "ready" }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+    "GET /status",
+  ]);
 
   registry.dispose();
   expect(daemon.Source.opened.at(-1)?.closed).toBe(true);
@@ -378,6 +407,31 @@ it("the daemon's digest events show a run on the conversation until done or read
   await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
   send("running");
   await vi.waitFor(() => expect(registry.get(run)).toEqual(remote));
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  registry.dispose();
+});
+
+it("ready picks up a run the daemon is already running, as a fresh tab or after a reconnect", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const run = digestRun(id);
+  registry.mount(conversation(id));
+  registry.mount(run);
+  registry.mount(live);
+  await settled(registry, conversation(id));
+
+  daemon.running.push({ conversation_id: 5, from_seq: 3, to_seq: 6 });
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() =>
+    expect(registry.get(run)).toEqual({
+      _tag: "Running",
+      range: { from: 3, to: 6 },
+      origin: { _tag: "Remote" },
+    }),
+  );
+
+  daemon.running.length = 0;
   daemon.Source.opened.at(-1)?.send({ type: "ready" });
   await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
   registry.dispose();
