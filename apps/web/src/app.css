@@ -1643,8 +1643,14 @@ button {
 .body :where(li) > p {
   margin: 0;
 }
+@property --clip {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
 .body.clip {
-  max-height: 19.5em;
+  --clip: 19.5em;
+  max-height: var(--clip);
   overflow: hidden;
 }
 .body.clip.over {
@@ -1674,8 +1680,7 @@ button {
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--ink-3);
 }
-.body.over + .more,
-.body.open + .more {
+.body.over + .more {
   display: inline-flex;
   align-items: center;
 }
@@ -2179,6 +2184,7 @@ button {
 }
 .dfh,
 .mu {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2198,6 +2204,12 @@ button {
     opacity 140ms var(--ease),
     transform 260ms var(--ease),
     background-color 140ms;
+}
+.dfh::before,
+.mu::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
 }
 .bl.tap .dfh,
 .bl.tap .mu,

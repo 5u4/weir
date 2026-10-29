@@ -244,12 +244,14 @@ function Long({
   const [over, setOver] = useState(false);
   const measure = useCallback(
     (body: HTMLDivElement) => {
-      const observer = new ResizeObserver(() => setOver(body.scrollHeight > body.clientHeight + 2));
+      const overflows = () =>
+        body.scrollHeight >
+        Number.parseFloat(getComputedStyle(body).getPropertyValue("--clip")) + 2;
+      const observer = new ResizeObserver(() => setOver(overflows()));
       observer.observe(body);
       const reveal = (event: FocusEvent) => {
-        setUi((current) =>
-          current.long.has(seq) ? current : { ...current, long: new Set(current.long).add(seq) },
-        );
+        if (body.classList.contains("open") || !overflows()) return;
+        setUi((current) => ({ ...current, long: new Set(current.long).add(seq) }));
         const target = event.target;
         if (target instanceof HTMLElement) {
           requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
