@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./Blocks.ts";
+import type { Range } from "./Digest.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
 import { conversation, Weir } from "./Weir.ts";
@@ -144,3 +145,7 @@ export const readerUi = Atom.family((_: ConversationId) =>
 export const pins = Atom.family((_: ConversationId) =>
   Atom.make<ReadonlyMap<TopicKey, number>>(new Map()).pipe(Atom.setIdleTTL(0)),
 );
+
+export type Preview = { readonly range: Range; readonly tapped: boolean } | null;
+
+export const preview = Atom.make<Preview>(null);

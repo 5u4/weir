@@ -1,9 +1,11 @@
 import type { Conversation } from "@weir/daemon/Api";
+import { type Here, heres, type Range, within } from "./Digest.ts";
 
 export type Detail = typeof Conversation.Type;
 export type ItemSummary = Detail["items"][number];
 export type Digest = Detail["digests"][number];
 export type Topic = Digest["topics"][number];
+export type EarlierGap = NonNullable<Detail["digest"]["earlier"]>[number];
 
 export type TopicKey = `${number}:${number}`;
 export const topicKey = (digest: Digest, index: number): TopicKey => `${digest.id}:${index}`;
@@ -24,6 +26,7 @@ export type Bubbles = {
   readonly from: ItemSummary["from"];
   readonly at: string;
   readonly items: ReadonlyArray<ItemSummary>;
+  readonly heres: ReadonlyArray<Here> | null;
 };
 
 export type TopicView = {
@@ -54,8 +57,20 @@ export type Block =
       readonly items: ReadonlyArray<ItemSummary>;
       readonly topics: ReadonlyArray<TopicView>;
     }
-  | { readonly _tag: "GapBar"; readonly before_digest: number; readonly run_items: number }
-  | { readonly _tag: "Tail"; readonly items: ReadonlyArray<ItemSummary> }
+  | {
+      readonly _tag: "GapBar";
+      readonly first: number;
+      readonly up_to: number;
+      readonly run_items: number;
+      readonly gap: EarlierGap | null;
+    }
+  | {
+      readonly _tag: "Tail";
+      readonly items: ReadonlyArray<ItemSummary>;
+      readonly now: Detail["digest"]["now"];
+      readonly backlog: Detail["digest"]["backlog"];
+    }
+  | { readonly _tag: "Skeleton"; readonly items: number }
   | Bubbles;
 
 const pause = 5 * 60 * 1000;
@@ -68,9 +83,14 @@ const startsGroup = (previous: ItemSummary | undefined, item: ItemSummary) =>
   sender(previous) !== sender(item) ||
   Date.parse(item.occurred_at) - Date.parse(previous.occurred_at) >= pause;
 
-const group = (items: ReadonlyArray<ItemSummary>, breakBefore: (item: ItemSummary) => boolean) =>
-  items.reduce<Array<Bubbles>>((groups, item) => {
+const group = (
+  items: ReadonlyArray<ItemSummary>,
+  breakBefore: (item: ItemSummary) => boolean,
+  here: ReadonlyArray<Here> | null,
+) =>
+  items.reduce<Array<Bubbles>>((groups, item, index) => {
     const current = groups.at(-1);
+    const at = here?.[index];
     if (current === undefined || breakBefore(item) || startsGroup(current.items.at(-1), item)) {
       groups.push({
         _tag: "Bubbles",
@@ -78,9 +98,14 @@ const group = (items: ReadonlyArray<ItemSummary>, breakBefore: (item: ItemSummar
         from: item.from,
         at: item.occurred_at,
         items: [item],
+        heres: at === undefined ? null : [at],
       });
     } else {
-      groups[groups.length - 1] = { ...current, items: [...current.items, item] };
+      groups[groups.length - 1] = {
+        ...current,
+        items: [...current.items, item],
+        heres: current.heres === null || at === undefined ? null : [...current.heres, at],
+      };
     }
     return groups;
   }, []);
@@ -113,7 +138,13 @@ const segments = (detail: Detail): ReadonlyArray<Segment> => {
   return out;
 };
 
-export const reader = (detail: Detail, frozenSeen: number, ui: ReaderUi): ReadonlyArray<Block> => {
+export const reader = (
+  detail: Detail,
+  frozenSeen: number,
+  ui: ReaderUi,
+  running: Range | null,
+): ReadonlyArray<Block> => {
+  const digestible = detail.digest.earlier !== null;
   const newCount = detail.items.filter(({ seq }) => seq > frozenSeen).length;
   const segs = segments(detail);
   const shape = (digest: Digest): Shape =>
@@ -136,24 +167,39 @@ export const reader = (detail: Detail, frozenSeen: number, ui: ReaderUi): Readon
   };
   const bubbles = (items: ReadonlyArray<ItemSummary>) => {
     const firstNew = marked ? undefined : items.find(({ seq }) => seq > frozenSeen);
-    for (const run of group(items, (item) => item === firstNew)) {
+    const here = digestible ? heres(items) : null;
+    for (const run of group(items, (item) => item === firstNew, here)) {
       mark(run.items[0] === firstNew);
       blocks.push(run);
     }
   };
 
+  const skeleton = (items: ReadonlyArray<ItemSummary>, at: "start" | "end"): Array<Block> => {
+    const first = items[0]?.seq;
+    const last = items.at(-1)?.seq;
+    if (running === null || first === undefined || last === undefined) return [];
+    if (running.from < first || running.to > last || (running.from === first) !== (at === "start"))
+      return [];
+    const count = items.filter(({ seq }) => within(running, seq)).length;
+    return count === 0 ? [] : [{ _tag: "Skeleton", items: count }];
+  };
+
   for (const seg of segs) {
     switch (seg._tag) {
       case "Run": {
+        blocks.push(...skeleton(seg.items, "start"));
         bubbles(seg.items);
-        const gap = detail.digest.earlier?.find(
-          ({ before_digest }) => before_digest === seg.before.id,
-        );
+        const gap =
+          detail.digest.earlier?.find(({ before_digest }) => before_digest === seg.before.id) ??
+          null;
         blocks.push({
           _tag: "GapBar",
-          before_digest: seg.before.id,
+          first: seg.items[0]?.seq ?? 0,
+          up_to: seg.items.at(-1)?.seq ?? 0,
           run_items: gap?.run_items ?? seg.items.length,
+          gap,
         });
+        blocks.push(...skeleton(seg.items, "end"));
         break;
       }
       case "Digested": {
@@ -190,15 +236,29 @@ export const reader = (detail: Detail, frozenSeen: number, ui: ReaderUi): Readon
               topic,
               open,
               items: covered,
-              groups: open ? group(covered, () => false) : [],
+              groups: open ? group(covered, () => false, null) : [],
             };
           }),
         });
         break;
       }
-      case "Tail":
-        blocks.push({ _tag: "Tail", items: seg.items });
+      case "Tail": {
+        const head = skeleton(seg.items, "start");
+        blocks.push(
+          ...(head.length > 0
+            ? head
+            : [
+                {
+                  _tag: "Tail" as const,
+                  items: seg.items,
+                  now: detail.digest.now,
+                  backlog: detail.digest.backlog,
+                },
+              ]),
+        );
         bubbles(seg.items);
+        blocks.push(...skeleton(seg.items, "end"));
+      }
     }
   }
   return blocks;
