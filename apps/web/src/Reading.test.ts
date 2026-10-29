@@ -64,8 +64,7 @@ const daemon = vi.hoisted(() => {
     const write = url.pathname.match(/^\/conversations\/1\/(\w+)$/)?.[1];
     if (method === "POST" && write !== undefined && Object.hasOwn(writes, write)) {
       const { seq } = body(init);
-      const label =
-        seq !== undefined ? `${write} ${seq}` : write === "unread" ? "unread last" : write;
+      const label = seq === undefined ? write : `${write} ${seq}`;
       requests.push(label);
       const hold = Promise.withResolvers<void>();
       held.push(hold.resolve);
@@ -174,7 +173,18 @@ it("Mark unread waits for a read still in flight, so the conversation stays unre
 
   reader.unread(null);
 
-  await releaseNewestFirst(["read 25", "unread last"]);
+  await releaseNewestFirst(["read 25", "unread 25"]);
+  expect(daemon.state.seen).toBe(24);
+  registry.dispose();
+});
+
+it("Mark unread keeps mail that arrives before it lands unread", async () => {
+  const { registry, reader } = await opened();
+
+  reader.unread(null);
+  daemon.state.last = 30;
+
+  await releaseNewestFirst(["read 25", "unread 25"]);
   expect(daemon.state.seen).toBe(24);
   registry.dispose();
 });
@@ -198,7 +208,7 @@ it("a second Mark unread lands after the first, so the later choice wins", async
   reader.unread(null);
   reader.unread(12);
 
-  await releaseNewestFirst(["unread last", "unread 12"]);
+  await releaseNewestFirst(["unread 25", "unread 12"]);
   expect(daemon.state.seen).toBe(11);
   registry.dispose();
 });

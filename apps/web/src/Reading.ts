@@ -32,15 +32,13 @@ export const markRead = Weir.runtime
 export const markUnread = Weir.runtime
   .fn<{
     readonly id: ConversationId;
-    readonly from: number | null;
+    readonly from: number;
     readonly failed: () => void;
   }>()(
     ({ id, from, failed }) =>
       Effect.gen(function* () {
         const client = yield* Weir;
-        yield* inTurn(id)(
-          client.unread({ params: { id }, payload: from === null ? {} : { seq: from } }),
-        );
+        yield* inTurn(id)(client.unread({ params: { id }, payload: { seq: from } }));
         yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [id] });
       }).pipe(Effect.onError(() => Effect.sync(failed))),

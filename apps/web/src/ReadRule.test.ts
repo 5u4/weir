@@ -183,6 +183,11 @@ describe("read rule", () => {
     expect(seen(state)).toBe(expected);
   });
 
+  it("Mark unread sends the last seq shown when clicked, not whatever is last when it lands", () => {
+    const [, command] = step(run(opened(), [input, viewport(25)]).state, pause());
+    expect(command).toEqual({ _tag: "Unread", from: 25 });
+  });
+
   it("seen follows reading until paused", () => {
     expect(seen(run(opened(), [input, viewport(18)]).state)).toBe(18);
   });

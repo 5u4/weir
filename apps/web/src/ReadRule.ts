@@ -31,7 +31,7 @@ export type Command =
   | { readonly _tag: "Idle" }
   | { readonly _tag: "Debounce" }
   | { readonly _tag: "Send"; readonly seq: number }
-  | { readonly _tag: "Unread"; readonly from: number | null };
+  | { readonly _tag: "Unread"; readonly from: number };
 
 export const open = (opened: {
   readonly seen: number;
@@ -93,7 +93,9 @@ const flushes = (event: Event) =>
 
 export const step = (state: State, event: Event): readonly [State, Command] => {
   const applied = apply(state, event);
-  if (event._tag === "Pause") return [applied, { _tag: "Unread", from: event.from }];
+  if (event._tag === "Pause") {
+    return [applied, { _tag: "Unread", from: event.from ?? applied.last }];
+  }
   if (event._tag === "Acked" || event._tag === "Failed" || applied.mode._tag === "Paused") {
     return [applied, { _tag: "Idle" }];
   }
