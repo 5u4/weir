@@ -18,6 +18,8 @@ import * as Schema from "effect/Schema";
 
 const bodyLimit = 400;
 
+const noIdleTimeout: BunFetchRequestInit = { timeout: false };
+
 class AxiError extends Schema.TaggedError<AxiError>()("AxiError", { message: Schema.String }) {}
 
 const daemon = Effect.gen(function* () {
@@ -132,19 +134,54 @@ const search = Command.make(
 const conv = Command.make("conv", { id: Argument.Int("id") }, ({ id }) =>
   Effect.gen(function* () {
     const client = yield* daemon;
-    const { items, ...conversation } = yield* client.conversation({ params: { id } });
+    const { items, digests, ...conversation } = yield* client.conversation({ params: { id } });
     yield* print({
       conversation,
-      items: items.map(({ seq, occurred_at, from, from_me, body_new }) => ({
-        seq,
-        occurred_at,
-        from: `${from.name} <${from.address}>`,
-        from_me,
-        body: truncate(body_new, false),
-      })),
-      help: ["weir-axi item <seq> --full", "weir-axi item <seq> --raw"],
+      digests,
+      items: items
+        .filter(
+          ({ seq }) => !digests.some(({ from_seq, to_seq }) => from_seq <= seq && seq <= to_seq),
+        )
+        .map(({ seq, occurred_at, from, from_me, body_new }) => ({
+          seq,
+          occurred_at,
+          from: `${from.name} <${from.address}>`,
+          from_me,
+          body: truncate(body_new, false),
+        })),
+      help: [
+        "weir-axi item <seq> --full",
+        "weir-axi item <seq> --raw",
+        `weir-axi digest ${id} [--from <seq> | --up-to <seq>]`,
+      ],
     });
   }),
+);
+
+const digest = Command.make(
+  "digest",
+  {
+    id: Argument.Int("conversation"),
+    from: Flag.Int("from").pipe(Flag.optional),
+    upTo: Flag.Int("up-to").pipe(Flag.optional),
+  },
+  ({ id, from, upTo }) =>
+    Effect.gen(function* () {
+      if (Option.isSome(from) && Option.isSome(upTo)) {
+        return yield* new AxiError({ message: "--from and --up-to are exclusive; pass one" });
+      }
+      const client = yield* daemon;
+      const { digests } = yield* client
+        .digest({
+          params: { id },
+          payload: {
+            ...Option.match(from, { onNone: () => ({}), onSome: (from) => ({ from }) }),
+            ...Option.match(upTo, { onNone: () => ({}), onSome: (up_to) => ({ up_to }) }),
+          },
+        })
+        .pipe(Effect.provideService(FetchHttpClient.RequestInit, noIdleTimeout));
+      yield* print({ digests, help: [`weir-axi conv ${id}`] });
+    }),
 );
 
 const item = Command.make(
@@ -233,6 +270,7 @@ home.pipe(
   Command.withSubcommands([
     search,
     conv,
+    digest,
     item,
     Command.make("tag").pipe(Command.withSubcommands([tagTest])),
     reload,
@@ -242,6 +280,10 @@ home.pipe(
     ConfigInvalid: ({ message, file, issues }) => fail({ error: message, file, issues }),
     NotFound: ({ message }) => fail({ error: message }),
     AxiError: ({ message }) => fail({ error: message }),
+    DigestConflict: ({ message }) => fail({ error: message }),
+    DigestFailed: ({ error, log_path }) =>
+      fail({ error: log_path === null ? error : `${error}; log: ${log_path}`, log: log_path }),
+    DigestInterrupted: ({ message }) => fail({ error: message }),
     HttpClientError: ({ message, request }) =>
       Effect.gen(function* () {
         const { daemon } = yield* Home.fromEnv;
