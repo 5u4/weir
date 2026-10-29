@@ -558,6 +558,48 @@ describe("list rows", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("from and senders mark the parties that are me in every row producer", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("m1", "mixed", 1, { title: "Mixed plan", from: me }),
+        item("m2", "mixed", 2, { from: ann }),
+        item("m3", "mine", 3, { title: "Only me", from: me }),
+      ]);
+      const mixed = yield* conversationOf("Mixed plan");
+      const mine = yield* conversationOf("Only me");
+      const parties = (row: { readonly from: unknown; readonly senders: unknown } | undefined) => ({
+        from: row?.from,
+        senders: row?.senders,
+      });
+      const producers = (id: number) =>
+        Effect.gen(function* () {
+          const [seq] = yield* seqsOf(id);
+          if (seq === undefined) throw new Error("expected an item");
+          return [
+            parties((yield* listed(untagged)).find((row) => row.id === id)),
+            parties(
+              (yield* client.search({ query: { q: "" } })).conversations.find(
+                (row) => row.id === id,
+              ),
+            ),
+            parties(yield* client.read({ params: { id }, payload: { seq } })),
+          ];
+        });
+
+      const mixedParties = {
+        from: { ...ann, me: false },
+        senders: [
+          { ...me, me: true },
+          { ...ann, me: false },
+        ],
+      };
+      expect(yield* producers(mixed)).toEqual([mixedParties, mixedParties, mixedParties]);
+      const mineParties = { from: { ...me, me: true }, senders: [{ ...me, me: true }] };
+      expect(yield* producers(mine)).toEqual([mineParties, mineParties, mineParties]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("preview is the digest headline only when the newest digest reaches the last item", () =>
     Effect.gen(function* () {
       const { client, home, listed, deliver, conversationOf, seqsOf } = yield* start;

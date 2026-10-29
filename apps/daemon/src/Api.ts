@@ -1,6 +1,6 @@
 import { DurationShorthand } from "@weir/contract/Config";
 import { Digest, Trigger } from "@weir/contract/Digest";
-import { Party } from "@weir/contract/Source";
+import { Party, RowParty } from "@weir/contract/Source";
 import { ConversationState } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
@@ -143,9 +143,9 @@ export const Row = Schema.Struct({
   new: Schema.Int,
   items: Schema.Int,
   participants: Schema.Int,
-  from: Party,
+  from: RowParty,
   preview: Schema.String,
-  senders: Schema.Array(Party),
+  senders: Schema.Array(RowParty),
 });
 export type Row = typeof Row.Type;
 
@@ -410,6 +410,7 @@ export class DigestGroup extends HttpApiGroup.make("digest", { topLevel: true })
 ) {}
 
 export const Event = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("ready") }),
   Schema.Struct({
     type: Schema.Literal("sync"),
     source: Schema.String,
@@ -427,7 +428,7 @@ export const Event = Schema.Union([
     error: Schema.optionalKey(Schema.String),
     log_path: Schema.optionalKey(Schema.String),
   }),
-  Schema.Struct({ type: Schema.Literal("state"), conversation_id: Schema.Int }),
+  Schema.Struct({ type: Schema.Literal("state"), ids: Schema.Array(Schema.Int) }),
 ]);
 export type Event = typeof Event.Type;
 
@@ -435,4 +436,10 @@ export class EventsGroup extends HttpApiGroup.make("events", { topLevel: true })
   HttpApiEndpoint.get("events", "/events", { success: HttpApiSchema.StreamSse({ data: Event }) }),
 ) {}
 
-export class Api extends HttpApi.make("weir").add(WeirGroup, ViewGroup, StateGroup, DigestGroup) {}
+export class Api extends HttpApi.make("weir").add(
+  WeirGroup,
+  ViewGroup,
+  StateGroup,
+  DigestGroup,
+  EventsGroup,
+) {}

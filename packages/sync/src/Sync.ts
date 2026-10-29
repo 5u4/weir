@@ -55,7 +55,6 @@ const writePage = Effect.fnUntraced(function* (
   const recompute = new Set<ConversationId>(
     yield* Write.softDeleteItems(stream.id, page.deletions),
   );
-  const deleted = [...recompute];
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -73,7 +72,7 @@ const writePage = Effect.fnUntraced(function* (
   );
   if (backfilling) yield* Write.advanceSeenSeq(written);
   yield* Write.saveCursor(stream.id, page.cursor, { backfilled: backfilling && !page.more });
-  return [...new Set([...deleted, ...written.map(({ conversationId }) => conversationId)])];
+  return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });
 
 export const syncStream = Effect.fnUntraced(function* (
@@ -159,14 +158,15 @@ export const syncSource = Effect.fnUntraced(function* (
       }),
     ),
   );
-  yield* Effect.forEach(
-    descriptors,
-    (descriptor) =>
-      syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
-        Effect.catch((error) =>
-          Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error),
+  const failures = yield* Effect.forEach(descriptors, (descriptor) =>
+    syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
+      Effect.as(null),
+      Effect.catch((error) =>
+        Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error).pipe(
+          Effect.as(`${descriptor.id}: ${errorMessage(error)}`),
         ),
       ),
-    { discard: true },
+    ),
   );
+  return failures.filter((failure) => failure !== null);
 });

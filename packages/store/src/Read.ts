@@ -249,11 +249,14 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
           AS items,
         (SELECT count(DISTINCT lower(item.from_address)) FROM item
           WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants,
-        (SELECT json_object('name', item.from_name, 'address', item.from_address) FROM item
+        (SELECT json_object('name', item.from_name, 'address', item.from_address,
+            'me', json(iif(item.from_me, 'true', 'false'))) FROM item
           WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
           ORDER BY item.from_me, item.seq DESC LIMIT 1) AS "from",
-        (SELECT json_group_array(json_object('name', name, 'address', address)) FROM
-          (SELECT item.from_name AS name, item.from_address AS address, min(item.seq) AS first_seq
+        (SELECT json_group_array(json_object('name', name, 'address', address,
+            'me', json(iif(me, 'true', 'false')))) FROM
+          (SELECT item.from_name AS name, item.from_address AS address, item.from_me AS me,
+              min(item.seq) AS first_seq
             FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
             GROUP BY lower(item.from_address) ORDER BY first_seq LIMIT ${rowSenders})) AS senders,
         last.from_name AS last_from_name,
