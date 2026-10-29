@@ -398,6 +398,29 @@ describe("manual digest", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("redo of a range over the current max_input answers 409 without calling the AI", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, detail, calls, reconfigure } = yield* start();
+      yield* deliver([1, 2].map((n) => item(`l${n}`, "List news", 10_000, n)));
+      const id = yield* conversationOf("List news");
+      const [s1, s2] = (yield* detail(id)).items.map(({ seq }) => seq);
+      const { digests } = yield* client.digest({ params: { id }, payload: {} });
+      const old = digests[0];
+      if (old === undefined) throw new Error("expected a digest");
+      expect(ranges(digests)).toEqual([[s1, s2, "manual"]]);
+
+      reconfigure({ maxInput: 15_000 });
+      yield* client.reload();
+      const rejected = yield* Effect.flip(client.redo({ params: { id: old.id } }));
+      expect(rejected).toMatchObject({
+        _tag: "DigestConflict",
+        message: `#${s1}-#${s2} is over max_input 15000; raise max_input to redo it`,
+      });
+      expect(calls()).toHaveLength(1);
+      expect((yield* detail(id)).digests).toEqual([old]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("one conversation runs one call at a time; two conversations overlap", () =>
     Effect.gen(function* () {
       const { client, deliver, conversationOf, calls } = yield* start({

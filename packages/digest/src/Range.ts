@@ -73,9 +73,13 @@ export const manualRange = (
     return Result.fail("the conversation has no items");
   if (request._tag === "Redo") {
     const span = spans.find(({ id }) => id === request.id);
-    return span === undefined
-      ? Result.fail(`no digest ${request.id} in this conversation`)
-      : Result.succeed({ fromSeq: span.fromSeq, toSeq: span.toSeq });
+    if (span === undefined) return Result.fail(`no digest ${request.id} in this conversation`);
+    const range = { fromSeq: span.fromSeq, toSeq: span.toSeq };
+    return chunks(items, range, maxInput).length > 1
+      ? Result.fail(
+          `#${range.fromSeq}-#${range.toSeq} is over max_input ${maxInput}; raise max_input to redo it`,
+        )
+      : Result.succeed(range);
   }
   if (request._tag === "Now") {
     const floor = floorOf(spans);
