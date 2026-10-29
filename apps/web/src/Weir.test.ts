@@ -6,15 +6,37 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, vi } from "vitest";
 import { ConversationId } from "./Route.ts";
 import { shown } from "./Rows.ts";
-import { conversation, counts, dismiss, intents, live, viewList } from "./Weir.ts";
+import {
+  conversation,
+  counts,
+  digestRun,
+  dismiss,
+  intents,
+  live,
+  runDigest,
+  viewList,
+} from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
   const rows = new Map<number, Row>();
   const requests: Array<string> = [];
+  const digests: Array<unknown> = [];
+  const replies: Array<Response | TypeError> = [];
+  const details = new Map<number, Record<string, unknown>>();
+  const running: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
     requests.push(`${method} ${url.pathname}`);
+    if (method === "POST" && /^\/conversations\/\d+\/digest$/.test(url.pathname)) {
+      const body = input instanceof Request ? await input.text() : init?.body;
+      digests.push(
+        JSON.parse(typeof body === "string" ? body : new TextDecoder().decode(body as Uint8Array)),
+      );
+      const reply = replies.shift() ?? new Response(null, { status: 500 });
+      if (reply instanceof TypeError) throw reply;
+      return reply;
+    }
     const done = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]));
     if (method === "POST" && done !== undefined) {
       const next: Row = { ...done, cleared_seq: done.last_seq, state: "done" };
@@ -38,6 +60,23 @@ const daemon = vi.hoisted(() => {
         cleared: 0,
       });
     }
+    if (method === "GET" && url.pathname === "/status") {
+      return Response.json({
+        home: "/h",
+        config: { path: "/h/config.toml", loaded_at: "2026-10-25T16:00:00.000Z", error: null },
+        sync: "running",
+        sources: [],
+        tags: [],
+        untagged: { conversations: 0, unread: 0, open: 0 },
+        digest: {
+          ai: "fake-ai",
+          threshold: 1000,
+          running: running.map((job) => ({ ...job, trigger: "manual" })),
+          waiting: 0,
+          last_run: null,
+        },
+      });
+    }
     const open = Number(url.pathname.match(/^\/conversations\/(\d+)$/)?.[1]);
     if (method === "GET" && Number.isInteger(open)) {
       return Response.json({
@@ -51,6 +90,7 @@ const daemon = vi.hoisted(() => {
         items: [],
         digests: [],
         digest: { backlog: null, earlier: null, now: null, last_failure: null },
+        ...details.get(open),
       });
     }
     return new Response(null, { status: 404 });
@@ -81,7 +121,8 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("location", location);
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
-  return { rows, requests, Source, location };
+  vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
+  return { rows, requests, digests, replies, details, running, Source, location };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -112,6 +153,10 @@ const settled = <A, E>(
 afterEach(() => {
   daemon.rows.clear();
   daemon.requests.length = 0;
+  daemon.digests.length = 0;
+  daemon.details.clear();
+  daemon.running.length = 0;
+  daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
 });
@@ -135,7 +180,12 @@ it("each event refetches only what it changes, and a dropped stream reconnects",
   await Promise.all([settled(registry, list), settled(registry, counts), settled(registry, open)]);
   expect(daemon.Source.opened.map(({ url }) => url.href)).toEqual(["http://weir.test/events"]);
 
-  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "ready" }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+    "GET /status",
+  ]);
   await refetched({ type: "state", ids: [9] }, ["GET /conversations", "GET /counts"]);
   await refetched({ type: "state", ids: [5] }, [
     "GET /conversations",
@@ -151,7 +201,12 @@ it("each event refetches only what it changes, and a dropped stream reconnects",
   await vi.advanceTimersByTimeAsync(500);
   vi.useRealTimers();
   expect(daemon.Source.opened).toHaveLength(2);
-  await refetched({ type: "ready" }, ["GET /conversations", "GET /conversations/5", "GET /counts"]);
+  await refetched({ type: "ready" }, [
+    "GET /conversations",
+    "GET /conversations/5",
+    "GET /counts",
+    "GET /status",
+  ]);
 
   registry.dispose();
   expect(daemon.Source.opened.at(-1)?.closed).toBe(true);
@@ -191,5 +246,193 @@ it("Done hides the row until the server agrees, then defers to whatever the serv
   expect(visible()).toEqual([1, 2]);
 
   for (const release of stop) release();
+  registry.dispose();
+});
+
+it("a failed Digest earlier retries the same up_to, then lands and goes idle", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const open = conversation(id);
+  const run = digestRun(id);
+  registry.mount(open);
+  registry.mount(run);
+  await settled(registry, open);
+
+  daemon.replies.push(
+    Response.json(
+      { _tag: "DigestFailed", error: "fake-ai: invalid output", log_path: "/tmp/run.log" },
+      { status: 502 },
+    ),
+  );
+  const landed: Array<ReadonlyArray<number>> = [];
+  const land = (digests: ReadonlyArray<number>) => {
+    landed.push(digests);
+    return () => {};
+  };
+  const action = { _tag: "UpTo", seq: 9 } as const;
+  registry.set(runDigest, { id, action, range: { from: 4, to: 9 }, items: 3, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Failed"));
+  const failed = registry.get(run);
+  expect(failed).toMatchObject({
+    _tag: "Failed",
+    action,
+    items: 3,
+    cause: { _tag: "Failed", error: "fake-ai: invalid output", log_path: "/tmp/run.log" },
+  });
+  if (failed._tag !== "Failed") throw new Error("expected a failed run");
+
+  daemon.replies.push(Response.json({ digests: [] }));
+  registry.set(runDigest, {
+    id,
+    action: failed.action,
+    range: failed.range,
+    items: failed.items,
+    land,
+  });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  expect(daemon.digests).toEqual([{ up_to: 9 }, { up_to: 9 }]);
+  expect(landed).toEqual([[]]);
+  registry.dispose();
+});
+
+it("a digest request that never reaches the daemon fails as Unreachable, not Interrupted", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const open = conversation(id);
+  const run = digestRun(id);
+  registry.mount(open);
+  registry.mount(run);
+  await settled(registry, open);
+
+  daemon.replies.push(new TypeError("Failed to fetch"));
+  const action = { _tag: "Now" } as const;
+  const land = () => () => {};
+  registry.set(runDigest, { id, action, range: { from: 1, to: 3 }, items: 3, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Failed"));
+  expect(registry.get(run)).toMatchObject({
+    _tag: "Failed",
+    action,
+    cause: { _tag: "Unreachable" },
+  });
+
+  daemon.replies.push(Response.json({ digests: [] }));
+  registry.set(runDigest, { id, action, range: { from: 1, to: 3 }, items: 3, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  expect(daemon.digests).toEqual([{}, {}]);
+  registry.dispose();
+});
+
+it("a Digest from here that lands earlier chunks keeps its failure on the first undigested message", async () => {
+  const id = ConversationId.make(5);
+  const item = (seq: number) => ({
+    seq,
+    occurred_at: `2026-10-25T09:0${seq}:00.000Z`,
+    from: { name: "Ada", address: "ada@example.com" },
+    from_me: false,
+    title: null,
+    body_new: `message ${seq}`,
+  });
+  const items = [1, 2, 3, 4].map(item);
+  daemon.details.set(5, { items });
+  const registry = AtomRegistry.make();
+  const open = conversation(id);
+  const run = digestRun(id);
+  registry.mount(open);
+  registry.mount(run);
+  await settled(registry, open);
+
+  daemon.details.set(5, {
+    items,
+    digests: [
+      {
+        id: 1,
+        conversation_id: 5,
+        from_seq: 1,
+        to_seq: 2,
+        headline: "first chunk",
+        topics: [],
+        trigger: "manual",
+        ai_profile: "fake-ai",
+        created_at: "2026-10-25T16:00:00.000Z",
+      },
+    ],
+  });
+  daemon.replies.push(
+    Response.json(
+      { _tag: "DigestFailed", error: "fake-ai: exiting with 3", log_path: "/tmp/3-4.log" },
+      { status: 502 },
+    ),
+  );
+  const land = () => () => {};
+  const action = { _tag: "From", seq: 1 } as const;
+  registry.set(runDigest, { id, action, range: { from: 1, to: 4 }, items: 4, land });
+  const anchored = {
+    _tag: "Failed",
+    action: { _tag: "From", seq: 3 },
+    range: { from: 3, to: 4 },
+    items: 2,
+    cause: { _tag: "Failed", error: "fake-ai: exiting with 3", log_path: "/tmp/3-4.log" },
+  } as const;
+  await vi.waitFor(() => expect(registry.get(run)).toEqual(anchored));
+
+  daemon.replies.push(Response.json({ digests: [] }));
+  registry.set(runDigest, { id, action: anchored.action, range: anchored.range, items: 2, land });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  expect(daemon.digests).toEqual([{ from: 1 }, { from: 3 }]);
+  registry.dispose();
+});
+
+it("the daemon's digest events show a run on the conversation until done or ready", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const run = digestRun(id);
+  registry.mount(conversation(id));
+  registry.mount(run);
+  registry.mount(live);
+  await settled(registry, conversation(id));
+  const send = (status: "queued" | "running" | "done") =>
+    daemon.Source.opened.at(-1)?.send({
+      type: "digest",
+      conversation_id: 5,
+      from_seq: 8,
+      to_seq: 12,
+      trigger: "auto",
+      status,
+    });
+  const remote = { _tag: "Running", range: { from: 8, to: 12 }, origin: { _tag: "Remote" } };
+
+  send("queued");
+  await vi.waitFor(() => expect(registry.get(run)).toEqual(remote));
+  send("done");
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  send("running");
+  await vi.waitFor(() => expect(registry.get(run)).toEqual(remote));
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
+  registry.dispose();
+});
+
+it("ready picks up a run the daemon is already running, as a fresh tab or after a reconnect", async () => {
+  const id = ConversationId.make(5);
+  const registry = AtomRegistry.make();
+  const run = digestRun(id);
+  registry.mount(conversation(id));
+  registry.mount(run);
+  registry.mount(live);
+  await settled(registry, conversation(id));
+
+  daemon.running.push({ conversation_id: 5, from_seq: 3, to_seq: 6 });
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() =>
+    expect(registry.get(run)).toEqual({
+      _tag: "Running",
+      range: { from: 3, to: 6 },
+      origin: { _tag: "Remote" },
+    }),
+  );
+
+  daemon.running.length = 0;
+  daemon.Source.opened.at(-1)?.send({ type: "ready" });
+  await vi.waitFor(() => expect(registry.get(run)._tag).toBe("Idle"));
   registry.dispose();
 });

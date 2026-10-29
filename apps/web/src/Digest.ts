@@ -1,0 +1,206 @@
+import type {
+  DigestConflict,
+  DigestFailed,
+  DigestInterrupted,
+  DigestRun,
+  Event,
+  NotFound,
+} from "@weir/daemon/Api";
+import type * as HttpClientError from "effect/http/HttpClientError";
+import type * as Schema from "effect/Schema";
+
+export type Action =
+  | { readonly _tag: "Now" }
+  | { readonly _tag: "From"; readonly seq: number }
+  | { readonly _tag: "UpTo"; readonly seq: number }
+  | { readonly _tag: "Redo"; readonly id: number };
+
+export type Range = { readonly from: number; readonly to: number };
+
+export type Here = { readonly range: Range; readonly items: number };
+
+export type Cause =
+  | { readonly _tag: "Failed"; readonly error: string; readonly log_path: string | null }
+  | { readonly _tag: "Conflict"; readonly message: string }
+  | { readonly _tag: "NotFound"; readonly message: string }
+  | { readonly _tag: "Interrupted"; readonly message: string }
+  | { readonly _tag: "Unreachable" }
+  | { readonly _tag: "Unexpected"; readonly message: string };
+
+export type Origin =
+  | { readonly _tag: "Tab"; readonly action: Action }
+  | { readonly _tag: "Remote" };
+
+export type Run =
+  | { readonly _tag: "Idle" }
+  | { readonly _tag: "Running"; readonly range: Range; readonly origin: Origin }
+  | {
+      readonly _tag: "Failed";
+      readonly action: Action;
+      readonly range: Range;
+      readonly items: number;
+      readonly cause: Cause;
+    };
+
+export const idle: Run = { _tag: "Idle" };
+
+export type Payload = { readonly from?: number; readonly up_to?: number };
+
+export const payload = (action: Exclude<Action, { readonly _tag: "Redo" }>): Payload => {
+  switch (action._tag) {
+    case "Now":
+      return {};
+    case "From":
+      return { from: action.seq };
+    case "UpTo":
+      return { up_to: action.seq };
+  }
+};
+
+export const heres = (run: ReadonlyArray<{ readonly seq: number }>): ReadonlyArray<Here> => {
+  const to = run.at(-1)?.seq ?? 0;
+  return run.map(({ seq }, index) => ({ range: { from: seq, to }, items: run.length - index }));
+};
+
+export const hereLabel = (items: number) =>
+  items === 1 ? "Digest this message" : `Digest ${items} from here`;
+
+export const earlierLabel = (gap: { readonly items: number; readonly run_items: number }) =>
+  gap.items === gap.run_items ? "Digest earlier" : `Digest ${gap.items} earlier`;
+
+export const within = (range: Range, seq: number) => range.from <= seq && seq <= range.to;
+
+export type Rejection =
+  | NotFound
+  | DigestConflict
+  | DigestFailed
+  | DigestInterrupted
+  | HttpClientError.HttpClientError
+  | Schema.SchemaError;
+
+export const cause = (error: Rejection): Cause => {
+  switch (error._tag) {
+    case "DigestFailed":
+      return { _tag: "Failed", error: error.error, log_path: error.log_path };
+    case "DigestConflict":
+      return { _tag: "Conflict", message: error.message };
+    case "NotFound":
+      return { _tag: "NotFound", message: error.message };
+    case "DigestInterrupted":
+      return { _tag: "Interrupted", message: error.message };
+    case "HttpClientError":
+      return error.reason._tag === "TransportError"
+        ? { _tag: "Unreachable" }
+        : { _tag: "Unexpected", message: error.message };
+    case "SchemaError":
+      return { _tag: "Unexpected", message: error.message };
+  }
+};
+
+export const reason = (cause: Cause) => {
+  switch (cause._tag) {
+    case "Failed":
+      return cause.error;
+    case "Unreachable":
+      return "Couldn't reach weir";
+    default:
+      return cause.message;
+  }
+};
+
+export type DigestEvent = Extract<Event, { readonly type: "digest" }>;
+
+export const observe = (run: Run, event: DigestEvent): Run => {
+  if (run._tag === "Running" && run.origin._tag === "Tab") return run;
+  switch (event.status) {
+    case "queued":
+    case "running":
+      return {
+        _tag: "Running",
+        range: { from: event.from_seq, to: event.to_seq },
+        origin: { _tag: "Remote" },
+      };
+    case "done":
+    case "failed":
+      return run._tag === "Running" ? idle : run;
+  }
+};
+
+export const reconciled = (
+  run: Run,
+  job: { readonly from_seq: number; readonly to_seq: number } | undefined,
+): Run => {
+  if (run._tag === "Running" && run.origin._tag === "Tab") return run;
+  if (job !== undefined) {
+    return {
+      _tag: "Running",
+      range: { from: job.from_seq, to: job.to_seq },
+      origin: { _tag: "Remote" },
+    };
+  }
+  return run._tag === "Running" ? idle : run;
+};
+
+export const seeded = (
+  run: Run,
+  failure: DigestRun | null,
+  items: ReadonlyArray<{ readonly seq: number }>,
+  digests: ReadonlyArray<{
+    readonly id: number;
+    readonly from_seq: number;
+    readonly to_seq: number;
+  }>,
+): Run => {
+  if (run._tag !== "Idle" || failure === null) return run;
+  const range = { from: failure.from_seq, to: failure.to_seq };
+  const covering = digests.find(
+    (digest) => digest.from_seq <= range.from && range.to <= digest.to_seq,
+  );
+  return {
+    _tag: "Failed",
+    action:
+      covering === undefined
+        ? { _tag: "From", seq: failure.from_seq }
+        : { _tag: "Redo", id: covering.id },
+    range,
+    items: items.filter(({ seq }) => within(range, seq)).length,
+    cause: {
+      _tag: "Failed",
+      error: failure.error ?? "the digest run failed",
+      log_path: failure.log_path,
+    },
+  };
+};
+
+export const reanchored = (
+  run: Run,
+  items: ReadonlyArray<{ readonly seq: number }>,
+  digests: ReadonlyArray<{ readonly from_seq: number; readonly to_seq: number }>,
+): Run => {
+  if (run._tag !== "Failed" || run.action._tag !== "From") return run;
+  const digested = (seq: number) =>
+    digests.some((digest) => within({ from: digest.from_seq, to: digest.to_seq }, seq));
+  if (!digested(run.action.seq)) return run;
+  const rest = items.filter(({ seq }) => within(run.range, seq) && !digested(seq));
+  const first = rest[0];
+  if (first === undefined) return idle;
+  return {
+    ...run,
+    action: { _tag: "From", seq: first.seq },
+    range: { from: first.seq, to: run.range.to },
+    items: rest.length,
+  };
+};
+
+const actionKey = (action: Action) =>
+  action._tag === "Now"
+    ? "Now"
+    : `${action._tag}:${action._tag === "Redo" ? action.id : action.seq}`;
+
+export const runs = (run: Run, action: Action) =>
+  run._tag === "Running" &&
+  run.origin._tag === "Tab" &&
+  actionKey(run.origin.action) === actionKey(action);
+
+export const failedAt = (run: Run, action: Action) =>
+  run._tag === "Failed" && actionKey(run.action) === actionKey(action) ? run : undefined;
