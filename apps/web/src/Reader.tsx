@@ -384,6 +384,7 @@ export function Reader({ id }: { id: ConversationId }) {
       className="r-scroll"
       onWheel={arm}
       onTouchMove={arm}
+      onPointerDown={arm}
       onKeyDown={(event: KeyboardEvent) => {
         if (scrollKeys[event.key]) arm();
       }}
