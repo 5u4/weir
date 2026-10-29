@@ -24,6 +24,7 @@ const status = (
   sources,
   tags: [],
   untagged: { conversations: 0, unread: 0, open: 0 },
+  digest: null,
 });
 
 const source = (id: string, overrides: Partial<Status["sources"][number]> = {}) => ({
