@@ -2357,6 +2357,9 @@ mark {
 .cap.search .cap-nav {
   padding: 8px 28px 18px;
 }
+.cap.search .s-main {
+  overflow-wrap: anywhere;
+}
 .q-hint code {
   padding: 1px 5px;
   border-radius: 5px;
@@ -2629,7 +2632,7 @@ mark {
     left: var(--edge);
     right: var(--edge);
   }
-  .cap:not(.compact) .cap-nav {
+  .cap:not(.compact):not(.search) .cap-nav {
     padding: 14px 56px 14px 18px;
   }
   .s-main {
@@ -2659,6 +2662,13 @@ mark {
   }
   .cap-in {
     width: 6em;
+  }
+  .q-st {
+    flex-shrink: 1;
+  }
+  .q-conv {
+    white-space: normal;
+    line-height: 1.2;
   }
   .list {
     top: calc(var(--edge) + max(var(--band), calc(var(--cap-h, 0px) + 2 * var(--inset))));

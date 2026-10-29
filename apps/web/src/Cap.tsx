@@ -64,11 +64,20 @@ const fadeStrip = (strip: HTMLElement) => {
   resized.observe(strip);
   observeChips();
   mutated.observe(strip, { childList: true });
+  const turn = (event: WheelEvent) => {
+    if (event.ctrlKey || strip.scrollWidth <= strip.clientWidth) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 2 ? strip.clientWidth : event.deltaMode === 1 ? 16 : 1;
+    strip.scrollLeft += event.deltaY * unit;
+  };
   strip.addEventListener("scroll", fade, { passive: true });
+  strip.addEventListener("wheel", turn, { passive: false });
   return () => {
     resized.disconnect();
     mutated.disconnect();
     strip.removeEventListener("scroll", fade);
+    strip.removeEventListener("wheel", turn);
   };
 };
 
@@ -396,11 +405,8 @@ function SearchSentence() {
       ) : (
         <>
           <p className="s-main">
-            {enumerate(
-              groups(list, tags),
-              `${quoted} ${query.text === "" ? "matches" : "appears in"} `,
-              ".",
-            ).map(({ lead, widget, end }, at) => (
+            <span className="glue">{`${quoted} ${query.text === "" ? "matches" : "appears in"} `}</span>
+            {enumerate(groups(list, tags), "", ".").map(({ lead, widget, end }, at) => (
               <Fragment key={widget.view}>
                 {at > 0 && " "}
                 <span className="grp">
