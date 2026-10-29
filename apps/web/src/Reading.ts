@@ -142,7 +142,11 @@ export const reading = Atom.family((id: ConversationId) =>
     get.subscribe(conversation(id), (result) => {
       if (!AsyncResult.isSuccess(result)) return;
       if (Option.isSome(opened)) {
-        dispatch({ _tag: "Grown", last: lastSeq(result.value) });
+        dispatch({
+          _tag: "Fetched",
+          last: lastSeq(result.value),
+          seen: result.value.state.seen_seq,
+        });
         return;
       }
       const seen = open(result.value);

@@ -19,7 +19,7 @@ export type Event =
   | { readonly _tag: "Input" }
   | { readonly _tag: "Focus"; readonly focused: boolean }
   | { readonly _tag: "Visibility"; readonly visible: boolean }
-  | { readonly _tag: "Grown"; readonly last: number }
+  | { readonly _tag: "Fetched"; readonly last: number; readonly seen: number }
   | { readonly _tag: "Elapsed" }
   | { readonly _tag: "Leave" }
   | { readonly _tag: "Acked"; readonly seq: number }
@@ -60,8 +60,13 @@ const apply = (state: State, event: Event): State => {
       return { ...state, focused: event.focused, armed: state.armed || event.focused };
     case "Visibility":
       return { ...state, visible: event.visible };
-    case "Grown":
-      return { ...state, last: event.last };
+    case "Fetched":
+      return {
+        ...state,
+        last: event.last,
+        candidate: Math.max(state.candidate, event.seen),
+        sent: Math.max(state.sent, event.seen),
+      };
     case "Acked":
       return {
         ...state,

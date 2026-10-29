@@ -1,7 +1,8 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, vi } from "vitest";
-import { reading } from "./Reading.ts";
+import { dock, reading } from "./Reading.ts";
 import { ConversationId } from "./Route.ts";
 import { conversation, dismiss } from "./Weir.ts";
 
@@ -236,5 +237,21 @@ it("Restore clicked after Mute lands last, so the conversation ends unmuted", as
 
   await releaseNewestFirst(["mute", "restore"]);
   expect(daemon.state.muted).toBe(false);
+  registry.dispose();
+});
+
+it("Restore reads the open conversation, so Mark unread is offered and Last read stays put", async () => {
+  const registry = await loaded();
+  registry.mount(reading(id));
+  registry.mount(dock(id));
+
+  registry.set(dismiss, { act: "Restore", target });
+
+  await releaseNewestFirst(["restore"]);
+  await vi.waitFor(() => expect(registry.get(reading(id)).seen).toBe(25));
+  expect(registry.get(reading(id)).frozen).toEqual(Option.some(9));
+  expect(Option.map(registry.get(dock(id)), ({ actions }) => actions)).toEqual(
+    Option.some(["Done", "MarkUnread", "Mute"]),
+  );
   registry.dispose();
 });
