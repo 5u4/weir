@@ -42,6 +42,12 @@ export interface Queue {
   readonly waiting: number;
 }
 
+export type JobStatus =
+  | { readonly status: "queued" | "running" | "done" }
+  | { readonly status: "failed"; readonly error: string; readonly logPath: string | null };
+
+export type JobEvent = Job & JobStatus;
+
 export class DigestNotFound extends Schema.TaggedError<DigestNotFound>()("DigestNotFound", {
   message: Schema.String,
 }) {}
@@ -82,7 +88,11 @@ type Services =
   | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem;
 
-export const make = Effect.fnUntraced(function* (settings: Settings, logDir: string) {
+export const make = Effect.fnUntraced(function* (
+  settings: Settings,
+  logDir: string,
+  publish: (event: JobEvent) => Effect.Effect<void>,
+) {
   const scope = yield* Scope.Scope;
   const services: Context.Context<Services> = yield* Effect.context<Services>();
   const sql = yield* SqlClient.SqlClient;
@@ -193,10 +203,12 @@ export const make = Effect.fnUntraced(function* (settings: Settings, logDir: str
       trigger: plan.trigger,
     };
     yield* Ref.update(queue, (jobs) => new Map(jobs).set(id, { ...job, running: false }));
+    yield* publish({ ...job, status: "queued" });
     return yield* permits
       .withPermits(1)(
         Effect.gen(function* () {
           yield* Ref.update(queue, (jobs) => new Map(jobs).set(id, { ...job, running: true }));
+          yield* publish({ ...job, status: "running" });
           const written: Array<DigestRow> = [];
           for (const chunk of plan.chunks) {
             const result = yield* runChunk(plan, chunk);
@@ -206,11 +218,29 @@ export const make = Effect.fnUntraced(function* (settings: Settings, logDir: str
         }),
       )
       .pipe(
-        Effect.ensuring(
-          Ref.update(queue, (jobs) => {
-            const next = new Map(jobs);
-            next.delete(id);
-            return next;
+        Effect.onExit((exit) =>
+          Effect.gen(function* () {
+            yield* Ref.update(queue, (jobs) => {
+              const next = new Map(jobs);
+              next.delete(id);
+              return next;
+            });
+            if (Exit.isSuccess(exit)) return yield* publish({ ...job, status: "done" });
+            const failure = Cause.squash(exit.cause);
+            yield* publish(
+              failure instanceof DigestRunFailed
+                ? { ...job, status: "failed", error: failure.error, logPath: failure.logPath }
+                : {
+                    ...job,
+                    status: "failed",
+                    error: Cause.hasInterruptsOnly(exit.cause)
+                      ? "interrupted by a reload or shutdown"
+                      : failure instanceof Error
+                        ? failure.message
+                        : String(failure),
+                    logPath: null,
+                  },
+            );
           }),
         ),
       );

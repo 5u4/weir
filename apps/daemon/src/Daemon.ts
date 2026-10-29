@@ -19,6 +19,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 import { type ConfigInvalid, defaultPort } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
+import * as Events from "./Events.ts";
 import type { WeirHome } from "./Home.ts";
 
 export const plugins: Scheduler.PluginRegistry = { gws };
@@ -43,6 +44,7 @@ export class Daemon extends Context.Service<
     readonly state: Effect.Effect<State>;
     readonly reload: Effect.Effect<State, ConfigInvalid>;
     readonly digester: Effect.Effect<Option.Option<Digester.Digester>>;
+    readonly events: Events.Events;
   }
 >()("@weir/daemon/Daemon") {}
 
@@ -65,6 +67,21 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
       const digester = yield* Ref.make(Option.none<Digester.Digester>());
       const scheduler = yield* FiberHandle.make<void, never>();
       const reloading = yield* Semaphore.make(1);
+      const events = yield* Events.make;
+      const syncEvent = (
+        source: string,
+        status: "started" | "done" | "failed",
+        error: string | null,
+      ) =>
+        Effect.flatMap(DateTime.now, (at) =>
+          events.publish({
+            type: "sync",
+            source,
+            status,
+            ...(error === null ? {} : { error }),
+            at: DateTime.formatIso(at),
+          }),
+        );
 
       const report = (sourceId: string, error: string | null) =>
         Ref.update(state, (current) => ({
@@ -73,11 +90,28 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
             sourceId,
             error === null ? { state: "ok" } : { state: "failed", error },
           ),
-        }));
+        })).pipe(Effect.andThen(syncEvent(sourceId, error === null ? "done" : "failed", error)));
+
+      const publishDigest = ({ conversationId, range, trigger, ...status }: Digester.JobEvent) =>
+        events.publish({
+          type: "digest",
+          conversation_id: conversationId,
+          from_seq: range.fromSeq,
+          to_seq: range.toSeq,
+          trigger,
+          ...(status.status === "failed"
+            ? {
+                status: "failed",
+                error: status.error,
+                ...(status.logPath === null ? {} : { log_path: status.logPath }),
+              }
+            : { status: status.status }),
+        });
 
       const generation = ({ config, sources, digest }: ConfigFile.Loaded) =>
         Effect.gen(function* () {
-          const current = digest === null ? null : yield* Digester.make(digest, home.digestLogs);
+          const current =
+            digest === null ? null : yield* Digester.make(digest, home.digestLogs, publishDigest);
           if (current !== null) {
             yield* Effect.acquireRelease(Ref.set(digester, Option.some(current)), () =>
               Ref.set(digester, Option.none()),
@@ -87,7 +121,16 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
               Effect.catch((error) => Effect.logError("startup digest check failed", error)),
             );
           }
-          yield* Scheduler.run(sources, config.tag, report, current?.auto ?? (() => Effect.void));
+          yield* Scheduler.run(
+            sources,
+            config.tag,
+            (sourceId) => syncEvent(sourceId, "started", null),
+            report,
+            (ids) =>
+              (ids.length === 0 ? Effect.void : events.publish({ type: "state", ids })).pipe(
+                Effect.andThen(current?.auto(ids) ?? Effect.void),
+              ),
+          );
           return yield* Effect.never;
         }).pipe(
           Effect.scoped,
@@ -141,6 +184,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           Effect.uninterruptible,
         ),
         digester: Ref.get(digester),
+        events,
       });
     }),
   );

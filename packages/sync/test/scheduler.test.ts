@@ -98,6 +98,7 @@ describe("run", () => {
         run(
           sources,
           parsed.tag,
+          () => Effect.void,
           (id, error) => Effect.sync(() => reports.push([id, error])),
           () => Effect.void,
         ),

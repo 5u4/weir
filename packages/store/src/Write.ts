@@ -318,21 +318,45 @@ const stateAssignments = (sql: SqlClient.SqlClient, change: StateChange) => {
   }
 };
 
+interface StateSnapshot {
+  readonly conversationId: number;
+  readonly seenSeq: number;
+  readonly clearedSeq: number;
+  readonly muted: number;
+}
+
+const stateKey = ({ seenSeq, clearedSeq, muted }: StateSnapshot) =>
+  `${seenSeq}:${clearedSeq}:${muted}`;
+
 export const changeState = Effect.fnUntraced(function* (
   conversationIds: ReadonlyArray<ConversationId>,
   change: StateChange,
 ) {
-  if (conversationIds.length === 0) return;
+  if (conversationIds.length === 0) return [];
   const sql = yield* SqlClient.SqlClient;
-  yield* sql.withTransaction(
+  return yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`INSERT INTO conversation_state (conversation_id, seen_seq, cleared_seq, muted)
         SELECT id, 0, 0, 0 FROM conversation WHERE ${sql.in("id", conversationIds)}
         ON CONFLICT (conversation_id) DO NOTHING`;
-      yield* sql`UPDATE conversation_state SET ${stateAssignments(sql, change)}
+      const before = new Map(
+        (yield* sql<StateSnapshot>`SELECT conversation_id, seen_seq, cleared_seq, muted
+          FROM conversation_state
+          WHERE ${sql.in("conversation_id", conversationIds)}`).map((row) => [
+          row.conversationId,
+          stateKey(row),
+        ]),
+      );
+      const after = yield* sql<StateSnapshot>`UPDATE conversation_state
+        SET ${stateAssignments(sql, change)}
         FROM conversation
         WHERE conversation.id = conversation_state.conversation_id
-          AND ${sql.in("conversation_state.conversation_id", conversationIds)}`;
+          AND ${sql.in("conversation_state.conversation_id", conversationIds)}
+        RETURNING conversation_id, seen_seq, cleared_seq, muted`;
+      return after
+        .filter((row) => before.get(row.conversationId) !== stateKey(row))
+        .map((row) => ConversationId.make(row.conversationId))
+        .sort((left, right) => left - right);
     }),
   );
 });
@@ -342,9 +366,9 @@ export const clear = Effect.fnUntraced(function* (view: Read.TagFilter, seq: Seq
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       const ids = (yield* Read.conversations(view)).map(({ id }) => id);
-      yield* changeState(ids, { _tag: "Done", seq });
+      const changed = yield* changeState(ids, { _tag: "Done", seq });
       const after = yield* Read.conversations({ _tag: "Ids", ids });
-      return after.filter(({ state }) => state === "done").length;
+      return { cleared: after.filter(({ state }) => state === "done").length, changed };
     }),
   );
 });

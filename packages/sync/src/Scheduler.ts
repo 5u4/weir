@@ -75,13 +75,15 @@ export const loadSources = Effect.fnUntraced(function* (
 export const run = (
   sources: ReadonlyArray<ScheduledSource>,
   tags: Tags,
+  onStarted: (sourceId: string) => Effect.Effect<void>,
   report: (sourceId: string, listingError: string | null) => Effect.Effect<void>,
   onWritten: Written,
 ) =>
   Effect.forEach(
     sources,
     ({ id, every, source }) =>
-      syncSource(id, source, tags, onWritten).pipe(
+      onStarted(id).pipe(
+        Effect.andThen(syncSource(id, source, tags, onWritten)),
         Effect.matchCauseEffect({
           onFailure: (cause) =>
             Effect.logError(`sync of ${id} failed`, cause).pipe(

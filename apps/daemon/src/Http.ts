@@ -412,8 +412,8 @@ const counts = Effect.fnUntraced(function* (config: Config) {
 
 const changeState = Effect.fnUntraced(function* (id: number, change: Write.StateChange) {
   yield* listed(id);
-  yield* Write.changeState([ConversationId.make(id)], change);
-  return row(yield* listed(id));
+  const changed = yield* Write.changeState([ConversationId.make(id)], change);
+  return { row: row(yield* listed(id)), changed };
 });
 
 const dieOnStoreError = <A, R>(
@@ -452,25 +452,37 @@ const stateHandlers = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const daemon = yield* Daemon;
     const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    const announce = (ids: ReadonlyArray<number>) =>
+      ids.length === 0 ? Effect.void : daemon.events.publish({ type: "state", ids });
+    const respond = (id: number, change: Write.StateChange) =>
+      changeState(id, change).pipe(
+        withSql,
+        dieOnStoreError,
+        Effect.tap(({ changed }) => announce(changed)),
+        Effect.map(({ row }) => row),
+      );
     return handlers.handleAll({
       read: ({ params: { id }, payload: { seq } }) =>
-        changeState(id, { _tag: "Read", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
+        respond(id, { _tag: "Read", seq: Seq.make(seq) }),
       unread: ({ params: { id }, payload: { seq } }) =>
-        changeState(
+        respond(
           id,
           seq === undefined ? { _tag: "Unread" } : { _tag: "Unread", seq: Seq.make(seq) },
-        ).pipe(withSql, dieOnStoreError),
+        ),
       done: ({ params: { id }, payload: { seq } }) =>
-        changeState(id, { _tag: "Done", seq: Seq.make(seq) }).pipe(withSql, dieOnStoreError),
-      mute: ({ params: { id } }) =>
-        changeState(id, { _tag: "Mute" }).pipe(withSql, dieOnStoreError),
-      restore: ({ params: { id } }) =>
-        changeState(id, { _tag: "Restore" }).pipe(withSql, dieOnStoreError),
+        respond(id, { _tag: "Done", seq: Seq.make(seq) }),
+      mute: ({ params: { id } }) => respond(id, { _tag: "Mute" }),
+      restore: ({ params: { id } }) => respond(id, { _tag: "Restore" }),
       clear: ({ payload: { view, seq } }) =>
         Effect.gen(function* () {
           yield* knownView((yield* daemon.state).config, view);
-          return { cleared: yield* Write.clear(view, Seq.make(seq)) };
-        }).pipe(withSql, dieOnStoreError),
+          return yield* Write.clear(view, Seq.make(seq));
+        }).pipe(
+          withSql,
+          dieOnStoreError,
+          Effect.tap(({ changed }) => announce(changed)),
+          Effect.map(({ cleared }) => ({ cleared })),
+        ),
     });
   }),
 );
@@ -674,7 +686,22 @@ const digestHandlers = HttpApiBuilder.group(
   }),
 );
 
-const handlers = Layer.mergeAll(weirHandlers, viewHandlers, stateHandlers, digestHandlers);
+const eventsHandlers = HttpApiBuilder.group(
+  Api,
+  "events",
+  Effect.fnUntraced(function* (handlers) {
+    const { events } = yield* Daemon;
+    return handlers.handle("events", () => events.respond);
+  }),
+);
+
+const handlers = Layer.mergeAll(
+  weirHandlers,
+  viewHandlers,
+  stateHandlers,
+  digestHandlers,
+  eventsHandlers,
+);
 
 const advertise = (home: WeirHome) =>
   Layer.effectDiscard(
@@ -701,6 +728,8 @@ const advertise = (home: WeirHome) =>
             Effect.ignore,
           ),
       );
+      const { events } = yield* Daemon;
+      yield* Effect.addFinalizer(() => events.shutdown);
     }),
   );
 
