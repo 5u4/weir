@@ -23,7 +23,7 @@ const Text = (han: number, total: number) =>
     Schema.isNonEmpty(),
     Schema.makeFilter(
       (text: string) =>
-        ((text.match(/\p{Script=Han}/gu)?.length ?? 0) <= han && text.length <= total) ||
+        ((text.match(/\p{Script=Han}/gu)?.length ?? 0) <= han && [...text].length <= total) ||
         `at most ${han} CJK characters and ${total} characters in total`,
     ),
   );
@@ -45,7 +45,14 @@ export const DigestOutput = Schema.Struct({
       body: Text(80, 160),
       seqs: Seqs,
     }),
-  ).check(Schema.isMinLength(1), Schema.isMaxLength(4)),
+  ).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(4),
+    Schema.makeFilter((topics: ReadonlyArray<{ readonly seqs: ReadonlyArray<number> }>) => {
+      const seqs = topics.flatMap((topic) => topic.seqs);
+      return new Set(seqs).size === seqs.length || "an item belongs to at most one topic";
+    }),
+  ),
 });
 export type DigestOutput = typeof DigestOutput.Type;
 

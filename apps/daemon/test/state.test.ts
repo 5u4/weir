@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
+import * as Database from "@weir/store/Database";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import type { View } from "../src/Api.ts";
 import * as Http from "../src/Http.ts";
 import {
@@ -72,7 +74,7 @@ const start = Effect.gen(function* () {
     client
       .conversation({ params: { id } })
       .pipe(Effect.map(({ items }) => items.map(({ seq }) => seq)));
-  return { client, port, listed, deliver, conversationOf, seqsOf };
+  return { client, port, home, listed, deliver, conversationOf, seqsOf };
 });
 
 const ids = (rows: ReadonlyArray<{ readonly id: number }>) => rows.map(({ id }) => id);
@@ -287,6 +289,33 @@ describe("views and counts", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("senders take each unread conversation's latest sender who is not me", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf } = yield* start;
+      yield* deliver([
+        item("i1", "busy", 1, { title: "Work busy", from: { name: "A", address: "a@x.example" } }),
+        item("i2", "busy", 2, { from: { name: "B", address: "b@x.example" } }),
+        item("i3", "busy", 3, { from: { name: "C", address: "c@x.example" } }),
+        item("i4", "quiet", 4, {
+          title: "Work quiet",
+          from: { name: "D", address: "d@x.example" },
+        }),
+      ]);
+      const quiet = yield* conversationOf("Work quiet");
+      yield* client.read({ params: { id: quiet }, payload: { seq: 1_000_000 } });
+      yield* deliver([item("i5", "quiet", 5, { from: { name: "Me", address: "me@example.com" } })]);
+
+      const counts = yield* client.counts();
+      expect(counts.tags.find(({ name }) => name === "Work")).toMatchObject({
+        unread: 2,
+        senders: [
+          { name: "D", address: "d@x.example" },
+          { name: "C", address: "c@x.example" },
+        ],
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.live("unknown tags and conversations are 404, clearing the cleared view is 400", () =>
     Effect.gen(function* () {
       const { client, port } = yield* start;
@@ -384,6 +413,65 @@ describe("search", () => {
 
       const empty = yield* client.search({ query: { q: "" } });
       expect(empty.conversations.every(({ hits }) => hits.length === 0)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("digest topics and headlines produce hit lines", () =>
+    Effect.gen(function* () {
+      const { client, home, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("j1", "rollout", 1, { title: "Rollout", bodyNew: "kickoff" }),
+        item("j2", "rollout", 2, { bodyNew: "canary looks good" }),
+        item("j3", "rollout", 3, { bodyNew: "thanks" }),
+      ]);
+      const id = yield* conversationOf("Rollout");
+      const [s1, s2, s3] = yield* seqsOf(id);
+      if (s1 === undefined || s2 === undefined || s3 === undefined) {
+        throw new Error("expected three items");
+      }
+      const digestId = 7;
+      const topics = [
+        { title: "Canary plan", state: "open", body: "Ship the canary Friday", seqs: [s1, s2] },
+        { title: "Wrap-up", state: "fyi", body: "Thanked the team", seqs: [s3] },
+      ];
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO digest
+          (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+          VALUES (${digestId}, ${id}, ${s1}, ${s3}, 'Canary rollout approved',
+            ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+        yield* sql`INSERT INTO search_fts (rowid, text, conversation_id, item_seq, digest_id)
+          VALUES (${-digestId}, 'Canary rollout approved', ${id}, NULL, ${digestId})`;
+      }).pipe(Effect.provide(Database.layer(home.db)));
+
+      const { conversations } = yield* client.search({ query: { q: "canary" } });
+      const topic = {
+        field: "topic",
+        digest_id: digestId,
+        title: [
+          { text: "Canary", mark: true },
+          { text: " plan", mark: false },
+        ],
+        text: [
+          { text: "Ship the ", mark: false },
+          { text: "canary", mark: true },
+          { text: " Friday", mark: false },
+        ],
+      };
+      expect(conversations.find((conversation) => conversation.id === id)?.hits).toEqual([
+        { ...topic, seq: s2 },
+        { ...topic, seq: s1 },
+        {
+          field: "headline",
+          seq: null,
+          digest_id: digestId,
+          title: null,
+          text: [
+            { text: "Canary", mark: true },
+            { text: " rollout approved", mark: false },
+          ],
+        },
+      ]);
     }).pipe(Effect.scoped),
   );
 });

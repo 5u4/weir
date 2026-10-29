@@ -282,15 +282,23 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeUnreadSenders(
     yield* sql`WITH ${listed(sql)},
-      sender AS (
-        SELECT conversation_tag.tag, item.from_name AS name, item.from_address AS address,
-          max(item.occurred_at) AS at
+      latest AS (
+        SELECT listed.id AS conversation_id, item.from_name AS name,
+          item.from_address AS address, item.occurred_at AS at,
+          row_number() OVER (
+            PARTITION BY listed.id ORDER BY item.occurred_at DESC, item.seq DESC
+          ) AS position
         FROM listed
         JOIN item ON item.conversation_id = listed.id AND item.deleted_at IS NULL
-          AND item.seq > listed.seen_seq AND item.from_me = 0
-        LEFT JOIN conversation_tag ON conversation_tag.conversation_id = listed.id
+          AND item.from_me = 0
         WHERE listed.state = 'unread'
-        GROUP BY conversation_tag.tag, lower(item.from_address)
+      ),
+      sender AS (
+        SELECT conversation_tag.tag, latest.name, latest.address, max(latest.at) AS at
+        FROM latest
+        LEFT JOIN conversation_tag ON conversation_tag.conversation_id = latest.conversation_id
+        WHERE latest.position = 1
+        GROUP BY conversation_tag.tag, lower(latest.address)
       ),
       ranked AS (
         SELECT *, row_number() OVER (PARTITION BY tag ORDER BY at DESC, address) AS rank FROM sender
@@ -301,10 +309,38 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
 
 const decodeDigests = Schema.decodeUnknownEffect(Schema.Array(DigestRow));
 
-export const digests = Effect.fnUntraced(function* (conversationId: ConversationId) {
+export const digests = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+) {
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeDigests(
-    yield* sql`SELECT * FROM digest WHERE conversation_id = ${conversationId} ORDER BY from_seq, id`,
+    yield* sql`SELECT * FROM digest WHERE ${sql.in("conversation_id", conversationIds)}
+      ORDER BY conversation_id, from_seq, id`,
+  );
+});
+
+export const HitItem = Schema.Struct({
+  conversationId: ConversationId,
+  seq: Seq,
+  fromName: Schema.String,
+  fromAddress: Schema.String,
+  bodyNew: Schema.String,
+  streamName: Schema.String,
+});
+export type HitItem = typeof HitItem.Type;
+
+const decodeHitItems = Schema.decodeUnknownEffect(Schema.Array(HitItem));
+
+export const hitItems = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeHitItems(
+    yield* sql`SELECT item.conversation_id, item.seq, item.from_name, item.from_address,
+        item.body_new, stream.name AS stream_name
+      FROM item JOIN stream ON stream.id = item.stream_id
+      WHERE item.deleted_at IS NULL AND ${sql.in("item.conversation_id", conversationIds)}
+      ORDER BY item.conversation_id, item.occurred_at DESC, item.seq DESC`,
   );
 });
 

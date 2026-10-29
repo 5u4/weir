@@ -37,6 +37,9 @@ describe("DigestOutput", () => {
     ["headline", latin(70), true],
     ["headline", latin(71), false],
     ["headline", ` ${latin(70)} `, true],
+    ["headline", "𠀀".repeat(40), true],
+    ["headline", "😀".repeat(70), true],
+    ["headline", "😀".repeat(71), false],
     ["title", han(16), true],
     ["title", han(17), false],
     ["title", latin(40), true],
@@ -77,6 +80,21 @@ describe("DigestOutput", () => {
     [[1.5], false],
   ])("seqs %j: accepted = %s", (seqs, accepted) => {
     const candidate = { ...output, topics: [{ ...topic, seqs }] };
+    if (accepted) expect(() => decode(candidate)).not.toThrow();
+    else expect(() => decode(candidate)).toThrow();
+  });
+
+  it.each([
+    [[[1, 2], [3]], true],
+    [
+      [
+        [1, 2],
+        [2, 3],
+      ],
+      false,
+    ],
+  ])("topic seqs %j: accepted = %s", (topicSeqs, accepted) => {
+    const candidate = { ...output, topics: topicSeqs.map((seqs) => ({ ...topic, seqs })) };
     if (accepted) expect(() => decode(candidate)).not.toThrow();
     else expect(() => decode(candidate)).toThrow();
   });

@@ -1,14 +1,15 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
 import { type Config, untagged } from "@weir/contract/Config";
+import type { Topic } from "@weir/contract/Digest";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import {
   ConversationId,
   type ConversationRow,
+  type DigestRow,
   type ListedConversationRow,
   Seq,
-  type SourcedItemRow,
 } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import { match, ruleInput } from "@weir/sync/Match";
@@ -182,6 +183,7 @@ const row = (conversation: ListedConversationRow): Row => ({
 
 const hitLinesPerConversation = 3;
 const bodySnippetLength = 120;
+const headlineSnippetLength = 60;
 
 const termPattern = (query: string) => {
   const terms = query
@@ -207,52 +209,80 @@ const segments = (text: string, pattern: RegExp) => {
   return result;
 };
 
-const snippet = (text: string, matchAt: number) => {
-  if (text.length <= bodySnippetLength) return text;
-  const start = Math.max(
-    0,
-    Math.min(matchAt - bodySnippetLength / 3, text.length - bodySnippetLength),
-  );
-  const end = start + bodySnippetLength;
+const snippet = (text: string, matchAt: number, length: number) => {
+  if (text.length <= length) return text;
+  const start = Math.max(0, Math.min(matchAt - length / 3, text.length - length));
+  const end = start + length;
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 };
 
 const hitLines = (
-  items: ReadonlyArray<SourcedItemRow>,
-  streamNames: ReadonlyMap<number, string>,
+  items: ReadonlyArray<Read.HitItem>,
+  digests: ReadonlyArray<DigestRow>,
   pattern: RegExp,
-): Array<Line> =>
-  items
-    .toSorted(
-      (left, right) =>
-        DateTime.toEpochMillis(right.occurredAt) - DateTime.toEpochMillis(left.occurredAt) ||
-        right.seq - left.seq,
-    )
-    .flatMap((item): Array<Line> => {
-      const fields = [
-        ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
-        [
-          "from",
-          item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`,
-        ],
-        ["source", streamNames.get(item.streamId) ?? ""],
-      ] as const;
-      for (const [field, text] of fields) {
-        const matchAt = text.search(pattern);
-        if (matchAt === -1) continue;
-        return [
-          {
-            field,
-            seq: item.seq,
-            digest_id: null,
-            title: null,
-            text: segments(field === "body" ? snippet(text, matchAt) : text, pattern),
-          },
-        ];
+): Array<Line> => {
+  const citing = new Map<number, { readonly digest: DigestRow; readonly topic: Topic }>();
+  for (const digest of digests) {
+    for (const topic of digest.topics) {
+      for (const seq of topic.seqs) {
+        if (!citing.has(seq)) citing.set(seq, { digest, topic });
       }
-      return [];
-    })
-    .slice(0, hitLinesPerConversation);
+    }
+  }
+  const itemLines = items.flatMap((item): Array<Line> => {
+    const cited = citing.get(item.seq);
+    if (
+      cited !== undefined &&
+      (cited.topic.title.search(pattern) !== -1 || cited.topic.body.search(pattern) !== -1)
+    ) {
+      return [
+        {
+          field: "topic",
+          seq: item.seq,
+          digest_id: cited.digest.id,
+          title: segments(cited.topic.title, pattern),
+          text: segments(cited.topic.body, pattern),
+        },
+      ];
+    }
+    const fields = [
+      ["body", item.bodyNew.replace(/\s+/gu, " ").trim()],
+      ["from", item.fromName === "" ? item.fromAddress : `${item.fromName} <${item.fromAddress}>`],
+      ["source", item.streamName],
+    ] as const;
+    for (const [field, text] of fields) {
+      const matchAt = text.search(pattern);
+      if (matchAt === -1) continue;
+      return [
+        {
+          field,
+          seq: item.seq,
+          digest_id: null,
+          title: null,
+          text: segments(
+            field === "body" ? snippet(text, matchAt, bodySnippetLength) : text,
+            pattern,
+          ),
+        },
+      ];
+    }
+    return [];
+  });
+  const headlineLines = digests.toReversed().flatMap((digest): Array<Line> => {
+    const matchAt = digest.headline.search(pattern);
+    if (matchAt === -1) return [];
+    return [
+      {
+        field: "headline",
+        seq: null,
+        digest_id: digest.id,
+        title: null,
+        text: segments(snippet(digest.headline, matchAt, headlineSnippetLength), pattern),
+      },
+    ];
+  });
+  return [...itemLines, ...headlineLines].slice(0, hitLinesPerConversation);
+};
 
 const sendersPerView = 3;
 
@@ -305,13 +335,15 @@ const viewHandlers = HttpApiBuilder.group(
   "view",
   Effect.fnUntraced(function* (handlers) {
     const daemon = yield* Daemon;
-    const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    const sql = yield* SqlClient.SqlClient;
+    const withSql = Effect.provideService(SqlClient.SqlClient, sql);
     return handlers.handleAll({
       conversations: ({ query: { view } }) =>
         Effect.gen(function* () {
           yield* knownView((yield* daemon.state).config, view);
-          const seq = yield* Read.maxSeq();
-          const conversations = yield* Read.conversations(view);
+          const { seq, conversations } = yield* sql.withTransaction(
+            Effect.all({ seq: Read.maxSeq(), conversations: Read.conversations(view) }),
+          );
           return { seq, conversations: conversations.map(row) };
         }).pipe(withSql, dieOnStoreError),
       counts: () =>
@@ -389,8 +421,14 @@ const weirHandlers = HttpApiBuilder.group(
             (yield* Read.conversations({ _tag: "Ids", ids })).map((listed) => [listed.id, listed]),
           );
           const pattern = termPattern(q);
-          const streamNames = new Map((yield* Read.streams()).map(({ id, name }) => [id, name]));
-          const items = pattern === null ? [] : yield* Read.liveItems({ conversationIds: ids });
+          const items = Map.groupBy(
+            pattern === null ? [] : yield* Read.hitItems(ids),
+            ({ conversationId }) => conversationId,
+          );
+          const digests = Map.groupBy(
+            pattern === null ? [] : yield* Read.digests(ids),
+            ({ conversationId }) => conversationId,
+          );
           return {
             conversations: found.flatMap(({ id }) => {
               const listed = rows.get(id);
@@ -401,11 +439,7 @@ const weirHandlers = HttpApiBuilder.group(
                   hits:
                     pattern === null
                       ? []
-                      : hitLines(
-                          items.filter(({ conversationId }) => conversationId === id),
-                          streamNames,
-                          pattern,
-                        ),
+                      : hitLines(items.get(id) ?? [], digests.get(id) ?? [], pattern),
                 },
               ];
             }),
@@ -419,7 +453,7 @@ const weirHandlers = HttpApiBuilder.group(
             return yield* new NotFound({ message: `no conversation ${id}` });
           }
           const { conversation, items, tags } = detail.value;
-          const digests = yield* Read.digests(conversation.id);
+          const digests = yield* Read.digests([conversation.id]);
           return {
             ...summary(conversation),
             first_at: DateTime.formatIso(conversation.firstAt),
