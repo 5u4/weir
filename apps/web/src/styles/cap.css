@@ -1,7 +1,22 @@
+@property --fl {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --fr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 @layer components {
   .cws {
     --fl: var(--spacing-0);
     --fr: var(--spacing-0);
+    transition:
+      --fl var(--duration-fast) var(--ease-standard),
+      --fr var(--duration-fast) var(--ease-standard);
     mask-image: linear-gradient(
       90deg,
       transparent calc(var(--fl) - var(--spacing-3\.5)),

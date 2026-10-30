@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { Chip, hitStep, SentenceWidget } from "./Cap.tsx";
+import { Chip, hitStep, rollOf, SentenceWidget } from "./Cap.tsx";
 import type { Widget } from "./Notch.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
@@ -46,6 +46,28 @@ describe.each([
       expect(anchor.attr("title")).toBe(qualifier);
     },
   );
+});
+
+describe("count roll and chip pop", () => {
+  it.each([
+    ["a higher count rolls up", 4, 5, "up"],
+    ["a lower count rolls down", 5, 4, "down"],
+  ] as const)("%s", (_, from, to, roll) => {
+    expect(rollOf(from, to)).toBe(roll);
+  });
+
+  it.each([
+    [
+      "sentence",
+      <SentenceWidget key="sentence" widget={widget("updates", "Me", 2)} active="tag:Me" />,
+    ],
+    ["chip", <Chip key="chip" widget={widget("updates", "Me", 2)} active="tag:Me" />],
+  ])("a %s mounted already current neither pops nor rolls", (_, element) => {
+    const markup = renderToStaticMarkup(element);
+    expect(link(markup).attr("aria-current")).toBe("page");
+    expect(markup).not.toContain("data-pop");
+    expect(markup).not.toContain("data-roll");
+  });
 });
 
 describe("Enter in the result pill", () => {

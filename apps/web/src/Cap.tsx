@@ -1,7 +1,7 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { Fragment, type MouseEvent, useCallback, useRef } from "react";
+import { Fragment, type MouseEvent, useCallback, useRef, useState } from "react";
 import { Avatars } from "./Avatar.tsx";
 import { plural } from "./Health.ts";
 import { Link } from "./Link.tsx";
@@ -240,6 +240,38 @@ const widgetClass = (on: boolean) =>
 const widgetCountClass = (tail: boolean) =>
   `mr-em-0.05 inline-block tracking-tighter tabular-nums ${tail ? "font-semibold" : "font-bold"}`;
 
+export type Roll = "up" | "down";
+
+export const rollOf = (from: number, to: number): Roll => (to > from ? "up" : "down");
+
+const useChange = <A, B>(value: A, change: (from: A, to: A) => B): B | undefined => {
+  const [seen, setSeen] = useState<{ readonly value: A; readonly change: B | undefined }>({
+    value,
+    change: undefined,
+  });
+  if (Object.is(seen.value, value)) return seen.change;
+  const next = { value, change: change(seen.value, value) };
+  setSeen(next);
+  return next.change;
+};
+
+function Count({
+  value,
+  className,
+  quick = false,
+}: {
+  value: number;
+  className: string;
+  quick?: boolean;
+}) {
+  const roll = useChange(value, rollOf);
+  return (
+    <span key={value} className={className} data-roll={roll} data-quick={quick || undefined}>
+      {value}
+    </span>
+  );
+}
+
 export function SentenceWidget({
   widget,
   active,
@@ -250,23 +282,25 @@ export function SentenceWidget({
   tail?: boolean;
 }) {
   const on = active === widget.view;
+  const pop = useChange(on, (_, now) => now) === true;
   return (
     <Link
       to={viewRoute(widget.view)}
       current={on}
+      pop={pop}
       className={`${widgetClass(on)} leading-snug no-underline ${on ? "" : widget.kind === "clear" ? "text-cap-2" : "text-cap-1"}`}
       description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
         <>
           <span className={on ? "" : "text-cap-2"}>{widget.name}</span>{" "}
-          <span className={widgetCountClass(tail)}>{widget.count}</span>
+          <Count value={widget.count} className={widgetCountClass(tail)} />
         </>
       ) : (
         <>
           <Avatars senders={widget.senders} on={on} />
           {widget.kind !== "clear" && (
-            <span className={widgetCountClass(tail)}>{widget.count}</span>
+            <Count value={widget.count} className={widgetCountClass(tail)} />
           )}
           {widget.kind !== "clear" && " "}
           <span className={tail ? "font-medium" : "font-semibold"}>{widget.name}</span>
@@ -320,20 +354,21 @@ export function Chip({
   className?: string;
 }) {
   const on = active === widget.view;
+  const pop = useChange(on, (_, now) => now) === true;
   const kind = chipKindClass[widget.kind];
   const tone = on ? "text-on-c" : kind.tone;
   const count = (
-    <span
+    <Count
+      value={widget.count}
       className={`inline-block font-display text-base leading-none tracking-tighter ${kind.count} ${tone}`}
-    >
-      {widget.count}
-    </span>
+    />
   );
   const name = <span className={`${kind.name} ${tone}`}>{widget.name}</span>;
   return (
     <Link
       to={viewRoute(widget.view)}
       current={on}
+      pop={pop}
       className={`cw ${chipShapeClass} px-3.5 no-underline ${on ? "bg-cap-1 text-on-c" : "text-cap-1 hover:bg-cap-hover"} ${className}`}
       description={widgetDescription(widget)}
     >
@@ -395,7 +430,8 @@ function QueryField({ stepping, form }: { stepping: ConversationId | null; form:
         <span className="-my-1 mr-0.5 -ml-1 flex gap-1.5 overflow-x-auto overscroll-x-contain p-1 scrollbar-none">
           {field.chips.map((chip, at) => (
             <span
-              key={chip.key}
+              key={chipText(chip)}
+              data-chip
               className="inline-flex h-7.5 flex-none items-center rounded-full bg-cap-hover pr-0.5 pl-3 font-sans text-md leading-none font-semibold whitespace-nowrap text-cap-1"
             >
               <span className="mr-0.5 font-medium text-cap-2">{chip.key}:</span>
@@ -454,7 +490,7 @@ function GroupWidget({ group, on }: { group: ResultGroup; on: boolean }) {
       onClick={() => setGroup(on ? Option.none() : Option.some(group.view))}
     >
       <Avatars senders={group.senders} className="-top-em-0.05 mr-em-0.1" on={on} />
-      <span className={widgetCountClass(false)}>{group.count}</span>{" "}
+      <Count value={group.count} className={widgetCountClass(false)} quick />{" "}
       <span className="font-semibold">{group.name}</span>
     </button>
   );
