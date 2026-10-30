@@ -244,14 +244,21 @@ export type Roll = "up" | "down";
 
 export const rollOf = (from: number, to: number): Roll => (to > from ? "up" : "down");
 
+export type Seen<A, B> = { readonly value: A; readonly change: B | undefined };
+
+export const changeOf = <A, B>(
+  seen: Seen<A, B>,
+  value: A,
+  change: (from: A, to: A) => B,
+): Seen<A, B> =>
+  Object.is(seen.value, value) ? seen : { value, change: change(seen.value, value) };
+
+export const popOf = (_: boolean, now: boolean) => now;
+
 const useChange = <A, B>(value: A, change: (from: A, to: A) => B): B | undefined => {
-  const [seen, setSeen] = useState<{ readonly value: A; readonly change: B | undefined }>({
-    value,
-    change: undefined,
-  });
-  if (Object.is(seen.value, value)) return seen.change;
-  const next = { value, change: change(seen.value, value) };
-  setSeen(next);
+  const [seen, setSeen] = useState<Seen<A, B>>({ value, change: undefined });
+  const next = changeOf(seen, value, change);
+  if (next !== seen) setSeen(next);
   return next.change;
 };
 
@@ -282,7 +289,7 @@ export function SentenceWidget({
   tail?: boolean;
 }) {
   const on = active === widget.view;
-  const pop = useChange(on, (_, now) => now) === true;
+  const pop = useChange(on, popOf) === true;
   return (
     <Link
       to={viewRoute(widget.view)}
@@ -354,7 +361,7 @@ export function Chip({
   className?: string;
 }) {
   const on = active === widget.view;
-  const pop = useChange(on, (_, now) => now) === true;
+  const pop = useChange(on, popOf) === true;
   const kind = chipKindClass[widget.kind];
   const tone = on ? "text-on-c" : kind.tone;
   const count = (

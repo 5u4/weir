@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { Chip, hitStep, rollOf, SentenceWidget } from "./Cap.tsx";
+import { Chip, changeOf, hitStep, popOf, rollOf, type Seen, SentenceWidget } from "./Cap.tsx";
 import type { Widget } from "./Notch.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
@@ -48,12 +48,27 @@ describe.each([
   );
 });
 
+const rerender = <A, B>(values: ReadonlyArray<A>, change: (from: A, to: A) => B) => {
+  let seen: Seen<A, B> = { value: values[0] as A, change: undefined };
+  const renders = [seen];
+  for (const value of values.slice(1)) {
+    seen = changeOf(seen, value, change);
+    renders.push(seen);
+  }
+  return renders;
+};
+
 describe("count roll and chip pop", () => {
-  it.each([
-    ["a higher count rolls up", 4, 5, "up"],
-    ["a lower count rolls down", 5, 4, "down"],
-  ] as const)("%s", (_, from, to, roll) => {
-    expect(rollOf(from, to)).toBe(roll);
+  it("a count rolls up when it rises, down when it falls, and keeps its roll on an unchanged rerender", () => {
+    const renders = rerender([4, 5, 5, 3, 7], rollOf);
+    expect(renders.map(({ change }) => change)).toEqual([undefined, "up", "up", "down", "up"]);
+    expect(renders[2]).toBe(renders[1]);
+  });
+
+  it("a view pops each time it is picked again, and not on an unchanged rerender", () => {
+    const renders = rerender([false, true, true, false, true], popOf);
+    expect(renders.map(({ change }) => change)).toEqual([undefined, true, true, false, true]);
+    expect(renders[2]).toBe(renders[1]);
   });
 
   it.each([
