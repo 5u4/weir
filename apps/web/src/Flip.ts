@@ -1,4 +1,5 @@
 import { flushSync } from "react-dom";
+import { covered, quiet } from "./HeaderFold.ts";
 
 export type Key = string;
 
@@ -300,7 +301,8 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
     ? (topic.closest<HTMLElement>(".dc") ?? topic)
     : topic;
   const view = scroller.getBoundingClientRect();
-  const inside = open && anchor.getBoundingClientRect().top < view.top;
+  const ceiling = view.top + covered(article);
+  const inside = open && anchor.getBoundingClientRect().top < ceiling;
   const paint = () => {
     unfolding = false;
     const was = measure(article, false);
@@ -308,7 +310,8 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
     reset(article);
     flushSync(apply);
     if (!anchor.isConnected) return;
-    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? view.top : top);
+    quiet();
+    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? ceiling : top);
     if (inside) return flag(anchor, "data-land");
     const now = measure(article, false);
     for (const [key, by] of flipPlan(was.units, now.units, everywhere).move) {
@@ -394,6 +397,7 @@ const land = ({ article, layout: was, opacity }: Before, restore: () => void) =>
   const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
   if (scroller === null || layer === null) return;
   flushSync(() => undefined);
+  quiet();
   restore();
   reset(article);
   layer.replaceChildren();
@@ -431,6 +435,7 @@ const land = ({ article, layout: was, opacity }: Before, restore: () => void) =>
 let armed: Before | null = null;
 
 export const before = (article: Element | null) => {
+  quiet();
   armed = look(article);
   return armed;
 };

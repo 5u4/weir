@@ -241,6 +241,7 @@
   --scale-press-deep: 92%;
   --scale-dot: 30%;
   --scale-enter: 80%;
+  --scale-fold: 70%;
   --rotate-flip: 180deg;
   --translate-lift: 4px;
   --outline-width-hit: 2.5px;
@@ -381,6 +382,7 @@
 
   --z-index-raised: 2;
   --z-index-pin: 3;
+  --z-index-ctx: 4;
   --z-index-dock: 20;
   --z-index-cap: 40;
 

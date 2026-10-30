@@ -8,6 +8,7 @@ import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./
 import type { Range } from "./Digest.ts";
 import { type DockAction, dockActions } from "./Dock.ts";
 import { follow } from "./Flip.ts";
+import { covered, quiet } from "./HeaderFold.ts";
 import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
@@ -210,16 +211,32 @@ export const pins = Atom.family((_: ConversationId) =>
   Atom.make<ReadonlyMap<TopicKey, number>>(new Map()).pipe(Atom.setIdleTTL(0)),
 );
 
+export const headerFold = Atom.family((_: ConversationId) =>
+  Atom.make(false).pipe(Atom.setIdleTTL(0)),
+);
+
 const openArticle = ".reader .r-scroll:not([hidden]) > article";
 
 export const following = Atom.family((id: ConversationId) =>
   Atom.make((get) => {
-    get.subscribe(conversation(id), (result) => {
-      if (AsyncResult.isSuccess(result) && !result.waiting) {
-        follow(document.querySelector(openArticle));
-      }
-    });
-    get.subscribe(digestRun(id), () => follow(document.querySelector(openArticle)));
+    const shape = () => {
+      const detail = get.once(conversation(id));
+      return AsyncResult.isSuccess(detail)
+        ? `${detail.value.items.length}:${detail.value.digests.map((digest) => digest.id)}:${get.once(digestRun(id))._tag}`
+        : null;
+    };
+    let shown = shape();
+    const changed = () => {
+      const next = shape();
+      if (next === shown) return;
+      const first = shown === null;
+      shown = next;
+      if (first) return;
+      quiet();
+      follow(document.querySelector(openArticle));
+    };
+    get.subscribe(conversation(id), changed);
+    get.subscribe(digestRun(id), changed);
   }).pipe(Atom.setIdleTTL(0)),
 );
 
@@ -278,12 +295,16 @@ const scrollToHit = (key: string, smooth: boolean) =>
         ? (target.closest(".sg") ?? target)
         : target;
     const view = scroller.getBoundingClientRect();
+    const head = pin?.getBoundingClientRect();
     const top =
       anchor.getBoundingClientRect().top -
       view.top -
-      (pin?.getBoundingClientRect().height ?? 0) -
+      (pin == null || head === undefined
+        ? covered(scroller)
+        : Number.parseFloat(getComputedStyle(pin).top) + head.height) -
       24;
     const mark = target.querySelector("mark")?.getBoundingClientRect();
+    quiet();
     scroller.scrollTo({
       top:
         scroller.scrollTop +
@@ -310,6 +331,7 @@ export const jumpTo = Atom.writable(
     if (!AsyncResult.isSuccess(detail) || hit === undefined) return;
     ctx.set(hitCursor(id), { key: hitKey(hit), at });
     ctx.set(readerUi(id), reveal(ctx.get(readerUi(id)), detail.value, hit));
+    ctx.set(headerFold(id), true);
     scrollToHit(hitKey(hit), smooth);
   },
 );

@@ -129,6 +129,53 @@
     animation: vt-fade-out var(--duration-base) linear forwards;
   }
 
+  [data-ctx] > div {
+    transition:
+      translate var(--duration-enter) var(--ease-glide),
+      opacity var(--duration-base) var(--ease-standard),
+      visibility var(--duration-fast);
+  }
+
+  :where([data-folded]) > [data-ctx] > div {
+    translate: 0 -100%;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      translate var(--duration-spring) var(--ease-glide),
+      opacity var(--duration-base) var(--ease-in) var(--duration-fast),
+      visibility var(--duration-spring);
+  }
+
+  [data-ctx] > button {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(calc(var(--spacing-3\.5) * -1)) scaleX(var(--scale-fold));
+    transition:
+      transform var(--duration-spring) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard),
+      visibility var(--duration-spring);
+  }
+
+  :where([data-folded]) > [data-ctx] > button {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      transform var(--duration-enter) var(--ease-spring) var(--duration-fast),
+      opacity var(--duration-base) var(--ease-standard) var(--duration-fast),
+      visibility var(--duration-fast);
+  }
+
+  [data-ctx]::before {
+    opacity: 0;
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+
+  :where([data-folded]) > [data-ctx]::before {
+    opacity: 1;
+    transition: opacity var(--duration-base) var(--ease-standard) var(--duration-fast);
+  }
+
   @variant motion-reduce {
     .list [data-k][data-enter] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
@@ -166,6 +213,22 @@
     [data-ghost="travel"],
     [data-ghost="fade"] {
       animation: vt-fade-out var(--duration-fast) linear forwards;
+    }
+
+    [data-ctx] > div,
+    [data-ctx] > button,
+    :where([data-folded]) > [data-ctx] > div,
+    :where([data-folded]) > [data-ctx] > button {
+      translate: none;
+      transform: none;
+      transition:
+        opacity var(--duration-fast) linear,
+        visibility var(--duration-fast);
+    }
+
+    [data-ctx]::before,
+    :where([data-folded]) > [data-ctx]::before {
+      transition: opacity var(--duration-fast) linear;
     }
   }
 

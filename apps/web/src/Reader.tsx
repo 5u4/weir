@@ -43,6 +43,7 @@ import {
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
 import { after, before, reshape, unfold } from "./Flip.ts";
+import { covered, quiet, scrolled } from "./HeaderFold.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted, Prose, proseClass } from "./Marked.tsx";
@@ -50,6 +51,7 @@ import { monogram } from "./Notch.ts";
 import {
   dock,
   following,
+  headerFold,
   hitAt,
   landing,
   type Preview,
@@ -86,7 +88,8 @@ const fadeClass = "opacity-faded transition-opacity duration-base";
 
 const bleedClass = "-mx-bleed -mt-1.5 rounded-3xl px-bleed py-1.5";
 
-const pinClass = "pin sticky top-0 z-pin bg-pin backdrop-blur-lg backdrop-saturate-pin";
+const pinClass =
+  "pin sticky top-0 z-pin bg-pin backdrop-blur-lg backdrop-saturate-pin in-data-folded:top-14";
 
 const lineClass = "flex min-h-8 items-center gap-3 text-xs text-ink-3 tabular-nums";
 
@@ -341,7 +344,10 @@ function Long({
         setUi((current) => ({ ...current, long: new Set(current.long).add(seq) }));
         const target = event.target;
         if (target instanceof HTMLElement) {
-          requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
+          requestAnimationFrame(() => {
+            quiet();
+            target.scrollIntoView({ block: "center" });
+          });
         }
       };
       body.addEventListener("focusin", reveal);
@@ -377,14 +383,15 @@ function Long({
             return { ...current, long };
           });
           if (open) {
-            requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              quiet();
               bubble?.scrollIntoView({
                 block: "nearest",
                 behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
                   ? "auto"
                   : "smooth",
-              }),
-            );
+              });
+            });
           }
         }}
       >
@@ -1153,13 +1160,15 @@ const land = (root: HTMLElement | null) => {
   const scroller = root?.closest(".r-scroll");
   if (root === null || scroller == null) return;
   const marker = root.querySelector(".lr");
+  quiet();
   scroller.scrollTop =
     marker === null
       ? scroller.scrollHeight
       : scroller.scrollTop +
         marker.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top -
-        24;
+        covered(root) -
+        16;
 };
 
 const hold = (anchor: Element | null | undefined, digests: ReadonlyArray<number>) => {
@@ -1172,7 +1181,9 @@ const hold = (anchor: Element | null | undefined, digests: ReadonlyArray<number>
     const moved =
       scroller.querySelector(`[data-gap="${anchor.dataset.gap}"]`) ??
       scroller.querySelector(`[data-k="d-${digests[0]}"]`);
-    if (moved !== null) scroller.scrollTop += moved.getBoundingClientRect().top - top;
+    if (moved === null) return;
+    quiet();
+    scroller.scrollTop += moved.getBoundingClientRect().top - top;
   };
 };
 
@@ -1194,6 +1205,7 @@ function Conversation({
   const landed = useRef(false);
   const article = useRef<HTMLElement | null>(null);
   const [ui, setUi] = useAtom(readerUi(id));
+  const [folded, setFolded] = useAtom(headerFold(id));
   const { view } = useAtomValue(route);
   const hue = tagHue(useAtomValue(tagOrder), view, detail);
   const run = useAtomValue(digestRun(id));
@@ -1247,6 +1259,7 @@ function Conversation({
   return (
     <article
       className="relative px-reader pt-2 pb-30"
+      data-folded={folded || undefined}
       ref={(root) => {
         article.current = root;
         if (hidden || landed.current || root === null) return;
@@ -1256,31 +1269,49 @@ function Conversation({
       aria-label={detail.title}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
-      <header className="pb-2">
-        <p className="mt-0 mb-1.5 text-xs text-ink-3">
-          {home !== undefined && (
-            <b className={`font-semibold text-ink-2 ${separatorClass}`}>{home}</b>
-          )}
-          {tags.map((tag) => (
-            <span key={tag} className={separatorClass}>
-              {tag}
+      <header className="pointer-events-none sticky top-0 z-ctx -mx-bleed" data-ctx>
+        <div className="pointer-events-auto bg-island px-bleed pb-2" inert={folded}>
+          <p className="mt-0 mb-1.5 text-xs text-ink-3">
+            {home !== undefined && (
+              <b className={`font-semibold text-ink-2 ${separatorClass}`}>{home}</b>
+            )}
+            {tags.map((tag) => (
+              <span key={tag} className={separatorClass}>
+                {tag}
+              </span>
+            ))}
+            <span className={separatorClass}>{detail.source}</span>
+            <span className={separatorClass}>
+              {newCount > 0 ? `${newCount} new this time` : "Read"}
             </span>
-          ))}
-          <span className={separatorClass}>{detail.source}</span>
-          <span className={separatorClass}>
-            {newCount > 0 ? `${newCount} new this time` : "Read"}
+            <span className={separatorClass}>
+              {plural(detail.items.length, "message")} ·{" "}
+              {plural(participants(detail), "person", "people")}
+            </span>
+            <span className={separatorClass}>
+              {day(detail.first_at)} – {day(detail.last_at)}
+            </span>
+          </p>
+          <h2 className="m-0 font-display text-2xl leading-snug font-extrabold tracking-tight text-balance palt">
+            <Highlighted text={detail.title} pattern={pattern} />
+          </h2>
+        </div>
+        <button
+          type="button"
+          className="pointer-events-auto absolute inset-x-0 top-1 flex h-11 items-center gap-2.5 rounded-full bg-dock px-4 text-left elevation-float backdrop-blur-lg backdrop-saturate-pin"
+          inert={!folded}
+          aria-label={`${detail.title}: show the conversation header`}
+          onClick={() => setFolded(false)}
+        >
+          <span
+            className={`size-2 flex-none rounded-circle ${tintClass[hue === undefined ? "ink" : "tag"]}`}
+            aria-hidden="true"
+          />
+          <b className="min-w-0 truncate text-sm font-bold text-ink">{detail.title}</b>
+          <span className="ml-auto flex-none text-xs text-ink-3 tabular-nums max-wide:hidden">
+            {newCount > 0 ? `${newCount} new` : plural(detail.items.length, "message")}
           </span>
-          <span className={separatorClass}>
-            {plural(detail.items.length, "message")} ·{" "}
-            {plural(participants(detail), "person", "people")}
-          </span>
-          <span className={separatorClass}>
-            {day(detail.first_at)} – {day(detail.last_at)}
-          </span>
-        </p>
-        <h2 className="m-0 font-display text-2xl leading-snug font-extrabold tracking-tight text-balance palt">
-          <Highlighted text={detail.title} pattern={pattern} />
-        </h2>
+        </button>
       </header>
       {blocks.map((block, index) => (
         <BlockView
@@ -1380,10 +1411,13 @@ export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) 
   const result = useAtomValue(conversation(id));
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
+  const [folded, setFolded] = useAtom(headerFold(id));
   useAtomMount(landing(id));
   useAtomMount(following(id));
   const arm = () => dispatch({ _tag: "Input" });
   const track = (event: UIEvent<HTMLElement>) => {
+    const fold = scrolled(folded, event.currentTarget.scrollTop);
+    if (fold !== folded) setFolded(fold);
     const next = new Map<TopicKey, number>();
     for (const head of event.currentTarget.querySelectorAll<HTMLElement>(
       ".pin:not([data-ghosts] *)",
