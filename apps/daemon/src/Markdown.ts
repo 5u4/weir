@@ -1,89 +1,100 @@
+import type { Element, ElementContent, Root, RootContent, Text } from "hast";
 import type * as Mdast from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
-import { gfmFromMarkdown } from "mdast-util-gfm";
-import { gfm } from "micromark-extension-gfm";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype, { type Options } from "remark-rehype";
+import { unified } from "unified";
 
-export type Inline =
-  | { readonly _tag: "Text"; readonly text: string }
-  | { readonly _tag: "Strong" | "Emphasis" | "Delete"; readonly children: ReadonlyArray<Inline> }
-  | { readonly _tag: "InlineCode"; readonly text: string }
-  | {
-      readonly _tag: "Link";
-      readonly href: string | null;
-      readonly title: string | null;
-      readonly children: ReadonlyArray<Inline>;
-    }
-  | { readonly _tag: "ImageAlt"; readonly alt: string }
-  | { readonly _tag: "Break" };
+export type { Root } from "hast";
 
-export type Block =
-  | { readonly _tag: "Paragraph"; readonly children: ReadonlyArray<Inline> }
-  | {
-      readonly _tag: "Heading";
-      readonly depth: 1 | 2 | 3 | 4 | 5 | 6;
-      readonly children: ReadonlyArray<Inline>;
-    }
-  | {
-      readonly _tag: "List";
-      readonly ordered: boolean;
-      readonly start: number | null;
-      readonly items: ReadonlyArray<ReadonlyArray<Block>>;
-    }
-  | { readonly _tag: "Quote"; readonly children: ReadonlyArray<Block> }
-  | { readonly _tag: "Code"; readonly text: string }
-  | { readonly _tag: "Rule" }
-  | { readonly _tag: "Table"; readonly rows: ReadonlyArray<ReadonlyArray<ReadonlyArray<Inline>>> }
-  | { readonly _tag: "Html"; readonly text: string };
-
-export type Visible = ReadonlyArray<Block>;
-
-const options = { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] };
+type Handlers = NonNullable<Options["handlers"]>;
+type State = Parameters<NonNullable<Handlers["text"]>>[0];
 
 const longUrl = 56;
-
 const cacheLimit = 500;
-const trees = new Map<string, Visible>();
+const trees = new Map<string, Root>();
 
-type Definitions = ReadonlyMap<string, string>;
+const text = (value: string): Text => ({ type: "text", value });
 
-const inlineLeaves = (node: Inline): ReadonlyArray<string> => {
-  switch (node._tag) {
-    case "Text":
-    case "InlineCode":
-      return [node.text];
-    case "ImageAlt":
-      return [node.alt];
-    case "Break":
-      return [];
-    case "Strong":
-    case "Emphasis":
-    case "Delete":
-    case "Link":
-      return node.children.flatMap(inlineLeaves);
-  }
+const element = (
+  tagName: string,
+  children: Array<ElementContent>,
+  properties: Element["properties"] = {},
+): Element => ({ type: "element", tagName, properties, children });
+
+const blockParents: Record<string, true> = {
+  root: true,
+  blockquote: true,
+  listItem: true,
+  footnoteDefinition: true,
 };
 
-const blockLeaves = (node: Block): ReadonlyArray<string> => {
-  switch (node._tag) {
-    case "Paragraph":
-    case "Heading":
-      return node.children.flatMap(inlineLeaves);
-    case "List":
-      return node.items.flatMap((item) => item.flatMap(blockLeaves));
-    case "Quote":
-      return node.children.flatMap(blockLeaves);
-    case "Code":
-    case "Html":
-      return [node.text];
-    case "Rule":
-      return [];
-    case "Table":
-      return node.rows.flatMap((row) => row.flatMap((cell) => cell.flatMap(inlineLeaves)));
-  }
+const link = (state: State, url: string | undefined, node: Mdast.Link | Mdast.LinkReference) => {
+  const children = state.all(node);
+  return url === undefined ? children : element("a", children, { dataUrl: url });
 };
 
-const blank = (nodes: ReadonlyArray<Inline>) =>
-  nodes.flatMap(inlineLeaves).every((text) => text.trim() === "");
+const handlers: Handlers = {
+  text: (_, node: Mdast.Text) => text(node.value),
+  inlineCode: (_, node: Mdast.InlineCode) => element("code", [text(node.value)]),
+  break: () => element("br", []),
+  code: (_, node: Mdast.Code) =>
+    node.value === "" ? undefined : element("pre", [element("code", [text(node.value)])]),
+  html: (_, node: Mdast.Html, parent) =>
+    parent !== undefined && blockParents[parent.type] === true
+      ? element("p", [text(node.value)], { className: ["b-html"] })
+      : text(node.value),
+  image: (_, node: Mdast.Image | Mdast.ImageReference) => {
+    const alt = node.alt?.trim() ?? "";
+    return alt === "" ? undefined : element("span", [text(alt)], { className: ["b-img"] });
+  },
+  imageReference: (state, node: Mdast.ImageReference, parent) =>
+    handlers.image?.(state, node, parent),
+  link: (state, node: Mdast.Link) => link(state, node.url, node),
+  linkReference: (state, node: Mdast.LinkReference) =>
+    link(state, state.definitionById.get(node.identifier.toUpperCase())?.url, node),
+  footnoteReference: (_, node: Mdast.FootnoteReference) =>
+    text(`[${node.label ?? node.identifier}]`),
+  footnoteDefinition: (state, node: Mdast.FootnoteDefinition) => state.all(node),
+  list: (state, node: Mdast.List) =>
+    element(
+      node.ordered === true ? "ol" : "ul",
+      state.all(node),
+      node.ordered === true && typeof node.start === "number" && node.start !== 1
+        ? { start: node.start }
+        : {},
+    ),
+  listItem: (state, node: Mdast.ListItem) =>
+    element(
+      "li",
+      state.all(node),
+      typeof node.checked === "boolean" ? { dataTask: node.checked ? "[x] " : "[ ] " } : {},
+    ),
+  table: (state, node: Mdast.Table) => {
+    const row = (cells: Mdast.TableRow, cell: "th" | "td") =>
+      element(
+        "tr",
+        cells.children.map((content) => element(cell, state.all(content))),
+      );
+    const [head, ...rows] = node.children;
+    return element("table", [
+      ...(head === undefined ? [] : [element("thead", [row(head, "th")])]),
+      element(
+        "tbody",
+        rows.map((cells) => row(cells, "td")),
+      ),
+    ]);
+  },
+};
+
+const textOf = (node: ElementContent | RootContent): string =>
+  node.type === "text"
+    ? node.value
+    : node.type === "element"
+      ? node.children.map(textOf).join("")
+      : "";
+
+const blank = (node: Element) => textOf(node).trim() === "";
 
 const safeUrl = (url: string) => {
   try {
@@ -99,153 +110,128 @@ const shortUrl = (url: URL) =>
     ? `${url.host}${url.pathname.slice(0, 24)}…`
     : `${url.host}${url.pathname}`;
 
-const link = (
-  url: string,
-  children: ReadonlyArray<Mdast.PhrasingContent>,
-  definitions: Definitions,
-): Array<Inline> => {
-  const content = inlines(children, definitions);
-  if (blank(content)) return content;
-  const safe = safeUrl(url);
-  if (safe === null) return content;
-  const text = content.length === 1 && content[0]?._tag === "Text" ? content[0].text : null;
-  return text === url && url.length > longUrl && safe.protocol !== "mailto:"
-    ? [
-        {
-          _tag: "Link",
-          href: safe.href,
-          title: url,
-          children: [{ _tag: "Text", text: shortUrl(safe) }],
-        },
-      ]
-    : [{ _tag: "Link", href: safe.href, title: null, children: content }];
+const containers: Record<string, true> = {
+  blockquote: true,
+  ul: true,
+  ol: true,
+  li: true,
+  table: true,
+  thead: true,
+  tbody: true,
+  tr: true,
+};
+const prunedWhenEmpty: Record<string, true> = {
+  blockquote: true,
+  ul: true,
+  ol: true,
+  li: true,
+  strong: true,
+  em: true,
+  del: true,
+};
+const headings: Record<string, true> = {
+  h1: true,
+  h2: true,
+  h3: true,
+  h4: true,
+  h5: true,
+  h6: true,
 };
 
-const inline = (node: Mdast.PhrasingContent, definitions: Definitions): Array<Inline> => {
-  switch (node.type) {
-    case "text":
-    case "html":
-      return node.value === "" ? [] : [{ _tag: "Text", text: node.value }];
-    case "inlineCode":
-      return [{ _tag: "InlineCode", text: node.value }];
-    case "break":
-      return [{ _tag: "Break" }];
-    case "strong":
-    case "emphasis":
-    case "delete": {
-      const children = inlines(node.children, definitions);
-      const tag =
-        node.type === "strong" ? "Strong" : node.type === "emphasis" ? "Emphasis" : "Delete";
-      return children.length === 0 ? [] : [{ _tag: tag, children }];
-    }
-    case "link":
-      return link(node.url, node.children, definitions);
-    case "linkReference": {
-      const url = definitions.get(node.identifier);
-      return url === undefined
-        ? inlines(node.children, definitions)
-        : link(url, node.children, definitions);
-    }
-    case "image":
-    case "imageReference": {
-      const alt = node.alt?.trim() ?? "";
-      return alt === "" ? [] : [{ _tag: "ImageAlt", alt }];
-    }
-    case "footnoteReference":
-      return [{ _tag: "Text", text: `[${node.label ?? node.identifier}]` }];
-  }
-};
-
-const inlines = (
-  nodes: ReadonlyArray<Mdast.PhrasingContent>,
-  definitions: Definitions,
-): Array<Inline> =>
-  nodes
-    .flatMap((node) => inline(node, definitions))
-    .reduce<Array<Inline>>((merged, node) => {
+const merge = (nodes: Array<ElementContent>, inContainer: boolean): Array<ElementContent> =>
+  nodes.reduce<Array<ElementContent>>((merged, node) => {
+    if (node.type === "text") {
+      if (node.value === "" || (inContainer && node.value.trim() === "")) return merged;
       const last = merged.at(-1);
-      if (node._tag === "Text" && last?._tag === "Text") {
-        merged[merged.length - 1] = { _tag: "Text", text: last.text + node.text };
-      } else {
-        merged.push(node);
+      if (last?.type === "text") {
+        merged[merged.length - 1] = text(last.value + node.value);
+        return merged;
       }
-      return merged;
-    }, []);
+    }
+    merged.push(node);
+    return merged;
+  }, []);
 
-const listItem = (item: Mdast.ListItem, definitions: Definitions): ReadonlyArray<Block> => {
-  const content = blocks(item.children, definitions);
-  if (item.checked === null || item.checked === undefined) return content;
-  const box: Inline = { _tag: "Text", text: item.checked ? "[x] " : "[ ] " };
-  const [first, ...rest] = content;
-  return first?._tag === "Paragraph"
-    ? [{ _tag: "Paragraph", children: [box, ...first.children] }, ...rest]
-    : [{ _tag: "Paragraph", children: [box] }, ...content];
+const anchor = (node: Element, url: string): Array<ElementContent> => {
+  const safe = safeUrl(url);
+  if (blank(node) || safe === null) return node.children;
+  const [only] = node.children;
+  const shortened =
+    node.children.length === 1 &&
+    only?.type === "text" &&
+    only.value === url &&
+    url.length > longUrl &&
+    safe.protocol !== "mailto:";
+  return [
+    shortened
+      ? element("a", [text(shortUrl(safe))], {
+          href: safe.href,
+          target: "_blank",
+          rel: ["noreferrer", "noopener"],
+          title: url,
+          className: ["url"],
+        })
+      : element("a", node.children, {
+          href: safe.href,
+          target: "_blank",
+          rel: ["noreferrer", "noopener"],
+        }),
+  ];
 };
 
-const block = (node: Mdast.RootContent, definitions: Definitions): Array<Block> => {
-  switch (node.type) {
-    case "paragraph": {
-      const children = inlines(node.children, definitions);
-      return blank(children) ? [] : [{ _tag: "Paragraph", children }];
-    }
-    case "heading": {
-      const children = inlines(node.children, definitions);
-      return blank(children) ? [] : [{ _tag: "Heading", depth: node.depth, children }];
-    }
-    case "thematicBreak":
-      return [{ _tag: "Rule" }];
-    case "blockquote": {
-      const children = blocks(node.children, definitions);
-      return children.length === 0 ? [] : [{ _tag: "Quote", children }];
-    }
-    case "list": {
-      const items = node.children
-        .map((item) => listItem(item, definitions))
-        .filter((item) => item.length > 0);
-      return items.length === 0
-        ? []
-        : [{ _tag: "List", ordered: node.ordered === true, start: node.start ?? null, items }];
-    }
-    case "code":
-      return node.value === "" ? [] : [{ _tag: "Code", text: node.value }];
-    case "html":
-      return [{ _tag: "Html", text: node.value }];
-    case "table":
-      return [
-        {
-          _tag: "Table",
-          rows: node.children.map((row) =>
-            row.children.map((cell) => inlines(cell.children, definitions)),
-          ),
-        },
-      ];
-    case "footnoteDefinition":
-      return blocks(node.children, definitions);
-    default:
-      return [];
+const clean = (node: ElementContent): Array<ElementContent> => {
+  if (node.type !== "element") return [node];
+  const children = merge(node.children.flatMap(clean), containers[node.tagName] === true);
+  const { dataUrl, dataTask, ...properties } = node.properties;
+  const tagName = headings[node.tagName]
+    ? `h${Math.min(Number(node.tagName.slice(1)) + 2, 6)}`
+    : node.tagName;
+  const next: Element = { ...node, tagName, properties, children };
+  if (typeof dataUrl === "string") return anchor(next, dataUrl);
+  if (typeof dataTask === "string") {
+    const [first, ...rest] = children;
+    next.children =
+      first?.type === "element" && first.tagName === "p"
+        ? [{ ...first, children: [text(dataTask), ...first.children] }, ...rest]
+        : [element("p", [text(dataTask)]), ...children];
   }
+  if ((node.tagName === "p" || headings[node.tagName]) && blank(next)) return [];
+  if (prunedWhenEmpty[node.tagName] && next.children.length === 0) return [];
+  return [next];
 };
 
-const blocks = (nodes: ReadonlyArray<Mdast.RootContent>, definitions: Definitions): Array<Block> =>
-  nodes.flatMap((node) => block(node, definitions));
-
-const collectDefinitions = (node: Mdast.Nodes, into: Map<string, string>) => {
-  if (node.type === "definition" && !into.has(node.identifier)) into.set(node.identifier, node.url);
-  if ("children" in node) for (const child of node.children) collectDefinitions(child, into);
-  return into;
+const rehypeWeir = () => (tree: Root) => {
+  const children = merge(
+    tree.children.flatMap((child) => (child.type === "doctype" ? [] : clean(child))),
+    true,
+  );
+  tree.children = children;
 };
 
-export const visible = (markdown: string): Visible => {
+const processor = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { handlers })
+  .use(rehypeWeir)
+  .freeze();
+
+export const hast = (markdown: string): Root => {
   const cached = trees.get(markdown);
   if (cached !== undefined) return cached;
-  const root = fromMarkdown(markdown, options);
-  const tree = blocks(root.children, collectDefinitions(root, new Map()));
+  const tree = processor.runSync(processor.parse(markdown)) as Root;
   const oldest = trees.keys().next();
   if (trees.size >= cacheLimit && oldest.done !== true) trees.delete(oldest.value);
   trees.set(markdown, tree);
   return tree;
 };
 
-export const leaves = (tree: Visible): ReadonlyArray<string> => tree.flatMap(blockLeaves);
+const textLeaves = (node: RootContent): ReadonlyArray<string> =>
+  node.type === "text"
+    ? [node.value]
+    : node.type === "element"
+      ? node.children.flatMap(textLeaves)
+      : [];
 
-export const plainText = (markdown: string) => leaves(visible(markdown)).join(" ");
+export const leaves = (tree: Root): ReadonlyArray<string> => tree.children.flatMap(textLeaves);
+
+export const plainText = (markdown: string) => leaves(hast(markdown)).join(" ");

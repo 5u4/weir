@@ -1,5 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
-import { type Visible, visible } from "@weir/daemon/Markdown";
+import { hast, type Root } from "@weir/daemon/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -29,7 +29,6 @@ import {
   type TopicView,
   type UncitedKey,
 } from "./Blocks.ts";
-import { Body } from "./Body.tsx";
 import {
   type Action,
   earlierLabel,
@@ -45,7 +44,7 @@ import {
 import type { DockAction } from "./Dock.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
-import { Highlighted } from "./Marked.tsx";
+import { Highlighted, Prose } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
 import {
   dock,
@@ -237,7 +236,7 @@ function Long({
 }: {
   id: ConversationId;
   seq: number;
-  tree: Visible;
+  tree: Root;
   pattern: RegExp | null;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
@@ -268,12 +267,12 @@ function Long({
   const open = ui.long.has(seq);
   return (
     <>
-      <Body
-        tree={tree}
-        pattern={pattern}
+      <div
         className={["body clip", open && "open", over && "over"].filter(Boolean).join(" ")}
         ref={measure}
-      />
+      >
+        <Prose tree={tree} pattern={pattern} />
+      </div>
       <button
         type="button"
         className="more"
@@ -322,7 +321,7 @@ function Bubble({
   found: Found;
 }) {
   const key = hitKey({ _tag: "Item", seq: item.seq });
-  const tree = visible(item.body_new);
+  const tree = hast(item.body_new);
   const hit = found.hits.get(key);
   const [shown, setPreview] = useAtom(preview);
   const run = controls?.run;
@@ -353,7 +352,7 @@ function Bubble({
         }}
       >
         <div className="bb">
-          {tree.length === 0 ? (
+          {tree.children.length === 0 ? (
             <p className="body b-none">(no text)</p>
           ) : (
             <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} />
