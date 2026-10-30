@@ -21,11 +21,17 @@ and delete the old path in the same change, with no compatibility shims.
   there, never a literal, an `[arbitrary]` class or a `(--var)` shorthand. `bun run lint` enforces
   this on class strings and, through `lint/css-tokens.grit`, on literals in CSS other than
   `theme.css` (type, radius, duration and spacing properties, border, outline and underline
-  width and offset lengths, lengths inside transforms and filters, colors, z-index and custom
-  properties).
+  width and offset lengths, lengths inside transforms and filters, scale numbers in transforms and
+  `scale`, easing curves in transitions and animations, colors, z-index and custom properties).
   Tailwind inlines `--shadow-*` values into `shadow-*` classes, so only the color vars inside them
   follow the theme; a shadow whose geometry changes per theme is an `--elevation-*` token, used as
   `elevation-*`.
+- Motion timing lives in CSS: `lint/motion-in-css.grit` bans `.animate()`, assignments to
+  `style.transition*` or `style.animation*`, `setProperty("transition…" | "animation…")`, literal
+  `setTimeout` delays and literal `duration:` values in `apps/web` TS. TS sets `data-*` flags plus
+  measured px and index custom properties; `styles/motion.css` reads tokens.
+  `apps/web/src/Tokens.test.ts` fails on a `var(--…)` in `theme.css` or `styles/*.css` that no
+  stylesheet declares and that is not on its list of vars set at runtime.
 - A class string outside a `className` attribute lives in a camelCase variable or arrow function
   named `…Class` (see `apps/web/src/ListClasses.ts`); beyond `class`/`className` attributes, the
   lint checks only variables named `className(s)`, `classes`, `style(s)` or `…Class`. Styles
