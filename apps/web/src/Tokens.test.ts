@@ -13,6 +13,8 @@ const runtime = [
   "--leave-opacity",
   "--leave-translate",
   "--p",
+  "--view-h",
+  "--view-top",
   "--w",
   "--x",
   "--y",

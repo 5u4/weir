@@ -91,6 +91,19 @@
     animation: vt-fade-in var(--duration-base) var(--ease-standard);
   }
 
+  [data-ghosts] {
+    position: absolute;
+    inset-inline: 0;
+    top: var(--view-top);
+    height: var(--view-h);
+    overflow: clip;
+    pointer-events: none;
+  }
+
+  [data-ghosts]:empty {
+    display: none;
+  }
+
   [data-ghost] {
     position: absolute;
     top: var(--y);

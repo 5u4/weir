@@ -377,14 +377,16 @@ const land = ({ article, layout: was }: Before, restore: () => void) => {
   for (const [key, { i, ...by }] of plan.merge) {
     flag(now.els.get(key), "data-merge", { ...px(by), "--i": Math.min(i, 10) });
   }
-  const origin = layer.getBoundingClientRect();
+  const origin = article.getBoundingClientRect();
+  layer.style.setProperty("--view-top", `${view.top - origin.top}px`);
+  layer.style.setProperty("--view-h", `${view.height}px`);
   for (const [key, to] of plan.ghost) {
     const source = was.els.get(key);
     const unit = was.units.get(key);
     const ghost = source === undefined ? null : ghostOf(source);
     if (ghost === null || unit === undefined) continue;
     ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
-    ghost.style.setProperty("--y", `${unit.top - origin.top}px`);
+    ghost.style.setProperty("--y", `${unit.top - view.top}px`);
     ghost.style.setProperty("--w", `${was.widths.get(key) ?? 0}px`);
     if (to !== null)
       for (const [prop, value] of Object.entries(px(to))) ghost.style.setProperty(prop, value);

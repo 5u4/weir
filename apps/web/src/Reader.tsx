@@ -1295,12 +1295,7 @@ function Conversation({
           lead={index === 0 || blocks[index - 1]?._tag === "Marker"}
         />
       ))}
-      <div
-        className="pointer-events-none absolute inset-0 overflow-clip"
-        data-ghosts
-        aria-hidden="true"
-        inert
-      />
+      <div data-ghosts aria-hidden="true" inert />
     </article>
   );
 }
