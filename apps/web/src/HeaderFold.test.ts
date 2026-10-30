@@ -49,6 +49,27 @@ describe("header fold", () => {
     ).toBe(false);
   });
 
+  it("needs a fresh 24px downward scroll to fold again after the bar reopens it", () => {
+    const folded = scroll(start, false, [
+      [400, 1],
+      [800, 2],
+    ]);
+    expect(folded.folded).toBe(true);
+    expect(scroll(folded.track, false, [[801, 3]]).folded).toBe(false);
+    expect(
+      scroll(folded.track, false, [
+        [801, 3],
+        [824, 4],
+      ]).folded,
+    ).toBe(false);
+    expect(
+      scroll(folded.track, false, [
+        [801, 3],
+        [825, 4],
+      ]).folded,
+    ).toBe(true);
+  });
+
   it("ignores scrolls inside the quiet window and tracks from where they left off", () => {
     const quiet = quieted({ y: 300, down: 0, quietUntil: 0 }, 1000);
     const during = scroll(quiet, false, [
