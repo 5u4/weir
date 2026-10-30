@@ -172,6 +172,8 @@ const rendered = (
           mark: { seen: lastSeq(of), unread: () => {} },
           found,
           controls: null,
+          tint: "ink",
+          lead: at === 0,
         }),
       ),
     ),
@@ -192,7 +194,7 @@ const revealed = (of: Detail, query: string) => {
 const landedOn = (of: Detail, query: string) =>
   revealed(of, query).map(
     ({ key, target }) =>
-      `${key} ${target === null ? "missing" : /<mark>|class="bh"/.test(target) ? "marked" : "unmarked"}`,
+      `${key} ${target === null ? "missing" : /<mark>|title="Matched in /.test(target) ? "marked" : "unmarked"}`,
   );
 
 describe("hits", () => {
@@ -310,7 +312,7 @@ describe("landing on a hit", () => {
       revealed(northwind, query).map(
         ({ key, target }) =>
           `${key} ${
-            /<span class="bh" title="([^"]*)">([^<]*)<\/span>/
+            /<span class="[^"]*" title="(Matched in [^"]*)">([^<]*)<\/span>/
               .exec(target ?? "")
               ?.slice(1)
               .join(" / ") ?? "no tag"
@@ -381,11 +383,11 @@ describe("newsletter body", () => {
     const found = { pattern: null, hits: new Map(), current: null };
     const closed = rendered(newsletter, closedUi, found);
     expect(closed).toContain('<div class="body clip">');
-    expect(closed).toContain('class="more" aria-expanded="false">Show all</button>');
+    expect(closed).toContain('aria-expanded="false">Show all</button>');
     const landed = reveal(closedUi, newsletter, { _tag: "Item", seq: 1, field: "body" });
     const open = rendered(newsletter, landed, found);
     expect(open).toContain('<div class="body clip open">');
-    expect(open).toContain('class="more" aria-expanded="true">Show less</button>');
+    expect(open).toContain('aria-expanded="true">Show less</button>');
   });
 });
 

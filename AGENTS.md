@@ -19,9 +19,9 @@ and delete the old path in the same change, with no compatibility shims.
 - `design/index.html` is the design doc.
 - Web UI styles use the tokens in `apps/web/src/theme.css`. A value with no step gets a new token
   there, never a literal, an `[arbitrary]` class or a `(--var)` shorthand. `bun run lint` enforces
-  this on class strings (files in the `.oxlintrc.json` legacy override still skip the unknown-class
-  check) and, through `lint/css-tokens.grit`, on literals in CSS other than `theme.css` and legacy
-  `app.css` (type, radius, duration and spacing properties, colors, z-index and custom properties).
+  this on class strings and, through `lint/css-tokens.grit`, on literals in CSS other than
+  `theme.css` and legacy `app.css` (type, radius, duration and spacing properties, colors, z-index
+  and custom properties).
   Tailwind inlines `--shadow-*` values into `shadow-*` classes, so only the color vars inside them
   follow the theme; a shadow whose geometry changes per theme is an `--elevation-*` token, used as
   `elevation-*`.
