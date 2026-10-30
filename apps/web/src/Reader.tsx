@@ -532,7 +532,7 @@ function Group({
   const name = group.me ? "Me" : group.from.name.trim() || group.from.address;
   const at = DateTime.makeUnsafe(group.at);
   const avatar = (
-    <span className="pt-5.25 text-av-md">
+    <span className="pt-5 text-av-md">
       <Avatar address={group.from.address} mark={group.me ? "Me" : monogram(group.from)} />
     </span>
   );
@@ -1252,7 +1252,7 @@ function Dock({ id }: { id: ConversationId }) {
   const { actions, target, open } = shown.value;
   return (
     <div
-      className="r-dock absolute inset-x-0 bottom-4 mx-auto flex w-fit max-w-dock items-center gap-1 rounded-full bg-dock p-1.5 elevation-float backdrop-blur-xl backdrop-saturate-dock max-wide:bottom-dock-safe max-wide:gap-0.5"
+      className="r-dock absolute inset-x-0 bottom-4 mx-auto flex w-fit max-w-dock items-center gap-1 rounded-full bg-dock p-1.5 elevation-float backdrop-blur-dock backdrop-saturate-dock max-wide:bottom-dock-safe max-wide:gap-0.5"
       role="group"
       aria-label="Conversation actions"
     >
