@@ -314,6 +314,7 @@ it("a sync that replaces an item or edits its body keeps its scroll from folding
   };
 
   clock = 10_000;
+  await synced(() => undefined);
   expect(jumpFolds()).toBe(true);
   await synced(() => {
     daemon.state.last = 26;
