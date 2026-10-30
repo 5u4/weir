@@ -15,6 +15,7 @@ import {
   live,
   runDigest,
   viewList,
+  visibleRows,
 } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
@@ -40,7 +41,15 @@ const daemon = vi.hoisted(() => {
     }
     const done = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]));
     if (method === "POST" && done !== undefined) {
-      const next: Row = { ...done, cleared_seq: done.last_seq, state: "done" };
+      const body = input instanceof Request ? await input.text() : init?.body;
+      const { seq } = JSON.parse(
+        typeof body === "string" ? body : new TextDecoder().decode(body as Uint8Array),
+      );
+      const next: Row = {
+        ...done,
+        cleared_seq: seq,
+        state: seq >= done.last_seq ? "done" : "read",
+      };
       rows.set(next.id, next);
       return Response.json(next);
     }
@@ -339,6 +348,52 @@ it("Done on a visible row waits for its exit before the row leaves, and drops a 
   await vi.waitFor(() => expect(registry.get(intents).size).toBe(0));
   expect(done()).toHaveLength(1);
   registry.dispose();
+});
+
+it("a reply that lands while Done slides the row out leaves the row shown and unmarked", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  registry.mount(visibleRows("untagged"));
+  await settled(registry, list);
+
+  const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, exited);
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  daemon.rows.set(1, row(1, 6));
+  registry.refresh(list);
+  await settled(registry, list);
+
+  exit();
+  await settled(registry, dismiss);
+  expect(registry.get(visibleRows("untagged")).map(({ id }) => id)).toContain(1);
+  expect(flags.has("data-leave")).toBe(false);
+  registry.dispose();
+});
+
+it("a Done cut off during its exit leaves the row unmarked", async () => {
+  daemon.rows.set(1, row(1, 5));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, new Promise<void>(() => {}));
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  registry.dispose();
+  await vi.waitFor(() => expect(flags.has("data-leave")).toBe(false));
 });
 
 it("Done slides out a row a sliding neighbour overlaps, but not a row the reader sheet covers", async () => {

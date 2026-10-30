@@ -122,3 +122,14 @@ export const leave = (key: Key): Promise<void> | null => {
     () => undefined,
   );
 };
+
+export const stay = (key: Key) => {
+  const row = document.querySelector<HTMLElement>(`.list [data-k="${key}"]`);
+  if (row === null || !row.hasAttribute("data-leave")) return;
+  row.removeAttribute("data-leave");
+  row.style.removeProperty("--leave-translate");
+  row.style.removeProperty("--leave-opacity");
+  row.style.setProperty("--i", "0");
+  row.setAttribute("data-enter", "");
+  settle(row);
+};

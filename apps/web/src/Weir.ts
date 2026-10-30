@@ -17,7 +17,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
-import { capture, leave } from "./Flip.ts";
+import { capture, leave, stay } from "./Flip.ts";
 import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
@@ -390,12 +390,14 @@ export const dismiss = Weir.runtime
       Effect.gen(function* () {
         const client = yield* Weir;
         if (exiting) return;
+        const key = String(target.id);
         const exit = exits(get.registry.get(route).view, act, get.registry.get(searching))
-          ? leave(String(target.id))
+          ? leave(key)
           : null;
         if (exit !== null) {
           exiting = true;
           yield* Effect.promise(() => exit).pipe(
+            Effect.onInterrupt(() => Effect.sync(() => stay(key))),
             Effect.ensuring(
               Effect.sync(() => {
                 exiting = false;
@@ -420,6 +422,7 @@ export const dismiss = Weir.runtime
         const before = get.registry.get(intents).get(target.id);
         const intent = intentFor(act, target);
         get.registry.update(intents, (map) => changed(map, target.id, intent));
+        if (get.registry.get(listedRows).some(({ id }) => id === target.id)) stay(key);
         const params = { id: target.id };
         const request =
           act === "Done"
