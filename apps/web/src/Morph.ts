@@ -62,6 +62,16 @@ export const awaitArrivals = (next: Arrival) => {
 
 const reducedMotion = "(prefers-reduced-motion: reduce)";
 
+type Gate =
+  | { readonly _tag: "Idle" }
+  | {
+      readonly _tag: "Pending";
+      readonly transition: ViewTransition;
+      readonly queued: Array<() => Commit>;
+    };
+
+let gate: Gate = { _tag: "Idle" };
+
 const morph = (open: boolean, after: Scene, apply: () => void) => {
   if (
     typeof document.startViewTransition !== "function" ||
@@ -82,6 +92,13 @@ const morph = (open: boolean, after: Scene, apply: () => void) => {
       },
       types: ["mode", open ? "open" : "close"],
     });
+    const queued: Array<() => Commit> = [];
+    gate = { _tag: "Pending", transition, queued };
+    const drain = () => {
+      gate = { _tag: "Idle" };
+      for (const plan of queued) commit(plan);
+    };
+    transition.updateCallbackDone.then(drain, drain);
     transition.ready.catch(() => undefined);
   } catch {
     apply();
@@ -89,6 +106,10 @@ const morph = (open: boolean, after: Scene, apply: () => void) => {
 };
 
 export const commit = (plan: () => Commit): void => {
+  if (gate._tag === "Pending") {
+    gate.queued.push(plan);
+    return;
+  }
   const { before, after, apply, animate } = plan();
   const motion: Motion = animate ? motionOf(before, after) : { _tag: "None" };
   if (motion._tag === "Mode") morph(motion.open, after, apply);
