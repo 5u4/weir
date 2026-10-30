@@ -1,6 +1,9 @@
 @layer theme, base, components, utilities;
 
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/inter-tight/wght.css";
+@import "@fontsource-variable/noto-sans-sc/wght.css";
 @import "./styles/base.css";
 @import "./styles/shell.css";
 @import "./styles/list.css";
@@ -58,8 +61,9 @@
   --color-alt: color-mix(in oklch, currentColor 62%, transparent);
   --color-alt-rule: color-mix(in oklch, currentColor 30%, transparent);
 
-  --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-display:
+    "Inter Tight Variable", "Noto Sans SC Variable", "PingFang SC", system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Noto Sans SC Variable", "PingFang SC", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --text-2xs: 11.5px;

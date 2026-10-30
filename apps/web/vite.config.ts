@@ -66,6 +66,7 @@ export default defineConfig(
   async ({ command }): Promise<UserConfig> => ({
     plugins: [loopback, tailwindcss({ optimize: false }), react()],
     publicDir: false,
+    build: { assetsInlineLimit: (file) => (file.endsWith(".woff2") ? false : undefined) },
     server: command === "serve" ? { proxy: await proxy() } : {},
   }),
 );

@@ -892,6 +892,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li>不要用 <code>text-wrap: pretty</code>。WebKit 会把整段中文的行长拉平，每行都提前换行，右边空出大片参差空白。只在短标题上用 <code>balance</code>。</li>
 <li>图标用内嵌 SVG。<code>✕</code> 这类字符在 WebKit 里会回退到别的字体，显得又小又细。</li>
 <li>原型的头像来自 Google 的 favicon 服务，会把发件人域名发给 Google。正式版只用首字母头像，不对外发请求。</li>
+<li>原型从 Google Fonts 加载 Inter、Inter Tight 和 Noto Sans SC，同样会对外发请求。正式版把这三个字体打包进前端，由 daemon 从本站提供。中文用 Noto Sans SC，不用系统的苹方：标题和 digest 正文都用了 <code>palt</code>，Noto 会把全角标点压窄，苹方不会。</li>
 <li>原文按 markdown 渲染。sanitize 靠结构：markdown 先解析成语法树，再按白名单逐个节点生成界面，没有白名单的节点不会出现。夹带的 HTML 按文字显示，不执行。图片一张都不加载：有 alt 的显示成弱化的 alt 占位，alt 为空的直接去掉，内容为空的链接（比如只包着空 alt 图片）也一起去掉。链接只保留 http、https 和 mailto，在新窗口打开；正文就是网页地址且超过 56 个字符的链接只显示域名和路径开头，完整网址放在悬停提示里。正文命中行和阅读区里的命中只看显示出来的文字：一个词只出现在链接地址、缩短后看不到的网址部分或图片地址里时，conversation 仍会因为全文索引出现在结果里，但没有正文命中行，阅读区里也没有命中。原型 <code>app.js</code> 的 <code>originalMd</code> 会把看起来像 markdown 的纯文本整理成 markdown，正式版把这一步交给 plugin 的转换，UI 只渲染。</li>
 <li>列表行在原型里能用 Tab 聚焦，但在辅助功能树里不是按钮角色。正式版要改成真正的按钮或链接。</li>
 <li>标签页标题显示未读总数，比如 <code>(3) weir</code>。一个 conversation 带几个 tag 也只算一次。</li>
