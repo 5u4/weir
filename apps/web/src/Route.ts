@@ -107,6 +107,8 @@ const statusShown = Atom.make(false);
 
 const searchShown = Atom.make(false);
 
+export const searchGroup = Atom.make(Option.none<View>());
+
 const countsShown = Atom.make(Option.none<Counts>());
 
 type Shown = {
@@ -270,6 +272,7 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
               if (traversals !== submitted) return;
               ctx.set(statusShown, false);
               if (leaving) ctx.set(searchShown, false);
+              if (target.query === "") ctx.set(searchGroup, Option.none());
               if (Option.isNone(write)) return;
               write.value();
               ctx.setSelf(target);

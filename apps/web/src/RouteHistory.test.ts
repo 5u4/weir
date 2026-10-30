@@ -10,10 +10,10 @@ import {
   href,
   type Navigation,
   route,
+  searchGroup,
   searchOpen,
   statusOpen,
 } from "./Route.ts";
-import { searchGroup } from "./Weir.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://127.0.0.1:9347" }));
 
@@ -157,6 +157,16 @@ describe("leaving search through browser history", () => {
     expect(browser.url()).toBe("/?v=cleared");
     expect(shown()).toBe("/?v=cleared");
     expect(browser.canGoBackTo()).toEqual([]);
+  });
+
+  it("the result group survives typing and is dropped once the query is cleared", () => {
+    const { registry, navigate } = session("/?q=abc");
+    registry.mount(searchGroup);
+    registry.set(searchGroup, Option.some("untagged"));
+    navigate({ _tag: "Type", query: "ab" });
+    expect(registry.get(searchGroup)).toEqual(Option.some("untagged"));
+    navigate({ _tag: "Type", query: "" });
+    expect(registry.get(searchGroup)).toEqual(Option.none());
   });
 });
 

@@ -2,17 +2,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationId, route } from "./Route.ts";
-import {
-  counts,
-  dismiss,
-  found,
-  listMotion,
-  searchGroup,
-  searchResult,
-  viewList,
-  visibleRows,
-} from "./Weir.ts";
+import { ConversationId, route, searchGroup } from "./Route.ts";
+import { counts, dismiss, found, listMotion, searchResult, viewList, visibleRows } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
   const origin = "http://weir.test";

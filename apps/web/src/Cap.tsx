@@ -26,21 +26,13 @@ import {
   listTops,
   type Route,
   route,
+  searchGroup,
   searchOpen,
   statusOpen,
   type View,
 } from "./Route.ts";
 import { CloseIcon, StatusIcon } from "./Status.tsx";
-import {
-  found,
-  leaveSearch,
-  pickedGroup,
-  searchGroup,
-  searching,
-  searchQuery,
-  searchResult,
-  tagOrder,
-} from "./Weir.ts";
+import { found, pickedGroup, searching, searchQuery, searchResult, tagOrder } from "./Weir.ts";
 
 const measureCap = (cap: HTMLDivElement) => {
   const observer = new ResizeObserver(() =>
@@ -417,14 +409,12 @@ function QueryField({ stepping, form }: { stepping: ConversationId | null; form:
   const [current, navigate] = useAtom(route);
   const tags = useAtomValue(tagOrder);
   const opened = useAtomValue(searchOpen);
-  const setGroup = useAtomSet(searchGroup);
   const [tops, setTops] = useAtom(listTops);
   const step = useAtomSet(stepHit);
   const field = fieldOf(current.query, tags);
   const wide = form === "search";
   const write = (next: Field) => {
     const query = queryOf(next);
-    if (query === "") setGroup(Option.none());
     if (current.query === "" && query !== "") {
       setTops(new Map(tops).set(href(current), document.querySelector(".list")?.scrollTop ?? 0));
     }
@@ -630,9 +620,8 @@ const capClass = (compact: boolean) =>
 const capDivClass = "mr-2.5 ml-3.5 h-4.5 w-px flex-none bg-cap-rule max-wide:mr-1.5 max-wide:ml-2";
 
 export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
-  const current = useAtomValue(route);
+  const [current, navigate] = useAtom(route);
   const setSearching = useAtomSet(searchOpen);
-  const leave = useAtomSet(leaveSearch);
   const loaded = useAtomValue(capCounts);
   const active = current.query === "" ? current.view : null;
   const result = form === "result";
@@ -672,7 +661,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
               className={`ml-2 grid flex-none place-items-center rounded-circle text-cap-2 transition-tint hover:bg-cap-hover hover:text-cap-1 ${result ? "size-9" : "size-10"}`}
               aria-label="Close search"
               title="Close search"
-              onClick={() => leave(undefined)}
+              onClick={() => navigate({ _tag: "Leave" })}
             >
               <CloseIcon />
             </button>

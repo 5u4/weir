@@ -27,17 +27,9 @@ import {
 import { Marked } from "./Marked.tsx";
 import { queryText } from "./Query.ts";
 import { cleared, fieldLabels, type Result } from "./Results.ts";
-import { ConversationId, route, viewLabel } from "./Route.ts";
+import { ConversationId, route, searchGroup, viewLabel } from "./Route.ts";
 import { face, tagHue } from "./Rows.ts";
-import {
-  found,
-  pickedGroup,
-  searchGroup,
-  searchQuery,
-  searchResult,
-  searchRows,
-  tagOrder,
-} from "./Weir.ts";
+import { found, pickedGroup, searchQuery, searchResult, searchRows, tagOrder } from "./Weir.ts";
 
 function Hit({ hit }: { hit: Result["hits"][number] }) {
   return (

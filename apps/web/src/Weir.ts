@@ -22,7 +22,7 @@ import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
-import { ConversationId, capCounts, route, statusOpen, type View } from "./Route.ts";
+import { ConversationId, capCounts, route, searchGroup, statusOpen, type View } from "./Route.ts";
 import {
   type Act,
   exits,
@@ -337,16 +337,6 @@ export const searchResult = Weir.runtime
     }),
   )
   .pipe(Atom.withReactivity(["list"]));
-
-export const searchGroup = Atom.make(Option.none<View>());
-
-export const leaveSearch = Atom.writable(
-  () => undefined,
-  (ctx, _: undefined) => {
-    ctx.set(searchGroup, Option.none());
-    ctx.set(route, { _tag: "Leave" });
-  },
-);
 
 export const found = Atom.make((get) => Option.flatten(AsyncResult.value(get(searchResult))));
 
