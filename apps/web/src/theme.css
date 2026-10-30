@@ -9,6 +9,7 @@
 @import "./styles/list.css";
 @import "./styles/cap.css";
 @import "./styles/prose.css";
+@import "./styles/motion.css";
 
 @theme {
   --*: initial;
@@ -224,6 +225,7 @@
   --grid-template-columns-group-me: minmax(0, 1fr) var(--spacing-7);
   --grid-template-columns-topic: var(--spacing-21) minmax(0, 1fr);
   --grid-template-columns-topic-head: var(--spacing-21) minmax(0, 1fr) auto;
+  --blur-morph: 6px;
   --blur-md: 12px;
   --blur-lg: 16px;
   --blur-dock: 18px;
@@ -336,6 +338,8 @@
   --duration-fast: 150ms;
   --duration-base: 250ms;
   --duration-spring: 420ms;
+  --duration-enter: 520ms;
+  --duration-morph: 640ms;
   --duration-spin: 800ms;
   --duration-loop: 1200ms;
   --default-transition-duration: var(--duration-fast);
