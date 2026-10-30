@@ -56,6 +56,12 @@ const clear = (row: HTMLElement) => {
   for (const name of vars) row.style.removeProperty(name);
 };
 
+const unslide = (row: HTMLElement) => {
+  row.removeAttribute("data-flip");
+  row.style.removeProperty("--flip-x");
+  row.style.removeProperty("--flip-y");
+};
+
 const plays = new WeakMap<HTMLElement, object>();
 
 const settle = (row: HTMLElement) => {
@@ -79,7 +85,8 @@ const play = () => {
   pending = null;
   if (was === null) return;
   const rows = [...document.querySelectorAll<HTMLElement>(listed)];
-  for (const row of rows) clear(row);
+  const rising = new Set(rows.filter((row) => row.hasAttribute("data-enter")));
+  for (const row of rows) (rising.has(row) ? unslide : clear)(row);
   const now = layout(rows);
   const { enter, move } = flipPlan(now.root === was.root ? was.rects : new Map(), now.rects, {
     top: -margin,
@@ -87,7 +94,7 @@ const play = () => {
   });
   for (const row of rows) {
     const key = row.dataset.k ?? "";
-    const index = was.enters ? enter.get(key) : undefined;
+    const index = was.enters && !rising.has(row) ? enter.get(key) : undefined;
     const by = move.get(key);
     if (index !== undefined) {
       row.style.setProperty("--i", String(index));

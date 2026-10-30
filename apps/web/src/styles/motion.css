@@ -36,6 +36,14 @@
     animation: row-move var(--duration-spring) var(--ease-standard);
   }
 
+  [data-k][data-enter][data-flip] {
+    animation:
+      row-enter var(--duration-spring) var(--ease-standard)
+      calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards,
+      row-move var(--duration-spring) var(--ease-standard);
+    animation-composition: replace, add;
+  }
+
   [data-k][data-leave] {
     animation: row-leave var(--duration-base) var(--ease-standard) forwards;
   }
@@ -47,6 +55,10 @@
 
     [data-k][data-flip] {
       animation: none;
+    }
+
+    [data-k][data-enter][data-flip] {
+      animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
     [data-k][data-leave] {

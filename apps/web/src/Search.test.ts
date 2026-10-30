@@ -219,6 +219,7 @@ const risen = () => {
       dataset: { k: String(id) },
       parentElement: parent,
       getBoundingClientRect: () => ({ left: 0, top: index * 50, bottom: index * 50 + 50 }),
+      hasAttribute: (name: string) => flags.has(name),
       setAttribute: (name: string) => flags.add(name),
       removeAttribute: (name: string) => flags.delete(name),
       style: { setProperty: () => {}, removeProperty: () => "" },
