@@ -86,7 +86,11 @@ const escapeHtml = (s: string) =>
     .replaceAll('"', "&quot;");
 
 const textHtml = (text: string) =>
-  toHtml(toHast(fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })));
+  toHtml(
+    toHast(fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }), {
+      handlers: { html: (_, node) => ({ type: "text", value: node.value }) },
+    }),
+  );
 
 const messageHtml = (m: ThreadMessage) => m.html ?? `<div dir="ltr">${textHtml(m.text)}</div>`;
 

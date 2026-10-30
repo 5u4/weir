@@ -94,14 +94,20 @@ const hoistEdges = (node: Wrapper): PhrasingContent[] => {
 
 const merge = (nodes: ReadonlyArray<PhrasingContent>): PhrasingContent[] => {
   const out: PhrasingContent[] = [];
-  for (const node of nodes) {
-    const last = out.at(-1);
-    if (last?.type === "inlineCode" && node.type === "inlineCode") {
-      out[out.length - 1] = { ...last, value: last.value + node.value };
-    } else if (last && ATTENTION[node.type] && last.type === node.type) {
-      const children = merge([...(last as Wrapper).children, ...(node as Wrapper).children]);
-      out[out.length - 1] = { ...last, children } as Wrapper;
-    } else out.push(node);
+  for (let start = 0; start < nodes.length; ) {
+    const node = nodes[start] as PhrasingContent;
+    const joins = node.type === "inlineCode" || ATTENTION[node.type];
+    let end = start + 1;
+    while (joins && end < nodes.length && nodes[end]?.type === node.type) end++;
+    const run = nodes.slice(start, end);
+    start = end;
+    if (run.length === 1) out.push(node);
+    else if (node.type === "inlineCode") {
+      out.push({ ...node, value: run.map((each) => (each as typeof node).value).join("") });
+    } else {
+      const children = merge(run.flatMap((each) => (each as Wrapper).children));
+      out.push({ ...node, children } as Wrapper);
+    }
   }
   return out;
 };
