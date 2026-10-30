@@ -47,7 +47,7 @@ export function App() {
           <List />
         </main>
         <section
-          className={`fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : "max-wide:hidden"}`}
+          className={`reader fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : "max-wide:hidden"}`}
           aria-label="Reader"
         >
           {Option.isSome(current.conversation) && (

@@ -5,12 +5,12 @@ language css
   or {
     and {
       $prop <: r"--.*",
-      $value <: r"(?is).*(?:\d*\.?\d+(?:px|ms|s|rem|em)|#[0-9a-f]{3,8}\b|\b(?:oklch|oklab|rgba?|hsla?|lab|lch|hwb)\(\s*[-.\d]).*",
+      $value <: r"(?is).*(?:(?:^|[^\w-])-?\d*\.?\d+(?:(?:px|cm|mm|q|in|pt|pc|r?em|r?ex|r?cap|r?ch|r?ic|r?lh|[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))|ms|s)\b|#[0-9a-f]{3,8}\b|\b(?:oklch|oklab|rgba?|hsla?|lab|lch|hwb)\(\s*[-.\d]).*",
       register_diagnostic(span=$value, message="Token definition outside theme.css: add it to @theme.")
     },
     and {
       $prop <: r"(?i)(?:font-size|font|line-height|letter-spacing|border(?:-[a-z]+)*-radius|transition(?:-duration|-delay)?|animation(?:-duration|-delay)?)",
-      $value <: r"(?s).*(?:\d*\.?\d+(?:px|ms|s|r?em|%)).*",
+      $value <: r"(?is)(?:.*(?:^|[^\w-])-?\d*\.?\d+(?:(?:px|cm|mm|q|in|pt|pc|r?em|r?ex|r?cap|r?ch|r?ic|r?lh|[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))|ms|s)\b|.*\d%).*",
       register_diagnostic(span=$value, message="Literal font size, radius or duration: use a theme token var(--...).")
     },
     and {
@@ -30,7 +30,7 @@ language css
     },
     and {
       $prop <: r"(?i)(?:margin|padding|gap|row-gap|column-gap|inset|top|right|bottom|left)(?:-[a-z-]+)?",
-      $value <: r"(?s).*(?:\d*\.?\d+(?:px|r?em)).*",
+      $value <: r"(?is).*(?:^|[^\w-])-?\d*\.?\d+(?:px|cm|mm|q|in|pt|pc|r?em|r?ex|r?cap|r?ch|r?ic|r?lh|[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))\b.*",
       register_diagnostic(span=$value, message="Literal spacing: use var(--spacing-*).")
     },
     and {
