@@ -1,3 +1,8 @@
+import { toHtml } from "hast-util-to-html";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { toHast } from "mdast-util-to-hast";
+import { gfm } from "micromark-extension-gfm";
 import type { Person, Scenarios, Thread, ThreadMessage } from "./scenarios.ts";
 
 export type Header = { name: string; value: string };
@@ -81,15 +86,11 @@ const escapeHtml = (s: string) =>
     .replaceAll('"', "&quot;");
 
 const textHtml = (text: string) =>
-  text
-    .split("\n\n")
-    .map((p) => {
-      const linked = escapeHtml(p)
-        .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
-        .replace(/https?:\/\/[^\s<>()"]+/g, (url) => `<a href="${url}">${url}</a>`);
-      return `<p>${linked.replaceAll("\n", "<br>")}</p>`;
-    })
-    .join("");
+  toHtml(
+    toHast(fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }), {
+      handlers: { html: (_, node) => ({ type: "text", value: node.value }) },
+    }),
+  );
 
 const messageHtml = (m: ThreadMessage) => m.html ?? `<div dir="ltr">${textHtml(m.text)}</div>`;
 

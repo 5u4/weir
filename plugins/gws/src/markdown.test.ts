@@ -40,7 +40,7 @@ describe("html", () => {
     '<div class="gmail_quote"><div class="gmail_attr">On Mon Ben wrote:</div><blockquote class="gmail_quote">old</blockquote></div>';
 
   it("shows the sender's typed asterisks as text in bodyNew and drops signature and quote", () => {
-    expect(htmlBodyNew(html)).toBe("Use \\*\\*bold\\*\\* at https://x.example/a\nnext line");
+    expect(htmlBodyNew(html)).toBe("Use \\*\\*bold\\*\\* at <https://x.example/a>\\\nnext line");
   });
 
   it("keeps signature and quote in body", () => {

@@ -26,7 +26,11 @@ const htmlOf = (text: string) => {
 describe("fake-gws html bodies", () => {
   it("links a bold URL with the URL alone as its href", () => {
     expect(htmlOf("See **https://example.com/docs**")).toContain(
-      '<b><a href="https://example.com/docs">https://example.com/docs</a></b>',
+      '<strong><a href="https://example.com/docs">https://example.com/docs</a></strong>',
     );
+  });
+
+  it("shows raw HTML in message text as visible text", () => {
+    expect(htmlOf("Show <b>raw tags</b>")).toContain("Show &#x3C;b>raw tags&#x3C;/b>");
   });
 });
