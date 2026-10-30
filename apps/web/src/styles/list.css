@@ -1,0 +1,8 @@
+@layer components {
+  .row:hover::before,
+  .row:hover + .row::before,
+  .row.sel::before,
+  .row.sel + .row::before {
+    opacity: 0;
+  }
+}

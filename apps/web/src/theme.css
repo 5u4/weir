@@ -1,6 +1,8 @@
 @layer theme, base, components, utilities;
 
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "./styles/shell.css";
+@import "./styles/list.css";
 
 @theme {
   --*: initial;
@@ -36,6 +38,7 @@
   --color-mk-ink: oklch(0.2 0.02 90);
   --color-mask: #000;
   --color-glass: oklch(1 0 0 / 0.3);
+  --color-head: color-mix(in oklch, var(--color-ground) 88%, transparent);
 
   --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -89,7 +92,7 @@
   --radius-full: 9999px;
   --radius-circle: 50%;
   --radius-reader: 36px;
-  --radius-notch: calc(var(--radius-reader) - var(--inset));
+  --radius-notch: calc(var(--radius-reader) - var(--inset-gap));
 
   --spacing-0: 0px;
   --spacing-px: 1px;
@@ -108,8 +111,10 @@
   --spacing-10: 40px;
   --spacing-11: 44px;
   --spacing-12: 48px;
+  --spacing-14\.5: 58px;
   --spacing-16: 64px;
   --spacing-18: 72px;
+  --spacing-20: 80px;
   --spacing-21: 84px;
   --spacing-30: 120px;
   --spacing-em-0\.05: 0.05em;
@@ -117,23 +122,56 @@
   --spacing-em-0\.25: 0.25em;
   --spacing-em-0\.3: 0.3em;
   --spacing-em-0\.4: 0.4em;
+  --spacing-em-0\.5: 0.5em;
   --spacing-em-0\.6: 0.6em;
   --spacing-em-0\.7: 0.7em;
   --spacing-em-1: 1em;
   --spacing-em-1\.4: 1.4em;
 
-  --shadow-row:
+  --inset-edge: var(--spacing-6);
+  --inset-gap: var(--spacing-2\.5);
+  --inset-stage: calc((100vw - var(--stage-width)) / 2);
+  --inset-reader: calc(var(--inset-stage) + var(--width-list) + var(--stage-gap));
+  --inset-list: calc(var(--inset-edge) + var(--cap-clear));
+  --width-list: clamp(300px, calc(var(--stage-width) * 0.3), 420px);
+  --width-reader: calc(var(--stage-width) - var(--width-list) - var(--stage-gap));
+  --height-band: calc(2 * var(--inset-gap) + var(--size-pill));
+  --size-pill: var(--spacing-12);
+  --padding-reader: var(--spacing-10);
+
+  --size-2\.75: 11px;
+  --height-7\.5: 30px;
+  --grid-template-columns-row: 32px minmax(0, 1fr) auto;
+  --blur-md: 12px;
+  --opacity-none: 0;
+  --opacity-full: 1;
+  --scale-press: 97%;
+  --outline-offset-inset: -2px;
+
+  --elevation-row:
     0 0 0 1px oklch(0.3 0.02 255 / 0.06), 0 1px 2px oklch(0.3 0.02 255 / 0.06),
     0 10px 24px -16px oklch(0.3 0.03 255 / 0.45);
-  --shadow-float:
+  --elevation-float:
     0 0 0 1px oklch(0.3 0.02 255 / 0.09), 0 10px 26px -14px oklch(0.25 0.03 255 / 0.4);
-  --shadow-sheet: 0 -10px 40px oklch(0.2 0.02 255 / 0.22);
-  --shadow-reader:
+  --elevation-sheet: 0 -10px 40px oklch(0.2 0.02 255 / 0.22);
+  --elevation-reader:
     0 0 0 1px oklch(0.3 0.02 255 / 0.07), 0 1px 2px oklch(0.3 0.02 255 / 0.06), 0 14px 28px -18px
     oklch(0.3 0.03 255 / 0.22), 0 40px 80px -40px oklch(0.3 0.03 255 / 0.4);
-  --shadow-notch:
+  --elevation-notch:
     inset 0 1px 0 oklch(1 0 0 / 0.08), 0 0 0 1px oklch(0.1 0.01 255 / 0.5),
     0 10px 22px -14px oklch(0.15 0.03 255 / 0.55);
+  --shadow-ring-line: inset 0 0 0 1px var(--color-line);
+  --shadow-ring-g-line: inset 0 0 0 1px var(--color-g-line);
+  --shadow-halo-ground: 0 0 0 2.5px var(--color-ground);
+  --shadow-halo-g-hover: 0 0 0 2.5px var(--color-g-hover);
+  --shadow-halo-island: 0 0 0 2.5px var(--color-island);
+  --shadow-stack-capbg: 0 0 0 0.09em var(--color-capbg);
+  --shadow-under-g-line: 0 1px 0 var(--color-g-line);
+
+  --transition-property-bg: background-color;
+  --transition-property-tint: background-color, color;
+  --transition-property-tint-ring: box-shadow, background-color, color;
+  --transition-property-fade-tint-ring: opacity, background-color, color, box-shadow;
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
@@ -196,24 +234,41 @@
   transition-duration: --value(--duration-*);
 }
 
+@utility elevation-* {
+  box-shadow: --value(--elevation-*);
+}
+
+@theme inline {
+  --color-avatar: oklch(var(--av-bg) var(--h));
+  --color-avatar-ink: oklch(var(--av-ink) var(--h));
+  --color-tag: oklch(var(--cl-l) var(--cl-c) var(--bh));
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scroll) transparent;
+}
+
+@utility content-data-m {
+  --tw-content: attr(data-m);
+  content: var(--tw-content);
+}
+
+@utility content-dot {
+  --tw-content: "·";
+  content: var(--tw-content);
+}
+
 :root {
   color-scheme: light;
   --cl-l: 0.52;
   --cl-c: 0.19;
   --av-bg: 0.9 0.055;
   --av-ink: 0.36 0.11;
-  --edge: var(--spacing-6);
-  --inset: var(--spacing-2\.5);
-  --pad: var(--spacing-10);
-  --pill: var(--spacing-12);
-  --band: calc(2 * var(--inset) + var(--pill));
-  --stage: 1360px;
-  --cg: var(--spacing-6);
-  --sw: min(var(--stage), calc(100vw - 2 * var(--edge)));
-  --sl: calc((100vw - var(--sw)) / 2);
-  --lw: clamp(300px, calc(var(--sw) * 0.3), 420px);
-  --rl: calc(var(--sl) + var(--lw) + var(--cg));
-  --rw: calc(var(--sw) - var(--lw) - var(--cg));
+  --stage-max: 1360px;
+  --stage-gap: var(--spacing-6);
+  --stage-width: min(var(--stage-max), calc(100vw - 2 * var(--inset-edge)));
+  --cap-clear: max(var(--height-band), calc(var(--cap-h, 0px) + 2 * var(--inset-gap)));
 }
 
 :root[data-theme="dark"] {
@@ -241,23 +296,23 @@
   --color-bubble: oklch(0.272 0.007 255);
   --color-me-bg: oklch(0.355 0.03 255);
   --color-me-ink: oklch(0.97 0.003 255);
-  --shadow-row: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --elevation-row: 0 0 0 1px oklch(1 0 0 / 0.08);
   --color-warn: oklch(0.82 0.13 72);
   --color-warn-wash: oklch(0.75 0.13 70 / 0.1);
-  --shadow-float: 0 0 0 1px oklch(1 0 0 / 0.1), 0 10px 26px -12px oklch(0 0 0 / 0.65);
-  --shadow-sheet: 0 0 0 1px oklch(1 0 0 / 0.08);
-  --shadow-reader: 0 0 0 1px oklch(1 0 0 / 0.075), inset 0 1px 0 oklch(1 0 0 / 0.03);
-  --shadow-notch: inset 0 1px 0 oklch(1 0 0 / 0.06), 0 0 0 1px oklch(1 0 0 / 0.11);
+  --elevation-float: 0 0 0 1px oklch(1 0 0 / 0.1), 0 10px 26px -12px oklch(0 0 0 / 0.65);
+  --elevation-sheet: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --elevation-reader: 0 0 0 1px oklch(1 0 0 / 0.075), inset 0 1px 0 oklch(1 0 0 / 0.03);
+  --elevation-notch: inset 0 1px 0 oklch(1 0 0 / 0.06), 0 0 0 1px oklch(1 0 0 / 0.11);
   --color-mk: oklch(0.5 0.105 62);
   --color-mk-ink: oklch(0.97 0.025 85);
 }
 
 @media (max-width: 899px) {
   :root {
-    --edge: var(--spacing-2);
-    --inset: var(--spacing-1\.5);
-    --pill: var(--spacing-11);
-    --pad: var(--spacing-4);
+    --inset-edge: var(--spacing-2);
+    --inset-gap: var(--spacing-1\.5);
+    --size-pill: var(--spacing-11);
+    --padding-reader: var(--spacing-4);
     --radius-reader: 26px;
   }
 }
