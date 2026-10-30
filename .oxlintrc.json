@@ -23,7 +23,7 @@
           { "pattern": "\\[", "message": "Arbitrary value: add a token to @theme instead." },
           { "pattern": "/", "message": "Opacity modifier: add a named color token instead." },
           {
-            "pattern": "^(?:[\\w-]+:)*-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy])-\\d",
+            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy])-\\d",
             "message": "Off-scale number: use a named token step."
           }
         ]

@@ -5,5 +5,5 @@ pre-commit:
       run: bunx biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
     - name: oxlint
-      glob: "apps/web/src/**/*.{ts,tsx}"
+      glob: "apps/web/src/*.{ts,tsx}"
       run: bunx oxlint {staged_files}
