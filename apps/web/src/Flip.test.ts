@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Band, capture, flipPlan, type Rect } from "./Flip.ts";
+import { type Band, capture, flipPlan, type Rect, type Unit } from "./Flip.ts";
 
 const band: Band = { top: -60, bottom: 860 };
 
@@ -108,6 +108,87 @@ describe("flipPlan", () => {
   });
 });
 
+describe("flipPlan for nested blocks and digest landings", () => {
+  const unit = (top: number, extra: Partial<Unit> = {}, left = 0): Unit => ({
+    left,
+    top,
+    bottom: top + 50,
+    ...extra,
+  });
+
+  it("a block inside a moved block moves only by the difference", () => {
+    const plan = flipPlan(
+      new Map([
+        ["card", unit(100)],
+        ["topic", unit(150, { parent: "card" })],
+        ["below", unit(200, { parent: "card" })],
+      ]),
+      new Map([
+        ["card", unit(300)],
+        ["topic", unit(350, { parent: "card" })],
+        ["below", unit(500, { parent: "card" })],
+      ]),
+      band,
+    );
+    expect([...plan.move]).toEqual([
+      ["card", { dx: 0, dy: -200 }],
+      ["below", { dx: 0, dy: -100 }],
+    ]);
+  });
+
+  it("a new topic travels from the corner of the bubbles it cites, and the bubbles travel to it", () => {
+    const plan = flipPlan(
+      new Map([
+        ["g-1", unit(400)],
+        ["b-1", unit(420, { seqs: [1], parent: "g-1" }, 30)],
+        ["b-2", unit(470, { seqs: [2], parent: "g-1" }, 30)],
+        ["b-3", unit(520, { seqs: [3] }, 30)],
+      ]),
+      new Map([
+        ["d-9", unit(100)],
+        ["h-9", unit(110, { parent: "d-9" })],
+        ["tp-9:0", unit(200, { seqs: [1, 2], parent: "d-9" }, 40)],
+        ["tp-9:1", unit(260, { seqs: [3], parent: "d-9" }, 40)],
+      ]),
+      band,
+    );
+    expect([...plan.enter]).toEqual([["h-9", 0]]);
+    expect([...plan.merge]).toEqual([
+      ["tp-9:0", { dx: -10, dy: 220, i: 1 }],
+      ["tp-9:1", { dx: -10, dy: 260, i: 2 }],
+    ]);
+    expect([...plan.ghost]).toEqual([
+      ["g-1", { dx: 40, dy: -200 }],
+      ["b-3", { dx: 10, dy: -260 }],
+    ]);
+  });
+
+  it("a block that stays keeps its key even when bubbles around it leave", () => {
+    const plan = flipPlan(
+      new Map([
+        ["tp-1:0", unit(100, { seqs: [1, 2] })],
+        ["b-1", unit(150, { seqs: [1], parent: "tp-1:0" })],
+        ["Skeleton", unit(300)],
+      ]),
+      new Map([
+        ["tp-1:0", unit(100, { seqs: [1, 2] })],
+        ["b-1", unit(150, { seqs: [1], parent: "tp-1:0" })],
+      ]),
+      band,
+    );
+    expect([...plan.move]).toEqual([]);
+    expect([...plan.merge]).toEqual([]);
+    expect([...plan.ghost]).toEqual([["Skeleton", null]]);
+  });
+
+  it("a block that only scrolled out of view is no ghost", () => {
+    const plan = flipPlan(
+      new Map([["b-4", unit(100, { seqs: [4] })]]),
+      new Map([["b-4", unit(2000, { seqs: [4] })]]),
+      band,
+    );
+    expect([...plan.ghost]).toEqual([]);
+
 class Row {
   readonly dataset: { k: string };
   readonly parentElement: object;
@@ -125,7 +206,7 @@ class Row {
   }
 
   getBoundingClientRect = (): Rect => ({ left: 0, top: this.top, bottom: this.top + 100 });
-  getAnimations = () => (this.attributes.size > 0 ? [{ finished: new Promise(() => {}) }] : []);
+  getAnimations = () => (this.attributes.size > 0 ? [{ effect: { getComputedTiming: () => ({ endTime: 1 }) }, finished: new Promise(() => {}) }] : []);
   hasAttribute = (name: string) => this.attributes.has(name);
   setAttribute = (name: string) => void this.attributes.add(name);
   removeAttribute = (name: string) => void this.attributes.delete(name);
@@ -169,16 +250,16 @@ describe("a list update while rows are still rising in", () => {
     };
     expect(seen("7")).toEqual({
       attributes: ["data-enter", "data-flip"],
-      vars: { "--i": "0", "--flip-x": "0px", "--flip-y": "-100px" },
+      vars: { "--i": "0", "--dx": "0px", "--dy": "-100px" },
     });
     expect(seen("8")).toEqual({
       attributes: ["data-enter", "data-flip"],
-      vars: { "--i": "1", "--flip-x": "0px", "--flip-y": "-100px" },
+      vars: { "--i": "1", "--dx": "0px", "--dy": "-100px" },
     });
     expect(seen("9")).toEqual({ attributes: ["data-enter"], vars: { "--i": "0" } });
     expect(seen("6")).toEqual({
       attributes: ["data-flip"],
-      vars: { "--flip-x": "0px", "--flip-y": "-100px" },
+      vars: { "--dx": "0px", "--dy": "-100px" },
     });
   });
 });

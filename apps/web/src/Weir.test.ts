@@ -186,7 +186,7 @@ const leaving = (flags: Set<string>, finished: Promise<void>) => {
     setAttribute: (name: string) => flags.add(name),
     removeAttribute: (name: string) => flags.delete(name),
     style: { setProperty: () => {}, removeProperty: () => "" },
-    getAnimations: () => [{ finished }],
+    getAnimations: () => [{ finished, effect: { getComputedTiming: () => ({ endTime: 250 }) } }],
   };
   return fake;
 };

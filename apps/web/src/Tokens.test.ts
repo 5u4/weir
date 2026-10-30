@@ -4,8 +4,8 @@ import { expect, it } from "vitest";
 const runtime = [
   "--bh",
   "--cap-h",
-  "--flip-x",
-  "--flip-y",
+  "--dx",
+  "--dy",
   "--h",
   "--i",
   "--leave-opacity",

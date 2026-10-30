@@ -27,41 +27,41 @@
     animation: status-rise var(--duration-spring) var(--ease-standard);
   }
 
-  [data-k][data-enter] {
+  .list [data-k][data-enter] {
     animation: row-enter var(--duration-spring) var(--ease-standard)
       calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards;
   }
 
-  [data-k][data-flip] {
-    animation: row-move var(--duration-spring) var(--ease-standard);
+  .list [data-k][data-flip] {
+    animation: flip var(--duration-spring) var(--ease-standard);
   }
 
-  [data-k][data-enter][data-flip] {
+  .list [data-k][data-enter][data-flip] {
     animation:
       row-enter var(--duration-spring) var(--ease-standard)
       calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards,
-      row-move var(--duration-spring) var(--ease-standard);
+      flip var(--duration-spring) var(--ease-standard);
     animation-composition: replace, add;
   }
 
-  [data-k][data-leave] {
+  .list [data-k][data-leave] {
     animation: row-leave var(--duration-base) var(--ease-standard) forwards;
   }
 
   @variant motion-reduce {
-    [data-k][data-enter] {
+    .list [data-k][data-enter] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
-    [data-k][data-flip] {
+    .list [data-k][data-flip] {
       animation: none;
     }
 
-    [data-k][data-enter][data-flip] {
+    .list [data-k][data-enter][data-flip] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
-    [data-k][data-leave] {
+    .list [data-k][data-leave] {
       animation: row-fade-out var(--duration-base) var(--ease-standard) forwards;
     }
   }
@@ -357,9 +357,9 @@
   }
 }
 
-@keyframes row-move {
+@keyframes flip {
   from {
-    translate: var(--flip-x) var(--flip-y);
+    translate: var(--dx) var(--dy);
   }
 }
 
