@@ -48,12 +48,52 @@
     animation: row-leave var(--duration-base) var(--ease-standard) forwards;
   }
 
+  .r-scroll [data-k][data-flip] {
+    animation: flip var(--duration-enter) var(--ease-glide);
+  }
+
+  .r-scroll [data-k][data-unfold] {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group)) backwards;
+  }
+
+  .r-scroll .sg[data-unfold] {
+    animation: none;
+  }
+
+  .r-scroll .sg[data-unfold] > span,
+  .r-scroll .sg[data-unfold] .g-head {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group)) backwards;
+  }
+
+  .r-scroll .sg[data-unfold] .bl {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group) + var(--b) * var(--duration-stagger)) backwards;
+  }
+
+  .r-scroll [data-k][data-fold] {
+    animation: fold-out var(--duration-base) var(--ease-in) calc(var(--i) * var(--duration-stagger))
+      forwards;
+  }
+
+  .r-scroll [data-land] {
+    animation: vt-fade-in var(--duration-base) var(--ease-standard);
+  }
+
   @variant motion-reduce {
     .list [data-k][data-enter] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
-    .list [data-k][data-flip] {
+    .list [data-k][data-flip],
+    .r-scroll [data-k][data-flip],
+    .r-scroll [data-k][data-unfold],
+    .r-scroll .sg[data-unfold] > span,
+    .r-scroll .sg[data-unfold] .g-head,
+    .r-scroll .sg[data-unfold] .bl,
+    .r-scroll [data-k][data-fold],
+    .r-scroll [data-land] {
       animation: none;
     }
 
@@ -416,5 +456,19 @@
   from {
     opacity: 0;
     transform: scale(var(--scale-enter));
+  }
+}
+
+@keyframes unfold-in {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--spacing-2) * -1);
+  }
+}
+
+@keyframes fold-out {
+  to {
+    opacity: 0;
+    translate: 0 calc(var(--spacing-2\.5) * -1);
   }
 }

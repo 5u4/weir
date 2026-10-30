@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Band, capture, flipPlan, type Rect, type Unit } from "./Flip.ts";
+import {
+  type Band,
+  capture,
+  flipPlan,
+  foldOrder,
+  type Rect,
+  type Unit,
+  unfoldOrder,
+} from "./Flip.ts";
 
 const band: Band = { top: -60, bottom: 860 };
 
@@ -188,6 +196,27 @@ describe("flipPlan for nested blocks and digest landings", () => {
       band,
     );
     expect([...plan.ghost]).toEqual([]);
+  });
+});
+
+describe("stagger order", () => {
+  it("numbers unfolding groups from 1, caps at 11 and stops at the viewport bottom", () => {
+    const parts = Array.from({ length: 14 }, (_, k) => ({ top: k * 10, bubbles: k === 0 ? 3 : 1 }));
+    const order = unfoldOrder(parts, 125);
+    expect(order.map(({ g }) => g)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 11, 11]);
+    expect(order[0]?.b).toEqual([2, 3, 4]);
+  });
+
+  it("folds visible groups last-first, caps at 8 and leaves the rest alone", () => {
+    expect(foldOrder([0, 10, 20, 900], 500)).toEqual([2, 1, 0, null]);
+    expect(
+      foldOrder(
+        Array.from({ length: 11 }, (_, k) => k),
+        500,
+      ),
+    ).toEqual([8, 8, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+  });
+});
 
 class Row {
   readonly dataset: { k: string };
@@ -206,7 +235,10 @@ class Row {
   }
 
   getBoundingClientRect = (): Rect => ({ left: 0, top: this.top, bottom: this.top + 100 });
-  getAnimations = () => (this.attributes.size > 0 ? [{ effect: { getComputedTiming: () => ({ endTime: 1 }) }, finished: new Promise(() => {}) }] : []);
+  getAnimations = () =>
+    this.attributes.size > 0
+      ? [{ effect: { getComputedTiming: () => ({ endTime: 1 }) }, finished: new Promise(() => {}) }]
+      : [];
   hasAttribute = (name: string) => this.attributes.has(name);
   setAttribute = (name: string) => void this.attributes.add(name);
   removeAttribute = (name: string) => void this.attributes.delete(name);

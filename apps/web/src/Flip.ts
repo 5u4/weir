@@ -1,3 +1,5 @@
+import { flushSync } from "react-dom";
+
 export type Key = string;
 
 export type Rect = { readonly left: number; readonly top: number; readonly bottom: number };
@@ -98,31 +100,50 @@ export const flipPlan = (
   return { enter, move, merge, ghost };
 };
 
+export type Part = { readonly top: number; readonly bubbles: number };
+
+export const unfoldOrder = (parts: ReadonlyArray<Part>, bottom: number) => {
+  const end = parts.findIndex(({ top }) => top >= bottom);
+  return parts.slice(0, end < 0 ? parts.length : end).map(({ bubbles }, k) => ({
+    g: Math.min(k, 10) + 1,
+    b: Array.from({ length: bubbles }, (_, index) => index + 2),
+  }));
+};
+
+export const foldOrder = (tops: ReadonlyArray<number>, bottom: number) => {
+  let k = tops.filter((top) => top < bottom).length;
+  return tops.map((top) => (top < bottom ? Math.min(--k, 8) : null));
+};
+
 const margin = 60;
 
-const flags = ["data-enter", "data-flip"] as const;
-const vars = ["--i", "--dx", "--dy"] as const;
+const flags = ["data-enter", "data-flip", "data-unfold", "data-fold", "data-land"] as const;
+const vars = ["--i", "--dx", "--dy", "--g"] as const;
 
 const clear = (el: HTMLElement) => {
   for (const flag of flags) el.removeAttribute(flag);
   for (const name of vars) el.style.removeProperty(name);
 };
 
-const finished = (el: Element) =>
+const finished = (el: Element, subtree = false) =>
   Promise.allSettled(
     el
-      .getAnimations()
+      .getAnimations({ subtree })
       .filter(({ effect }) => Number.isFinite(effect?.getComputedTiming().endTime))
       .map(({ finished }) => finished),
   );
 
 const plays = new WeakMap<HTMLElement, object>();
 
-const settle = (el: HTMLElement) => {
+const settle = (el: HTMLElement, subtree = false) => {
   const play = {};
   plays.set(el, play);
-  void finished(el).then(() => {
-    if (plays.get(el) === play) clear(el);
+  void finished(el, subtree).then(() => {
+    if (plays.get(el) !== play) return;
+    clear(el);
+    if (subtree)
+      for (const inner of el.querySelectorAll<HTMLElement>("[data-k]"))
+        inner.style.removeProperty("--b");
   });
 };
 
@@ -130,7 +151,7 @@ const flag = (el: HTMLElement | undefined, name: (typeof flags)[number], values:
   if (el === undefined) return;
   for (const [prop, value] of Object.entries(values)) el.style.setProperty(prop, String(value));
   el.setAttribute(name, "");
-  settle(el);
+  settle(el, name === "data-unfold");
 };
 
 const px = ({ dx, dy }: Move) => ({ "--dx": `${dx}px`, "--dy": `${dy}px` });
@@ -203,4 +224,99 @@ export const stay = (key: Key) => {
   row.style.removeProperty("--leave-translate");
   row.style.removeProperty("--leave-opacity");
   flag(row, "data-enter", { "--i": 0 });
+};
+
+type Layout = {
+  readonly els: ReadonlyMap<Key, HTMLElement>;
+  readonly units: ReadonlyMap<Key, Unit>;
+  readonly widths: ReadonlyMap<Key, number>;
+};
+
+const measure = (scope: ParentNode, seqs: boolean): Layout => {
+  const els = new Map<Key, HTMLElement>();
+  const units = new Map<Key, Unit>();
+  const widths = new Map<Key, number>();
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k]")) {
+    const key = el.dataset.k ?? "";
+    const { left, top, bottom, width } = el.getBoundingClientRect();
+    els.set(key, el);
+    widths.set(key, width);
+    units.set(key, {
+      left,
+      top,
+      bottom,
+      seqs: seqs ? el.dataset.seqs?.split(" ").map(Number) : undefined,
+      parent: el.parentElement?.closest<HTMLElement>("[data-k]")?.dataset.k,
+    });
+  }
+  return { els, units, widths };
+};
+
+const reset = (scope: ParentNode) => {
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k]")) clear(el);
+};
+
+const everywhere: Band = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
+
+let unfolding = false;
+
+export const unfold = (target: Element, open: boolean, apply: () => void) => {
+  if (unfolding) return;
+  const topic =
+    target.closest<HTMLElement>(".tp") ??
+    target.closest(".dc")?.querySelector<HTMLElement>(".tp:not(.uncited)");
+  const scroller = target.closest<HTMLElement>(".r-scroll");
+  const article = target.closest("article");
+  if (topic == null || scroller === null || article === null) return apply();
+  const anchor = topic.matches(".solo:not(.uncited)")
+    ? (topic.closest<HTMLElement>(".dc") ?? topic)
+    : topic;
+  const view = scroller.getBoundingClientRect();
+  const inside = open && anchor.getBoundingClientRect().top < view.top;
+  const paint = () => {
+    unfolding = false;
+    const was = measure(article, false);
+    const top = anchor.getBoundingClientRect().top;
+    reset(article);
+    flushSync(apply);
+    if (!anchor.isConnected) return;
+    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? view.top : top);
+    if (inside) return flag(anchor, "data-land");
+    const now = measure(article, false);
+    for (const [key, by] of flipPlan(was.units, now.units, everywhere).move) {
+      flag(now.els.get(key), "data-flip", px(by));
+    }
+    if (open) return;
+    const parts = [...topic.querySelectorAll<HTMLElement>(":scope > .unf > *")];
+    const order = unfoldOrder(
+      parts.map((part) => ({
+        top: part.getBoundingClientRect().top,
+        bubbles: part.querySelectorAll(".bl").length,
+      })),
+      view.bottom,
+    );
+    order.forEach(({ g, b }, k) => {
+      const part = parts[k];
+      if (part === undefined) return;
+      part.querySelectorAll<HTMLElement>(".bl").forEach((bubble, index) => {
+        bubble.style.setProperty("--b", String(b[index]));
+      });
+      flag(part, "data-unfold", { "--g": g });
+    });
+  };
+  const parts =
+    open && !inside ? [...topic.querySelectorAll<HTMLElement>(":scope > .unf > *")] : [];
+  if (parts.length === 0) return paint();
+  const order = foldOrder(
+    parts.map((part) => part.getBoundingClientRect().top),
+    view.bottom,
+  );
+  parts.forEach((part, k) => {
+    const i = order[k];
+    if (i === null || i === undefined) return;
+    part.style.setProperty("--i", String(i));
+    part.setAttribute("data-fold", "");
+  });
+  unfolding = true;
+  void Promise.all(parts.map((part) => finished(part))).then(paint);
 };

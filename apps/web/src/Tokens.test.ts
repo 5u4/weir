@@ -2,10 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
 const runtime = [
+  "--b",
   "--bh",
   "--cap-h",
   "--dx",
   "--dy",
+  "--g",
   "--h",
   "--i",
   "--leave-opacity",

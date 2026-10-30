@@ -42,6 +42,7 @@ import {
   within,
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
+import { unfold } from "./Flip.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted, Prose, proseClass } from "./Marked.tsx";
@@ -138,15 +139,22 @@ function Failure({
   controls,
   className,
   gap,
+  k,
 }: {
   failed: Failed;
   controls: Controls;
   className: string;
   gap?: number;
+  k?: string;
 }) {
   const why = reason(failed.cause);
   return (
-    <div className={`${lineClass} flex-wrap gap-y-0.5 ${className}`} role="alert" data-gap={gap}>
+    <div
+      className={`${lineClass} flex-wrap gap-y-0.5 ${className}`}
+      role="alert"
+      data-gap={gap}
+      data-k={k}
+    >
       <span className={`${lineKeyClass} text-warn`}>
         Couldn't digest {plural(failed.items, "message")}
       </span>
@@ -196,6 +204,7 @@ function Skeleton({ items, tint, lead }: { items: number; tint: Tint; lead: bool
       className={`relative pt-1 pb-2 ${lead ? "mt-2" : "mt-10"}`}
       role="status"
       aria-live="polite"
+      data-k="Skeleton"
     >
       <p className="m-0 mb-1 flex items-center gap-2 text-xs font-semibold text-ink-2">
         <span
@@ -253,7 +262,7 @@ const stateClass: Record<TopicView["topic"]["state"], string> = {
 function Chevron({ up = false, flip = false }: { up?: boolean; flip?: boolean }) {
   return (
     <svg
-      className={`size-3.5 flex-none stroke-1.8 ${iconClass} ${flip ? "rotate-flip" : ""}`}
+      className={`size-3.5 flex-none stroke-1.8 transition-transform duration-spring motion-reduce:transition-none ${iconClass} ${flip ? "rotate-flip" : ""}`}
       viewBox="0 0 16 16"
       aria-hidden="true"
     >
@@ -290,7 +299,11 @@ function End({ seq, watch }: { seq: number; watch: Watch }) {
 
 function DayLine({ at }: { at: string }) {
   return (
-    <div className="mt-5 mb-1.5 flex justify-center" role="separator">
+    <div
+      className="mt-5 mb-1.5 flex justify-center"
+      role="separator"
+      data-k={blockKey({ _tag: "Day", at })}
+    >
       <span className="rounded-full bg-hover px-2.5 py-0.5 text-xs font-semibold text-ink-3 tabular-nums">
         {dayLabel(DateTime.makeUnsafe(at), useAtomValue(now))}
       </span>
@@ -447,6 +460,8 @@ function Bubble({
     <>
       <div
         className={classes.filter(Boolean).join(" ")}
+        data-k={`b-${item.seq}`}
+        data-seqs={item.seq}
         {...hitProps(found, key)}
         onClick={(event) => {
           if (!(digestible || item.seq <= mark.seen)) return;
@@ -582,6 +597,7 @@ function Group({
     <section
       className={`sg grid gap-x-2.5 gap-y-0 ${folded ? "mt-2.5" : "mt-3"} ${group.me ? "grid-cols-group-me" : "grid-cols-group"}`}
       aria-label={`${name}, ${dayAndTime(at)}`}
+      data-k={blockKey(group)}
     >
       {group.me ? column : avatar}
       {group.me ? avatar : column}
@@ -589,7 +605,15 @@ function Group({
   );
 }
 
-function Pin({ id, unfold, view }: { id: ConversationId; unfold: () => void; view: TopicView }) {
+function Pin({
+  id,
+  fold,
+  view,
+}: {
+  id: ConversationId;
+  fold: (target: Element) => void;
+  view: TopicView;
+}) {
   const at = useAtomValue(pins(id)).get(view.key) ?? 1;
   return (
     <span className="ml-auto inline-flex items-center gap-2.5 self-center">
@@ -599,7 +623,7 @@ function Pin({ id, unfold, view }: { id: ConversationId; unfold: () => void; vie
       <button
         type="button"
         className="inline-flex h-6.5 items-center gap-1 rounded-full pr-2 pl-2.5 text-xs font-semibold text-ink-2 shadow-ring-line hover:text-ink hover:shadow-ring-ink-3"
-        onClick={unfold}
+        onClick={(event) => fold(event.currentTarget)}
         aria-label="Fold the originals back"
       >
         Fold
@@ -633,7 +657,7 @@ function Originals({
   id: ConversationId;
   fold: AnyFold;
   noun: string;
-  toggle: () => void;
+  toggle: (target: Element) => void;
   mark: Mark;
   found: Found;
   tint: Tint;
@@ -647,7 +671,7 @@ function Originals({
         type="button"
         className={`${cellClass} mt-1.5 -ml-1.5 inline-flex h-7.5 items-center gap-1.5 justify-self-start rounded-full pr-2 pl-1.5 text-xs font-semibold tabular-nums transition-tint duration-fast hover:bg-hover hover:text-ink ${fold.open ? "text-ink" : "text-ink-3"}`}
         aria-expanded={fold.open}
-        onClick={toggle}
+        onClick={(event) => toggle(event.currentTarget)}
       >
         <span className="mr-0.5 inline-flex text-av-sm" aria-hidden="true">
           {who.slice(0, 3).map(([key, item], index) => (
@@ -704,11 +728,13 @@ function Topic({
   tint: Tint;
 }) {
   const [, setUi] = useAtom(readerUi(id));
-  const toggle = () => setUi(flipped(view));
+  const toggle = (target: Element) => unfold(target, view.open, () => setUi(flipped(view)));
   const key = hitKey({ _tag: "Topic", key: view.key });
   return (
     <section
       className={`tp relative grid items-start ${solo ? "solo grid-cols-1" : "grid-cols-topic"}`}
+      data-k={`tp-${view.key}`}
+      data-seqs={view.items.map(({ seq }) => seq).join(" ")}
       {...hitProps(found, key)}
     >
       {!solo ? (
@@ -724,7 +750,7 @@ function Topic({
           <h4 className={titleClass}>
             <Highlighted text={view.topic.title} pattern={found.pattern} />
           </h4>
-          {view.open && <Pin id={id} unfold={toggle} view={view} />}
+          {view.open && <Pin id={id} fold={toggle} view={view} />}
         </header>
       ) : (
         found.pattern !== null &&
@@ -802,10 +828,12 @@ function DigestCard({
       className={`dc relative ${lead ? "mt-2 pt-3.5" : "mt-10 pt-7 shadow-rule-line"}`}
       aria-label={digest.headline}
       aria-busy={redoing || undefined}
+      data-k={blockKey(block)}
     >
       <header
         className={`${bleedClass} ${pinned ? pinClass : ""}`}
         data-key={only?.key}
+        data-k={`h-${digest.id}`}
         {...hitProps(found, key)}
       >
         {digest.from_seq !== digest.to_seq && (
@@ -823,7 +851,9 @@ function DigestCard({
           >
             <Highlighted text={digest.headline} pattern={found.pattern} />
           </h3>
-          {solo && only?.open && <Pin id={id} unfold={unfoldOnly} view={only} />}
+          {solo && only?.open && (
+            <Pin id={id} fold={(target) => unfold(target, true, unfoldOnly)} view={only} />
+          )}
           <button
             type="button"
             className={`${pillClass} text-ink-2 shadow-ring-line transition-ink-ring duration-fast hover:text-ink hover:shadow-ring-ink-3 ${pinned ? "ml-0" : "ml-auto"}`}
@@ -870,12 +900,14 @@ function DigestCard({
         {uncited !== null && (
           <section
             className={`tp uncited relative grid items-start ${solo ? "solo grid-cols-1" : "grid-cols-topic"}`}
+            data-k={`tp-${uncited.key}`}
+            data-seqs={uncited.items.map(({ seq }) => seq).join(" ")}
           >
             <Originals
               id={id}
               fold={uncited}
               noun="other original"
-              toggle={() => setUi(flipped(uncited))}
+              toggle={(target) => unfold(target, uncited.open, () => setUi(flipped(uncited)))}
               mark={mark}
               found={found}
               tint={tint}
@@ -910,12 +942,14 @@ export function BlockView({
 }) {
   const [, setUi] = useAtom(readerUi(id));
   const setPreview = useAtomSet(preview);
+  const k = blockKey(block);
   switch (block._tag) {
     case "Marker":
       return (
         <div
           className="lr mt-4 mb-1 flex items-center gap-3 before:h-0.5 before:shrink-0 before:grow-0 before:basis-4.5 before:rounded-xs before:bg-ink after:h-0.5 after:flex-1 after:rounded-xs after:bg-ink"
           role="separator"
+          data-k={k}
         >
           <span className="text-xs whitespace-nowrap text-ink-3">
             <b className="mr-2 font-bold text-ink">
@@ -930,6 +964,7 @@ export function BlockView({
         <button
           type="button"
           className={`${foldClass} gap-3 pr-2 pl-4`}
+          data-k={k}
           onClick={() => setUi((ui) => ({ ...ui, earlier: true }))}
         >
           <span className="flex-none text-md font-bold whitespace-nowrap text-ink">
@@ -945,7 +980,7 @@ export function BlockView({
       );
     case "DigestRow":
       return (
-        <div className="relative">
+        <div className="relative" data-k={k}>
           <button
             type="button"
             className={`${foldClass} gap-2.5 px-4 py-3`}
@@ -982,12 +1017,15 @@ export function BlockView({
       const action: Action = { _tag: "UpTo", seq: block.up_to };
       const failed = controls === null ? undefined : failedAt(controls.run, action);
       if (failed !== undefined && controls !== null) {
-        return <Failure failed={failed} controls={controls} className="mt-3.5" gap={block.first} />;
+        return (
+          <Failure failed={failed} controls={controls} className="mt-3.5" gap={block.first} k={k} />
+        );
       }
       return (
         <div
           className={`${lineClass} mt-3.5 max-wide:flex-wrap max-wide:gap-y-1.5`}
           data-gap={block.first}
+          data-k={k}
         >
           <span className={`${lineKeyClass} text-ink-2`}>Not digested</span>
           <span className="flex-none">{plural(block.run_items, "message")} above</span>
@@ -1018,11 +1056,14 @@ export function BlockView({
       const action: Action = { _tag: "Now" };
       const failed = controls === null ? undefined : failedAt(controls.run, action);
       if (failed !== undefined && controls !== null) {
-        return <Failure failed={failed} controls={controls} className={lead ? "mt-3" : "mt-10"} />;
+        return (
+          <Failure failed={failed} controls={controls} className={lead ? "mt-3" : "mt-10"} k={k} />
+        );
       }
       return (
         <div
           className={`${lineClass} max-wide:flex-wrap max-wide:gap-y-1.5 ${lead ? "mt-3" : "mt-10"}`}
+          data-k={k}
         >
           <span className={`${lineKeyClass} text-ink-2`}>Not digested</span>
           {backlog !== null && (
