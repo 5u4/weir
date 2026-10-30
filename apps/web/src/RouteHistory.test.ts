@@ -143,3 +143,53 @@ describe("navigating closes Status", () => {
     expect(registry.get(statusOpen)).toBe(false);
   });
 });
+
+const deferredTransitions = () => {
+  const types: Array<ReadonlyArray<string>> = [];
+  const updates: Array<() => Promise<void>> = [];
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  vi.stubGlobal("document", {
+    hidden: false,
+    startViewTransition: (options: {
+      readonly update: () => Promise<void>;
+      readonly types: ReadonlyArray<string>;
+    }) => {
+      types.push(options.types);
+      const updated = Promise.withResolvers<void>();
+      updates.push(() => options.update().then(updated.resolve));
+      return {
+        ready: Promise.resolve(),
+        updateCallbackDone: updated.promise,
+        finished: updated.promise,
+        skipTransition: () => {},
+      };
+    },
+  });
+  return {
+    types,
+    runAll: async () => {
+      for (let update = updates.shift(); update !== undefined; update = updates.shift()) {
+        await update();
+      }
+    },
+  };
+};
+
+describe("writes while a view transition is pending", () => {
+  it("Escape in the frame that opens a conversation leaves it closed", async () => {
+    const { browser, registry, shown } = session("/");
+    const transitions = deferredTransitions();
+    registry.set(route, open("", 7));
+    registry.set(route, {
+      _tag: "Go",
+      to: { view: "untagged", query: "", conversation: Option.none() },
+    });
+    await transitions.runAll();
+    expect(shown()).toBe("/");
+    expect(browser.url()).toBe("/");
+    expect(transitions.types).toEqual([
+      ["mode", "open"],
+      ["mode", "close"],
+    ]);
+  });
+});
