@@ -21,7 +21,8 @@ and delete the old path in the same change, with no compatibility shims.
   there, never a literal, an `[arbitrary]` class or a `(--var)` shorthand. `bun run lint` enforces
   this on class strings and, through `lint/css-tokens.grit`, on literals in CSS other than
   `theme.css` (type, radius, duration and spacing properties, border, outline and underline
-  width and offset lengths, colors, z-index and custom properties).
+  width and offset lengths, lengths inside transforms and filters, colors, z-index and custom
+  properties).
   Tailwind inlines `--shadow-*` values into `shadow-*` classes, so only the color vars inside them
   follow the theme; a shadow whose geometry changes per theme is an `--elevation-*` token, used as
   `elevation-*`.

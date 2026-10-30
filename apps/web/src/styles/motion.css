@@ -26,6 +26,7 @@
   [data-rise="status"] {
     animation: status-rise var(--duration-spring) var(--ease-standard);
   }
+
   ::view-transition {
     pointer-events: none;
   }
