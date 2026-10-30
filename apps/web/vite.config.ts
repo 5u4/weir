@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { Api, defaultPort } from "@weir/daemon/Api";
 import * as ConfigFile from "@weir/daemon/ConfigFile";
@@ -63,7 +64,7 @@ const proxy = async () => {
 
 export default defineConfig(
   async ({ command }): Promise<UserConfig> => ({
-    plugins: [loopback, react()],
+    plugins: [loopback, tailwindcss({ optimize: false }), react()],
     publicDir: false,
     server: command === "serve" ? { proxy: await proxy() } : {},
   }),

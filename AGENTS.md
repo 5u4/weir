@@ -17,9 +17,10 @@ and delete the old path in the same change, with no compatibility shims.
 ## Reference
 
 - `design/index.html` is the design doc.
-- `design/prototype/ui/final/app.js` and `design/prototype/ui/final/style.css` are the UI reference.
-  Run the prototype with `cd design/prototype && bun ux/serve.ts` (`PORT` env, default 9347).
-- The prototype is throwaway: never import it.
+- Web UI styles use the tokens in `apps/web/src/theme.css`. A value with no step gets a new token
+  there, never a literal or an `[arbitrary]` class; `bun run lint` enforces it.
+- `design/prototype/ui/final/` is historical reference only, never imported. Run it with
+  `cd design/prototype && bun ux/serve.ts` (`PORT` env, default 9347).
 
 ## Effect
 

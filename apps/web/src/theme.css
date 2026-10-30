@@ -1,0 +1,263 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --*: initial;
+
+  --color-ground: oklch(0.935 0.007 255);
+  --color-g-hover: oklch(0.912 0.008 255);
+  --color-g-line: oklch(0.885 0.007 255);
+  --color-island: oklch(0.996 0.001 255);
+  --color-hover: oklch(0.965 0.003 255);
+  --color-line: oklch(0.87 0.004 255);
+  --color-line-2: oklch(0.93 0.004 255);
+  --color-ink: oklch(0.19 0.006 255);
+  --color-ink-2: oklch(0.36 0.006 255);
+  --color-ink-3: oklch(0.48 0.006 255);
+  --color-ink-4: oklch(0.72 0.004 255);
+  --color-capbg: oklch(0.19 0.006 255);
+  --color-cap-1: oklch(0.975 0.002 255);
+  --color-cap-2: oklch(0.77 0.005 255);
+  --color-cap-3: oklch(0.64 0.005 255);
+  --color-cap-hover: oklch(1 0 0 / 0.09);
+  --color-cap-rule: oklch(1 0 0 / 0.14);
+  --color-on-c: oklch(0.2 0.01 255);
+  --color-primary-hover: oklch(0.3 0.006 255);
+  --color-scroll: oklch(0.81 0.005 255);
+  --color-ok: oklch(0.5 0.12 155);
+  --color-bubble: oklch(0.953 0.004 255);
+  --color-me-bg: oklch(0.19 0.006 255);
+  --color-me-ink: oklch(0.975 0.002 255);
+  --color-warn: oklch(0.52 0.13 58);
+  --color-warn-cap: oklch(0.8 0.15 70);
+  --color-warn-wash: oklch(0.75 0.13 70 / 0.14);
+  --color-mk: oklch(0.9 0.135 96);
+  --color-mk-ink: oklch(0.2 0.02 90);
+  --color-mask: #000;
+  --color-glass: oklch(1 0 0 / 0.3);
+
+  --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-2xs: 11.5px;
+  --text-xs: 12.5px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+  --text-em-sm: 0.9em;
+  --text-av-sm: 22px;
+  --text-av-md: 28px;
+  --text-av-lg: 32px;
+  --text-av-initial: 0.46em;
+
+  --leading-none: 1;
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  --leading-loose: 1.7;
+  --leading-4\.5: 18px;
+  --leading-5: 20px;
+  --leading-7: 28px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.012em;
+  --tracking-snug: -0.005em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-chip: 0.5em;
+  --radius-full: 9999px;
+  --radius-circle: 50%;
+  --radius-reader: 36px;
+  --radius-notch: calc(var(--radius-reader) - var(--inset));
+
+  --spacing-0: 0px;
+  --spacing-px: 1px;
+  --spacing-0\.5: 2px;
+  --spacing-1: 4px;
+  --spacing-1\.5: 6px;
+  --spacing-2: 8px;
+  --spacing-2\.5: 10px;
+  --spacing-3: 12px;
+  --spacing-3\.5: 14px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-5\.5: 22px;
+  --spacing-6: 24px;
+  --spacing-7: 28px;
+  --spacing-10: 40px;
+  --spacing-11: 44px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-18: 72px;
+  --spacing-21: 84px;
+  --spacing-30: 120px;
+  --spacing-em-0\.05: 0.05em;
+  --spacing-em-0\.1: 0.1em;
+  --spacing-em-0\.25: 0.25em;
+  --spacing-em-0\.3: 0.3em;
+  --spacing-em-0\.4: 0.4em;
+  --spacing-em-0\.6: 0.6em;
+  --spacing-em-0\.7: 0.7em;
+  --spacing-em-1: 1em;
+  --spacing-em-1\.4: 1.4em;
+
+  --shadow-row:
+    0 0 0 1px oklch(0.3 0.02 255 / 0.06), 0 1px 2px oklch(0.3 0.02 255 / 0.06),
+    0 10px 24px -16px oklch(0.3 0.03 255 / 0.45);
+  --shadow-float:
+    0 0 0 1px oklch(0.3 0.02 255 / 0.09), 0 10px 26px -14px oklch(0.25 0.03 255 / 0.4);
+  --shadow-sheet: 0 -10px 40px oklch(0.2 0.02 255 / 0.22);
+  --shadow-reader:
+    0 0 0 1px oklch(0.3 0.02 255 / 0.07), 0 1px 2px oklch(0.3 0.02 255 / 0.06), 0 14px 28px -18px
+    oklch(0.3 0.03 255 / 0.22), 0 40px 80px -40px oklch(0.3 0.03 255 / 0.4);
+  --shadow-notch:
+    inset 0 1px 0 oklch(1 0 0 / 0.08), 0 0 0 1px oklch(0.1 0.01 255 / 0.5),
+    0 10px 22px -14px oklch(0.15 0.03 255 / 0.55);
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: linear(
+    0,
+    0.0421,
+    0.1444,
+    0.2776,
+    0.4203,
+    0.5579,
+    0.6814,
+    0.7862,
+    0.8706,
+    0.9352,
+    0.9821,
+    1.0137,
+    1.033,
+    1.0429,
+    1.046,
+    1.0443,
+    1.0398,
+    1.0337,
+    1.0272,
+    1.0208,
+    1.0151,
+    1.0102,
+    1.0062,
+    1.0032,
+    1.001,
+    0.9995,
+    0.9985,
+    0.998,
+    0.9979,
+    0.998,
+    0.9982,
+    0.9984,
+    0.9987,
+    0.999,
+    0.9993,
+    0.9995,
+    1
+  );
+
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-spring: 420ms;
+  --duration-spin: 800ms;
+  --duration-loop: 1200ms;
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-standard);
+
+  --z-index-raised: 2;
+  --z-index-dock: 20;
+  --z-index-cap: 40;
+
+  --breakpoint-wide: 900px;
+}
+
+@utility duration-* {
+  transition-duration: --value(--duration-*);
+}
+
+:root {
+  color-scheme: light;
+  --cl-l: 0.52;
+  --cl-c: 0.19;
+  --av-bg: 0.9 0.055;
+  --av-ink: 0.36 0.11;
+  --edge: var(--spacing-6);
+  --inset: var(--spacing-2\.5);
+  --pad: var(--spacing-10);
+  --pill: var(--spacing-12);
+  --band: calc(2 * var(--inset) + var(--pill));
+  --stage: 1360px;
+  --cg: var(--spacing-6);
+  --sw: min(var(--stage), calc(100vw - 2 * var(--edge)));
+  --sl: calc((100vw - var(--sw)) / 2);
+  --lw: clamp(300px, calc(var(--sw) * 0.3), 420px);
+  --rl: calc(var(--sl) + var(--lw) + var(--cg));
+  --rw: calc(var(--sw) - var(--lw) - var(--cg));
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ground: oklch(0.165 0.005 255);
+  --cl-l: 0.78;
+  --cl-c: 0.125;
+  --color-g-hover: oklch(0.205 0.006 255);
+  --color-g-line: oklch(0.255 0.006 255);
+  --color-island: oklch(0.218 0.006 255);
+  --color-hover: oklch(0.262 0.007 255);
+  --color-line: oklch(0.355 0.007 255);
+  --color-line-2: oklch(0.285 0.007 255);
+  --color-ink: oklch(0.955 0.003 255);
+  --color-ink-2: oklch(0.845 0.005 255);
+  --color-ink-3: oklch(0.73 0.007 255);
+  --color-ink-4: oklch(0.52 0.007 255);
+  --color-capbg: oklch(0.118 0.005 255);
+  --color-on-c: oklch(0.17 0.01 255);
+  --color-primary-hover: oklch(0.07 0.004 255);
+  --color-scroll: oklch(0.38 0.006 255);
+  --color-ok: oklch(0.8 0.13 155);
+  --av-bg: 0.38 0.075;
+  --av-ink: 0.92 0.06;
+  --color-bubble: oklch(0.272 0.007 255);
+  --color-me-bg: oklch(0.355 0.03 255);
+  --color-me-ink: oklch(0.97 0.003 255);
+  --shadow-row: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --color-warn: oklch(0.82 0.13 72);
+  --color-warn-wash: oklch(0.75 0.13 70 / 0.1);
+  --shadow-float: 0 0 0 1px oklch(1 0 0 / 0.1), 0 10px 26px -12px oklch(0 0 0 / 0.65);
+  --shadow-sheet: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --shadow-reader: 0 0 0 1px oklch(1 0 0 / 0.075), inset 0 1px 0 oklch(1 0 0 / 0.03);
+  --shadow-notch: inset 0 1px 0 oklch(1 0 0 / 0.06), 0 0 0 1px oklch(1 0 0 / 0.11);
+  --color-mk: oklch(0.5 0.105 62);
+  --color-mk-ink: oklch(0.97 0.025 85);
+}
+
+@media (max-width: 899px) {
+  :root {
+    --edge: var(--spacing-2);
+    --inset: var(--spacing-1\.5);
+    --pill: var(--spacing-11);
+    --pad: var(--spacing-4);
+    --radius-reader: 26px;
+  }
+}

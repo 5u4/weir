@@ -8,7 +8,16 @@
   "files": {
     "includes": ["**", "!repos", "!**/dist", "!design"]
   },
-  "plugins": ["./lint/no-react-effect.grit", "./lint/no-ambient-time.grit"],
+  "plugins": [
+    "./lint/no-react-effect.grit",
+    "./lint/no-ambient-time.grit",
+    "./lint/css-tokens.grit"
+  ],
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
