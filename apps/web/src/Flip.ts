@@ -156,8 +156,12 @@ const settle = (el: HTMLElement, subtree = false) => {
   });
 };
 
+let unfolding = false;
+
+const folding = (el: Element) => unfolding && el.closest("[data-fold]") !== null;
+
 const flag = (el: HTMLElement | undefined, name: (typeof flags)[number], values: object = {}) => {
-  if (el === undefined) return;
+  if (el === undefined || folding(el)) return;
   for (const [prop, value] of Object.entries(values)) el.style.setProperty(prop, String(value));
   el.setAttribute(name, "");
   settle(el, name === "data-unfold");
@@ -273,7 +277,8 @@ const opacities = (scope: Element) => {
 
 const reset = (scope: Element) => {
   const was = opacities(scope);
-  for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]")) clear(el);
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]"))
+    if (!folding(el)) clear(el);
   for (const [el, opacity] of was) {
     if (!(el instanceof HTMLElement) || el.getAnimations().length > 0) continue;
     if (opacity < Number(getComputedStyle(el).opacity))
@@ -282,8 +287,6 @@ const reset = (scope: Element) => {
 };
 
 const everywhere: Band = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
-
-let unfolding = false;
 
 export const unfold = (target: Element, open: boolean, apply: () => void) => {
   if (unfolding) return;
