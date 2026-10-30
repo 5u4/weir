@@ -117,7 +117,15 @@ export const foldOrder = (tops: ReadonlyArray<number>, bottom: number) => {
 
 const margin = 60;
 
-const flags = ["data-enter", "data-flip", "data-unfold", "data-fold", "data-land"] as const;
+const flags = [
+  "data-enter",
+  "data-flip",
+  "data-born",
+  "data-merge",
+  "data-unfold",
+  "data-fold",
+  "data-land",
+] as const;
 const vars = ["--i", "--dx", "--dy", "--g"] as const;
 
 const clear = (el: HTMLElement) => {
@@ -319,4 +327,105 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
   });
   unfolding = true;
   void Promise.all(parts.map((part) => finished(part))).then(paint);
+};
+
+export type Before = { readonly article: HTMLElement; readonly layout: Layout };
+
+const look = (article: Element | null): Before | null =>
+  article instanceof HTMLElement ? { article, layout: measure(article, true) } : null;
+
+const copied = [
+  ...flags,
+  "data-k",
+  "data-seqs",
+  "data-key",
+  "data-hit",
+  "data-current",
+  "data-gap",
+] as const;
+
+const ghostOf = (source: HTMLElement) => {
+  const copy = source.cloneNode(true);
+  if (!(copy instanceof HTMLElement)) return null;
+  for (const el of [copy, ...copy.querySelectorAll("*")]) {
+    for (const name of copied) el.removeAttribute(name);
+  }
+  const ghost = document.createElement("div");
+  ghost.append(copy);
+  return ghost;
+};
+
+const land = ({ article, layout: was }: Before, restore: () => void) => {
+  if (!article.isConnected) return;
+  const scroller = article.closest(".r-scroll");
+  const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
+  if (scroller === null || layer === null) return;
+  flushSync(() => undefined);
+  restore();
+  reset(article);
+  layer.replaceChildren();
+  const now = measure(article, true);
+  const view = scroller.getBoundingClientRect();
+  const plan = flipPlan(was.units, now.units, {
+    top: view.top - margin,
+    bottom: view.bottom + margin,
+  });
+  for (const [key, by] of plan.move) flag(now.els.get(key), "data-flip", px(by));
+  for (const [key, i] of plan.enter)
+    flag(now.els.get(key), "data-born", { "--i": Math.min(i, 10) });
+  for (const [key, { i, ...by }] of plan.merge) {
+    flag(now.els.get(key), "data-merge", { ...px(by), "--i": Math.min(i, 10) });
+  }
+  const origin = layer.getBoundingClientRect();
+  for (const [key, to] of plan.ghost) {
+    const source = was.els.get(key);
+    const unit = was.units.get(key);
+    const ghost = source === undefined ? null : ghostOf(source);
+    if (ghost === null || unit === undefined) continue;
+    ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
+    ghost.style.setProperty("--y", `${unit.top - origin.top}px`);
+    ghost.style.setProperty("--w", `${was.widths.get(key) ?? 0}px`);
+    if (to !== null)
+      for (const [prop, value] of Object.entries(px(to))) ghost.style.setProperty(prop, value);
+    ghost.setAttribute("data-ghost", to === null ? "fade" : "travel");
+    layer.append(ghost);
+    void finished(ghost).then(() => ghost.remove());
+  }
+};
+
+let armed: Before | null = null;
+
+export const before = (article: Element | null) => {
+  armed = look(article);
+  return armed;
+};
+
+export const after = (was: Before | null, restore: () => void = () => undefined) => {
+  if (armed === was) armed = null;
+  if (was !== null) land(was, restore);
+};
+
+export const reshape = (target: Element, apply: () => void) => {
+  const was = before(target.closest("article"));
+  flushSync(apply);
+  after(was);
+};
+
+let following: Before | null = null;
+
+export const follow = (article: Element | null) => {
+  if (following !== null || armed?.article.isConnected === true) return;
+  following = look(article);
+  if (following === null) return;
+  requestAnimationFrame(() => {
+    const was = following;
+    following = null;
+    if (was === null || armed?.article.isConnected === true) return;
+    const keys = [...was.article.querySelectorAll<HTMLElement>("[data-k]")].map(
+      ({ dataset }) => dataset.k ?? "",
+    );
+    const kept = [...was.layout.units.keys()];
+    if (keys.length === kept.length && keys.every((key, index) => key === kept[index])) return;
+    land(was, () => undefined);
+  });
 };

@@ -42,13 +42,14 @@ import {
   within,
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
-import { unfold } from "./Flip.ts";
+import { after, before, reshape, unfold } from "./Flip.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted, Prose, proseClass } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
 import {
   dock,
+  following,
   hitAt,
   landing,
   type Preview,
@@ -857,7 +858,7 @@ function DigestCard({
           <button
             type="button"
             className={`${pillClass} text-ink-2 shadow-ring-line transition-ink-ring duration-fast hover:text-ink hover:shadow-ring-ink-3 ${pinned ? "ml-0" : "ml-auto"}`}
-            onClick={collapse}
+            onClick={(event) => reshape(event.currentTarget, collapse)}
           >
             Collapse
           </button>
@@ -965,7 +966,9 @@ export function BlockView({
           type="button"
           className={`${foldClass} gap-3 pr-2 pl-4`}
           data-k={k}
-          onClick={() => setUi((ui) => ({ ...ui, earlier: true }))}
+          onClick={(event) =>
+            reshape(event.currentTarget, () => setUi((ui) => ({ ...ui, earlier: true })))
+          }
         >
           <span className="flex-none text-md font-bold whitespace-nowrap text-ink">
             {plural(block.digests.length, "earlier digest")}
@@ -985,8 +988,13 @@ export function BlockView({
             type="button"
             className={`${foldClass} gap-2.5 px-4 py-3`}
             aria-expanded={false}
-            onClick={() =>
-              setUi((ui) => ({ ...ui, shapes: new Map(ui.shapes).set(block.digest.id, "card") }))
+            onClick={(event) =>
+              reshape(event.currentTarget, () =>
+                setUi((ui) => ({
+                  ...ui,
+                  shapes: new Map(ui.shapes).set(block.digest.id, "card"),
+                })),
+              )
             }
           >
             <span className="flex-none text-xs whitespace-nowrap text-ink-3 tabular-nums">
@@ -1154,14 +1162,16 @@ const land = (root: HTMLElement | null) => {
         24;
 };
 
-const hold = (anchor: Element | null | undefined) => {
+const hold = (anchor: Element | null | undefined, digests: ReadonlyArray<number>) => {
   const scroller = anchor?.closest(".r-scroll");
   if (!(anchor instanceof HTMLElement) || scroller == null) return () => {};
   const top = anchor.getBoundingClientRect().top;
   const view = scroller.getBoundingClientRect();
   if (top < view.top || top > view.bottom) return () => {};
   return () => {
-    const moved = scroller.querySelector(`[data-gap="${anchor.dataset.gap}"]`);
+    const moved =
+      scroller.querySelector(`[data-gap="${anchor.dataset.gap}"]`) ??
+      scroller.querySelector(`[data-k="d-${digests[0]}"]`);
     if (moved !== null) scroller.scrollTop += moved.getBoundingClientRect().top - top;
   };
 };
@@ -1182,6 +1192,7 @@ function Conversation({
   hidden: boolean;
 }) {
   const landed = useRef(false);
+  const article = useRef<HTMLElement | null>(null);
   const [ui, setUi] = useAtom(readerUi(id));
   const { view } = useAtomValue(route);
   const hue = tagHue(useAtomValue(tagOrder), view, detail);
@@ -1210,6 +1221,7 @@ function Conversation({
               range,
               items,
               land: (digests) => {
+                const was = before(article.current);
                 setUi((current) => ({
                   ...current,
                   shapes: new Map([
@@ -1217,7 +1229,8 @@ function Conversation({
                     ...digests.map((digest) => [digest, "card"] as const),
                   ]),
                 }));
-                return hold(anchor);
+                const restore = hold(anchor, digests);
+                return () => after(was, restore);
               },
             });
           },
@@ -1235,6 +1248,7 @@ function Conversation({
     <article
       className="relative px-reader pt-2 pb-30"
       ref={(root) => {
+        article.current = root;
         if (hidden || landed.current || root === null) return;
         landed.current = true;
         land(root);
@@ -1281,6 +1295,12 @@ function Conversation({
           lead={index === 0 || blocks[index - 1]?._tag === "Marker"}
         />
       ))}
+      <div
+        className="pointer-events-none absolute inset-0 overflow-clip"
+        data-ghosts
+        aria-hidden="true"
+        inert
+      />
     </article>
   );
 }
@@ -1366,10 +1386,13 @@ export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) 
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
   useAtomMount(landing(id));
+  useAtomMount(following(id));
   const arm = () => dispatch({ _tag: "Input" });
   const track = (event: UIEvent<HTMLElement>) => {
     const next = new Map<TopicKey, number>();
-    for (const head of event.currentTarget.querySelectorAll<HTMLElement>(".pin")) {
+    for (const head of event.currentTarget.querySelectorAll<HTMLElement>(
+      ".pin:not([data-ghosts] *)",
+    )) {
       const bottom = head.getBoundingClientRect().bottom;
       const originals = [
         ...(head.closest(".tp, .dc")?.querySelectorAll(".tp:not(.uncited) > .unf .bl") ?? []),

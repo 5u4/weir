@@ -14,6 +14,8 @@ const runtime = [
   "--leave-translate",
   "--p",
   "--w",
+  "--x",
+  "--y",
 ];
 
 const sheets = [
