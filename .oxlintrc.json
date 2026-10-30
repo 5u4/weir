@@ -52,7 +52,7 @@
       "error",
       {
         "ignore": [
-          "^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|dc|unf|solo|uncited|sg|g-head|body|clip|open|cap-in)$"
+          "^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|dc|unf|solo|uncited|sg|g-head|cap-in)$"
         ]
       }
     ],
@@ -73,7 +73,7 @@
             "message": "Opacity modifier: add a named color token instead."
           },
           {
-            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy]|ring|inset-ring|outline|outline-offset|border(?:-[xytrblse])?|divide-[xy])-\\d",
+            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy]|ring|inset-ring|outline|outline-offset|underline-offset|decoration|border(?:-[xytrblse])?|divide-[xy])-\\d",
             "message": "Off-scale number: use a named token step."
           }
         ]

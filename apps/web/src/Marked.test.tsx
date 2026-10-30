@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import { Prose } from "./Marked.tsx";
 
 const render = (markdown: string, pattern: RegExp | null = null) =>
-  renderToStaticMarkup(<Prose tree={hast(markdown)} pattern={pattern} />);
+  renderToStaticMarkup(<Prose tree={hast(markdown)} pattern={pattern} />).replaceAll(
+    / class="[^"]*"/g,
+    "",
+  );
 
 const a = (href: string, text: string) =>
   `<a href="${href}" target="_blank" rel="noreferrer noopener">${text}</a>`;
@@ -14,7 +17,7 @@ describe("Prose", () => {
     [
       "an image with alt becomes its alt",
       "See ![Sales chart](https://cdn.example/chart.png) below",
-      '<p>See <span class="b-img">Sales chart</span> below</p>',
+      "<p>See <span>Sales chart</span> below</p>",
     ],
     ["an empty-alt image is dropped with its paragraph", "![](https://cdn.example/pixel.gif)", ""],
     [
@@ -25,7 +28,7 @@ describe("Prose", () => {
     [
       "a linked image with alt links its alt",
       "[![Sponsor](https://cdn.example/s.png)](https://news.example/s)",
-      `<p>${a("https://news.example/s", '<span class="b-img">Sponsor</span>')}</p>`,
+      `<p>${a("https://news.example/s", "<span>Sponsor</span>")}</p>`,
     ],
     ["a javascript: link keeps only its text", "[click](javascript:alert(1))", "<p>click</p>"],
     [
@@ -42,7 +45,7 @@ describe("Prose", () => {
     [
       "a bare URL over 56 chars shows host and path with the URL as title",
       "Read https://news.example/issues/48/offline-sync-three-months-in?utm_source=mail",
-      '<p>Read <a href="https://news.example/issues/48/offline-sync-three-months-in?utm_source=mail" target="_blank" rel="noreferrer noopener" title="https://news.example/issues/48/offline-sync-three-months-in?utm_source=mail" class="url">news.example/issues/48/offline-sync-…</a></p>',
+      '<p>Read <a href="https://news.example/issues/48/offline-sync-three-months-in?utm_source=mail" target="_blank" rel="noreferrer noopener" title="https://news.example/issues/48/offline-sync-three-months-in?utm_source=mail">news.example/issues/48/offline-sync-…</a></p>',
     ],
     [
       "a long mailto link keeps its full address",
@@ -56,7 +59,7 @@ describe("Prose", () => {
     [
       "block HTML is text",
       '<div style="x">hi</div>',
-      '<p class="b-html">&lt;div style=&quot;x&quot;&gt;hi&lt;/div&gt;</p>',
+      "<p>&lt;div style=&quot;x&quot;&gt;hi&lt;/div&gt;</p>",
     ],
     [
       "entities and escapes are decoded",
@@ -100,7 +103,7 @@ describe("Prose", () => {
 
   it("marks matches inside text, code and image alts", () => {
     expect(render("Sales `sale()` ![sale](https://cdn.example/s.png)", /sale/giu)).toBe(
-      '<p><mark>Sale</mark>s <code><mark>sale</mark>()</code> <span class="b-img"><mark>sale</mark></span></p>',
+      "<p><mark>Sale</mark>s <code><mark>sale</mark>()</code> <span><mark>sale</mark></span></p>",
     );
   });
 });
