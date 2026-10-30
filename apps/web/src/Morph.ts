@@ -105,13 +105,35 @@ const morph = (open: boolean, after: Scene, apply: () => void) => {
   }
 };
 
-export const commit = (plan: () => Commit): void => {
+const lift = (target: Element | null, rise: "switch" | "status") => {
+  if (target === null) return;
+  target.setAttribute("data-rise", rise);
+  void Promise.allSettled(target.getAnimations().map(({ finished }) => finished)).then(() =>
+    target.removeAttribute("data-rise"),
+  );
+};
+
+let commits = 0;
+
+export const commit = (plan: () => Commit) => {
   if (gate._tag === "Pending") {
     gate.queued.push(plan);
     return;
   }
+  commits += 1;
   const { before, after, apply, animate } = plan();
   const motion: Motion = animate ? motionOf(before, after) : { _tag: "None" };
-  if (motion._tag === "Mode") morph(motion.open, after, apply);
-  else apply();
+  if (motion._tag === "Mode") return morph(motion.open, after, apply);
+  if (motion._tag === "None" || matchMedia(reducedMotion).matches) return apply();
+  flushSync(apply);
+  if (motion._tag === "StatusRise") {
+    return lift(document.querySelector(".r-scroll:not([hidden])"), "status");
+  }
+  if (Option.isNone(after.conversation)) return;
+  const landed = commits;
+  void arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs)).then(() => {
+    if (landed !== commits || gate._tag === "Pending") return;
+    flushSync(() => undefined);
+    lift(document.querySelector(".r-scroll:not([hidden]) > article"), "switch");
+  });
 };

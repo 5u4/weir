@@ -84,21 +84,22 @@ export const conversation = Atom.family((id: ConversationId) =>
 
 export const arrivals = Atom.make((get) => {
   get.addFinalizer(
-    awaitArrivals(
-      (id, signal) =>
-        new Promise<void>((resolve) => {
-          const atom = conversation(id);
-          if (!AsyncResult.isInitial(get.registry.get(atom))) return resolve();
-          const done = () => {
-            cancel();
-            resolve();
-          };
-          const cancel = get.registry.subscribe(atom, (result) => {
-            if (!AsyncResult.isInitial(result)) done();
-          });
-          signal.addEventListener("abort", done, { once: true });
-        }),
-    ),
+    awaitArrivals((id, signal) => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const atom = conversation(id);
+      if (!AsyncResult.isInitial(get.registry.get(atom))) resolve();
+      else {
+        const done = () => {
+          cancel();
+          resolve();
+        };
+        const cancel = get.registry.subscribe(atom, (result) => {
+          if (!AsyncResult.isInitial(result)) done();
+        });
+        signal.addEventListener("abort", done, { once: true });
+      }
+      return promise;
+    }),
   );
 });
 

@@ -14,6 +14,7 @@ const fakeBrowser = (start: string) => {
   const popstate = new Set<PopstateListener>();
   const at = () => entries[index] ?? { url: "/", state: null };
   vi.stubGlobal("document", { hidden: false });
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
   vi.stubGlobal("location", {
     get search() {
       return new URL(at().url, origin).search;

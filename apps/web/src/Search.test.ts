@@ -76,6 +76,7 @@ const daemon = vi.hoisted(() => {
     page.search = new URL(url, origin).search;
   };
   vi.stubGlobal("document", { hidden: false });
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
   vi.stubGlobal("location", {
     origin,
     get search() {

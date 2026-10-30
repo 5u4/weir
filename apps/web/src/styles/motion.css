@@ -19,6 +19,13 @@
     view-transition-name: dock;
   }
 
+  [data-rise="switch"] {
+    animation: switch-rise var(--duration-base) var(--ease-standard);
+  }
+
+  [data-rise="status"] {
+    animation: status-rise var(--duration-spring) var(--ease-standard);
+  }
   ::view-transition {
     pointer-events: none;
   }
@@ -229,5 +236,19 @@
 @keyframes sheet-out {
   to {
     transform: translateY(100%);
+  }
+}
+
+@keyframes switch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-2\.5));
+  }
+}
+
+@keyframes status-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-3));
   }
 }
