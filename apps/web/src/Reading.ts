@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -222,13 +223,17 @@ export const following = Atom.family((id: ConversationId) =>
     const shape = () => {
       const detail = get.once(conversation(id));
       return AsyncResult.isSuccess(detail)
-        ? `${detail.value.items.length}:${detail.value.digests.map((digest) => digest.id)}:${get.once(digestRun(id))._tag}`
+        ? [
+            detail.value.items,
+            detail.value.digests.map((digest) => digest.id),
+            get.once(digestRun(id))._tag,
+          ]
         : null;
     };
     let shown = shape();
     const changed = () => {
       const next = shape();
-      if (next === shown) return;
+      if (Equal.equals(next, shown)) return;
       const first = shown === null;
       shown = next;
       if (first) return;
