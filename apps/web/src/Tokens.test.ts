@@ -16,6 +16,7 @@ const runtime = [
   "--view-h",
   "--view-top",
   "--w",
+  "--was-opacity",
   "--x",
   "--y",
 ];

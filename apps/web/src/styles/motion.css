@@ -52,6 +52,16 @@
     animation: flip var(--duration-enter) var(--ease-glide);
   }
 
+  .r-scroll [data-resume] {
+    animation: resume var(--duration-base) var(--ease-standard);
+  }
+
+  .r-scroll [data-k][data-flip][data-resume] {
+    animation:
+      flip var(--duration-enter) var(--ease-glide),
+      resume var(--duration-base) var(--ease-standard);
+  }
+
   .r-scroll [data-k][data-born] {
     animation: born var(--duration-spring) var(--ease-standard)
       calc(var(--duration-fast) + var(--i) * var(--duration-stagger)) backwards;
@@ -146,6 +156,11 @@
     .r-scroll [data-k][data-born],
     .r-scroll [data-k][data-merge] {
       animation: vt-fade-in var(--duration-fast) linear backwards;
+    }
+
+    .r-scroll [data-resume],
+    .r-scroll [data-k][data-flip][data-resume] {
+      animation: resume var(--duration-fast) linear;
     }
 
     [data-ghost="travel"],
@@ -338,9 +353,13 @@
   }
 }
 
-/* Unlayered so it beats the clone's Tailwind margin utilities. */
+/* Unlayered so these beat the clone's Tailwind margin and opacity utilities. */
 [data-ghost] > * {
   margin: 0;
+}
+
+[data-ghost] [data-faded] {
+  opacity: var(--was-opacity);
 }
 
 @keyframes vt-out {
@@ -516,6 +535,12 @@
   from {
     opacity: 0;
     translate: 0 var(--spacing-2);
+  }
+}
+
+@keyframes resume {
+  from {
+    opacity: var(--was-opacity);
   }
 }
 

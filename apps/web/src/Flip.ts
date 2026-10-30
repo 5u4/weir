@@ -125,8 +125,9 @@ const flags = [
   "data-unfold",
   "data-fold",
   "data-land",
+  "data-resume",
 ] as const;
-const vars = ["--i", "--dx", "--dy", "--g"] as const;
+const vars = ["--i", "--dx", "--dy", "--g", "--was-opacity"] as const;
 
 const clear = (el: HTMLElement) => {
   for (const flag of flags) el.removeAttribute(flag);
@@ -260,8 +261,24 @@ const measure = (scope: ParentNode, seqs: boolean): Layout => {
   return { els, units, widths };
 };
 
-const reset = (scope: ParentNode) => {
-  for (const el of scope.querySelectorAll<HTMLElement>("[data-k]")) clear(el);
+const opacities = (scope: Element) => {
+  const seen = new Map<Element, number>();
+  for (const animation of scope.getAnimations({ subtree: true })) {
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+    if (animation instanceof CSSAnimation && target instanceof HTMLElement && target !== scope)
+      seen.set(target, Number(getComputedStyle(target).opacity));
+  }
+  return seen;
+};
+
+const reset = (scope: Element) => {
+  const was = opacities(scope);
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]")) clear(el);
+  for (const [el, opacity] of was) {
+    if (!(el instanceof HTMLElement) || el.getAnimations().length > 0) continue;
+    if (opacity < Number(getComputedStyle(el).opacity))
+      flag(el, "data-resume", { "--was-opacity": opacity });
+  }
 };
 
 const everywhere: Band = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
@@ -330,10 +347,16 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
   void Promise.all(parts.map((part) => finished(part))).then(paint);
 };
 
-export type Before = { readonly article: HTMLElement; readonly layout: Layout };
+export type Before = {
+  readonly article: HTMLElement;
+  readonly layout: Layout;
+  readonly opacity: ReadonlyMap<Element, number>;
+};
 
 const look = (article: Element | null): Before | null =>
-  article instanceof HTMLElement ? { article, layout: measure(article, true) } : null;
+  article instanceof HTMLElement
+    ? { article, layout: measure(article, true), opacity: opacities(article) }
+    : null;
 
 const copied = [
   ...flags,
@@ -345,18 +368,24 @@ const copied = [
   "data-gap",
 ] as const;
 
-const ghostOf = (source: HTMLElement) => {
+const ghostOf = (source: HTMLElement, opacity: ReadonlyMap<Element, number>) => {
   const copy = source.cloneNode(true);
   if (!(copy instanceof HTMLElement)) return null;
-  for (const el of [copy, ...copy.querySelectorAll("*")]) {
+  const sources = [source, ...source.querySelectorAll("*")];
+  [copy, ...copy.querySelectorAll("*")].forEach((el, index) => {
     for (const name of copied) el.removeAttribute(name);
-  }
+    const from = sources[index];
+    const seen = from === undefined ? undefined : opacity.get(from);
+    if (seen === undefined || !(el instanceof HTMLElement)) return;
+    el.style.setProperty("--was-opacity", String(seen));
+    el.setAttribute("data-faded", "");
+  });
   const ghost = document.createElement("div");
   ghost.append(copy);
   return ghost;
 };
 
-const land = ({ article, layout: was }: Before, restore: () => void) => {
+const land = ({ article, layout: was, opacity }: Before, restore: () => void) => {
   if (!article.isConnected) return;
   const scroller = article.closest(".r-scroll");
   const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
@@ -383,7 +412,7 @@ const land = ({ article, layout: was }: Before, restore: () => void) => {
   for (const [key, to] of plan.ghost) {
     const source = was.els.get(key);
     const unit = was.units.get(key);
-    const ghost = source === undefined ? null : ghostOf(source);
+    const ghost = source === undefined ? null : ghostOf(source, opacity);
     if (ghost === null || unit === undefined) continue;
     ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
     ghost.style.setProperty("--y", `${unit.top - view.top}px`);
