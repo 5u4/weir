@@ -44,6 +44,11 @@
   --color-cap-faint: color-mix(in oklch, var(--color-cap-1) 30%, transparent);
   --color-ok-glow: color-mix(in oklch, var(--color-ok) 22%, transparent);
   --color-warn-glow: color-mix(in oklch, var(--color-warn) 24%, transparent);
+  --color-dock: color-mix(in oklch, var(--color-island) 93%, transparent);
+  --color-pin: color-mix(in oklch, var(--color-island) 97%, transparent);
+  --color-me-fold: color-mix(in oklch, var(--color-me-bg) 72%, transparent);
+  --color-preview: color-mix(in oklch, var(--color-ink) 12%, var(--color-bubble));
+  --color-preview-me: color-mix(in oklch, var(--color-ink) 24%, var(--color-me-bg));
 
   --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -111,6 +116,7 @@
   --spacing-3\.5: 14px;
   --spacing-4: 16px;
   --spacing-5: 20px;
+  --spacing-5\.25: 21px;
   --spacing-5\.5: 22px;
   --spacing-6: 24px;
   --spacing-7: 28px;
@@ -155,6 +161,16 @@
   --size-pill: var(--spacing-12);
   --max-width-status: 760px;
   --max-width-error: 44ch;
+  --spacing-bleed: min(var(--padding-reader) - var(--spacing-2), var(--spacing-4));
+  --inset-0\.75: 3px;
+  --inset-half-px: 0.5px;
+  --inset-overlap: calc(100% - var(--spacing-3));
+  --inset-dock-safe: calc(var(--spacing-3) + env(safe-area-inset-bottom));
+  --max-width-dock: calc(100% - var(--spacing-8));
+  --max-width-lane: 88%;
+  --max-width-em-30: 30em;
+  --max-width-em-36: 36em;
+  --max-width-em-38: 38em;
   --width-segment-fill: calc((100% - var(--spacing-2)) / 3);
   --padding-reader: var(--spacing-10);
 
@@ -166,7 +182,12 @@
   --height-4\.5: 18px;
   --height-7\.5: 30px;
   --height-8\.5: 34px;
+  --height-3\.75: 15px;
+  --height-6\.5: 26px;
   --height-9: 36px;
+  --height-9\.5: 38px;
+  --width-11\.5: 46px;
+  --flex-basis-4\.5: 18px;
   --width-em-6: 6em;
   --width-em-9: 9em;
   --min-width-em-6: 6em;
@@ -185,16 +206,31 @@
   --grid-template-columns-sync: 8px max-content max-content;
   --grid-template-columns-segments: repeat(3, 96px);
   --grid-template-columns-segments-fill: repeat(3, 1fr);
+  --grid-template-columns-group: var(--spacing-7) minmax(0, 1fr);
+  --grid-template-columns-group-me: minmax(0, 1fr) var(--spacing-7);
+  --grid-template-columns-topic: var(--spacing-21) minmax(0, 1fr);
+  --grid-template-columns-topic-head: var(--spacing-21) minmax(0, 1fr) auto;
   --blur-md: 12px;
+  --blur-lg: 16px;
+  --blur-xl: 18px;
+  --saturate-pin: 1.3;
+  --saturate-dock: 1.4;
   --opacity-none: 0;
   --opacity-half: 0.5;
+  --opacity-faded: 0.45;
+  --opacity-muted: 0.6;
   --opacity-full: 1;
   --scale-press: 97%;
   --scale-press-firm: 94%;
   --scale-press-deep: 92%;
   --scale-dot: 30%;
+  --rotate-flip: 180deg;
+  --translate-lift: 4px;
+  --outline-width-hit: 2.5px;
   --outline-offset-inset: -2px;
   --outline-offset-near: 2px;
+  --outline-offset-out: 3px;
+  --outline-offset-far: 4px;
   --outline-offset-tight: 1px;
 
   --elevation-row:
@@ -210,6 +246,12 @@
     inset 0 1px 0 oklch(1 0 0 / 0.08), 0 0 0 1px oklch(0.1 0.01 255 / 0.5),
     0 10px 22px -14px oklch(0.15 0.03 255 / 0.55);
   --shadow-ring-line: inset 0 0 0 1px var(--color-line);
+  --shadow-ring-ink-3: inset 0 0 0 1px var(--color-ink-3);
+  --shadow-ring-ink-4: inset 0 0 0 1px var(--color-ink-4);
+  --shadow-ring-glass: inset 0 0 0 1px var(--color-glass);
+  --shadow-ring-current: inset 0 0 0 1px currentColor;
+  --shadow-ring-thick-ink: inset 0 0 0 2px var(--color-ink);
+  --shadow-rule-line: inset 0 1px 0 var(--color-line);
   --shadow-ring-g-line: inset 0 0 0 1px var(--color-g-line);
   --shadow-halo-ground: 0 0 0 2.5px var(--color-ground);
   --shadow-halo-g-hover: 0 0 0 2.5px var(--color-g-hover);
@@ -229,6 +271,9 @@
   --transition-property-fade-tint-shown: opacity, visibility, background-color, color;
   --transition-property-press-bg: scale, background-color;
   --transition-property-ink: color;
+  --transition-property-ink-ring: color, box-shadow;
+  --transition-property-ink-ring-fade: color, box-shadow, opacity;
+  --transition-property-ink-ring-press: color, box-shadow, scale;
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
@@ -282,6 +327,8 @@
 
   --animate-trace: trace var(--duration-loop) var(--ease-glide) var(--duration-fast) both;
   --animate-spin: spin var(--duration-spin) linear infinite;
+  --animate-beat: beat var(--duration-loop) var(--ease-standard) infinite;
+  --animate-shimmer: shimmer var(--duration-loop) linear infinite;
 
   @keyframes trace {
     from {
@@ -295,7 +342,21 @@
     }
   }
 
+  @keyframes beat {
+    50% {
+      transform: scale(0.55);
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+
   --z-index-raised: 2;
+  --z-index-pin: 3;
   --z-index-dock: 20;
   --z-index-cap: 40;
 
@@ -315,6 +376,18 @@
   --color-avatar-ink: oklch(var(--av-ink) var(--h));
   --color-tag: oklch(var(--cl-l) var(--cl-c) var(--bh));
   --translate-segment: calc(var(--i) * 100%);
+  --width-meter: calc(var(--p) * 100%);
+  --width-bar: var(--w);
+  --color-preview-tag: color-mix(
+    in oklch,
+    oklch(var(--cl-l) var(--cl-c) var(--bh)) 12%,
+    var(--color-bubble)
+  );
+  --color-preview-me-tag: color-mix(
+    in oklch,
+    oklch(var(--cl-l) var(--cl-c) var(--bh)) 24%,
+    var(--color-me-bg)
+  );
 }
 
 @utility transition-pop {
@@ -356,6 +429,40 @@
 @utility content-dot {
   --tw-content: "·";
   content: var(--tw-content);
+}
+
+@utility palt {
+  font-feature-settings: "palt";
+}
+
+@utility align-px {
+  vertical-align: var(--spacing-px);
+}
+
+@utility direction-ltr {
+  direction: ltr;
+}
+
+@utility direction-rtl {
+  direction: rtl;
+}
+
+@utility transition-reveal {
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    translate var(--duration-base) var(--ease-standard),
+    scale var(--duration-base) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+@utility bg-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-hover) 0%,
+    var(--color-line-2) 50%,
+    var(--color-hover) 100%
+  );
+  background-size: 200% 100%;
 }
 
 :root {

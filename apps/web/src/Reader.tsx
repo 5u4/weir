@@ -69,6 +69,36 @@ type Controls = {
 
 type Failed = Extract<Run, { readonly _tag: "Failed" }>;
 
+type Tint = "tag" | "ink";
+
+const tintClass: Record<Tint, string> = { tag: "bg-tag", ink: "bg-ink" };
+
+const separatorClass =
+  "not-first:before:mx-em-0.6 not-first:before:text-ink-4 not-first:before:content-dot";
+
+const iconClass = "fill-none stroke-current linecap-round linejoin-round";
+
+const hitClass = "outline-hit outline-solid outline-ink";
+
+const fadeClass = "opacity-faded transition-opacity duration-base";
+
+const bleedClass = "-mx-bleed -mt-1.5 rounded-3xl px-bleed py-1.5";
+
+const pinClass = "pin sticky top-0 z-pin bg-pin backdrop-blur-lg backdrop-saturate-pin";
+
+const lineClass = "flex min-h-8 items-center gap-3 text-xs text-ink-3 tabular-nums";
+
+const lineKeyClass = "flex-none font-bold";
+
+const chipClass =
+  "ml-auto inline-flex h-7 flex-none items-center gap-1.5 rounded-full pr-3 text-xs font-bold text-ink-2 shadow-ring-line transition-ink-ring-press duration-fast enabled:hover:text-ink enabled:hover:shadow-ring-ink-3 active:scale-press disabled:cursor-default";
+
+const pillClass =
+  "mt-0.5 h-7 flex-none rounded-full px-3 text-xs leading-7 font-semibold active:scale-press";
+
+const foldClass =
+  "mt-3 flex min-h-11 w-full items-center rounded-xl bg-hover text-left transition-bg duration-fast hover:bg-line-2";
+
 const previewing = (set: (preview: Preview) => void, range: Range) => ({
   onPointerEnter: (event: PointerEvent) => {
     if (event.pointerType !== "touch") set({ _tag: "Hover", range });
@@ -82,16 +112,23 @@ const previewing = (set: (preview: Preview) => void, range: Range) => ({
 
 function Arrow({ up = false }: { up?: boolean }) {
   return (
-    <svg className="ar" viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      className={`size-3.5 flex-none stroke-1.7 ${iconClass}`}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <path d={up ? "M8 12.5v-9M4.5 7L8 3.5 11.5 7" : "M8 3.5v9M4.5 9L8 12.5 11.5 9"} />
     </svg>
   );
 }
 
-function LogPath({ failed }: { failed: Failed }) {
+function LogPath({ failed, block = false }: { failed: Failed; block?: boolean }) {
   return failed.cause._tag === "Failed" && failed.cause.log_path !== null ? (
-    <span className="dg-log">
-      Raw output <code>{failed.cause.log_path}</code>
+    <span className={`min-w-0 basis-full wrap-anywhere text-ink-3 ${block ? "block" : ""}`}>
+      Raw output{" "}
+      <code className="font-mono text-xs leading-normal text-ink-2 normal-nums">
+        {failed.cause.log_path}
+      </code>
     </span>
   ) : null;
 }
@@ -109,14 +146,16 @@ function Failure({
 }) {
   const why = reason(failed.cause);
   return (
-    <div className={`tl-h err ${className}`} role="alert" data-gap={gap}>
-      <span className="tl-k">Couldn't digest {plural(failed.items, "message")}</span>
-      <span className="tl-e" title={why}>
+    <div className={`${lineClass} flex-wrap gap-y-0.5 ${className}`} role="alert" data-gap={gap}>
+      <span className={`${lineKeyClass} text-warn`}>
+        Couldn't digest {plural(failed.items, "message")}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-ink-2" title={why}>
         {why}
       </span>
       <button
         type="button"
-        className="gp-go"
+        className={`${chipClass} pl-3 disabled:opacity-half`}
         onClick={(event) =>
           controls.act(
             failed.action,
@@ -133,28 +172,40 @@ function Failure({
   );
 }
 
-function Skeleton({ items }: { items: number }) {
-  const bar = (width: string, className = "") => (
-    <span className={`sk-b ${className}`} style={{ "--w": width } as CSSProperties} />
+const shimmerClass = "block rounded-md bg-shimmer animate-shimmer motion-reduce:animate-none";
+const barClass = `mt-2.5 h-3 w-bar ${shimmerClass}`;
+const headBarClass = `mt-2.5 h-5.5 w-bar ${shimmerClass}`;
+const titleBarClass = `mt-0.5 h-3.75 w-bar ${shimmerClass}`;
+
+function Skeleton({ items, tint, lead }: { items: number; tint: Tint; lead: boolean }) {
+  const bar = (width: string, className = barClass) => (
+    <span className={className} style={{ "--w": width } as CSSProperties} />
   );
   const topic = (title: string, line: string, short: string) => (
-    <div className="sk-tp">
-      <span className="sk-s" />
+    <div className="mt-5.5 grid grid-cols-topic">
+      <span className={`mt-1 h-3 w-11.5 ${shimmerClass}`} />
       <div>
-        {bar(title, "sk-tt")}
+        {bar(title, titleBarClass)}
         {bar(line)}
         {bar(short)}
       </div>
     </div>
   );
   return (
-    <div className="dc sk" role="status" aria-live="polite">
-      <p className="sk-l">
-        <span className="sk-dot" aria-hidden="true" />
+    <div
+      className={`relative pt-1 pb-2 ${lead ? "mt-2" : "mt-10"}`}
+      role="status"
+      aria-live="polite"
+    >
+      <p className="m-0 mb-1 flex items-center gap-2 text-xs font-semibold text-ink-2">
+        <span
+          className={`size-1.75 rounded-circle animate-beat motion-reduce:animate-none ${tintClass[tint]}`}
+          aria-hidden="true"
+        />
         Digesting {plural(items, "message")}…
       </p>
       <div aria-hidden="true">
-        {bar("64%", "sk-h")}
+        {bar("64%", headBarClass)}
         {topic("30%", "92%", "58%")}
         {topic("24%", "84%", "40%")}
       </div>
@@ -193,9 +244,19 @@ const stateNames: Record<TopicView["topic"]["state"], string> = {
   fyi: "FYI",
 };
 
-function Chevron({ up = false }: { up?: boolean }) {
+const stateClass: Record<TopicView["topic"]["state"], string> = {
+  open: "text-ink before:shadow-ring-thick-ink",
+  resolved: "text-ink-3 before:bg-ink-4",
+  fyi: "text-ink-3 before:shadow-ring-ink-4",
+};
+
+function Chevron({ up = false, flip = false }: { up?: boolean; flip?: boolean }) {
   return (
-    <svg className="cv" viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      className={`size-3.5 flex-none stroke-1.8 ${iconClass} ${flip ? "rotate-flip" : ""}`}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <path d={up ? "M4 10l4-4 4 4" : "M4 6l4 4 4-4"} />
     </svg>
   );
@@ -217,13 +278,22 @@ const hitProps = (found: Found, key: string) =>
     : {};
 
 function End({ seq, watch }: { seq: number; watch: Watch }) {
-  return <span className="read-end" data-seq={seq} ref={watch} aria-hidden="true" />;
+  return (
+    <span
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-0"
+      data-seq={seq}
+      ref={watch}
+      aria-hidden="true"
+    />
+  );
 }
 
 function DayLine({ at }: { at: string }) {
   return (
-    <div className="day" role="separator">
-      <span>{dayLabel(DateTime.makeUnsafe(at), useAtomValue(now))}</span>
+    <div className="mt-5 mb-1.5 flex justify-center" role="separator">
+      <span className="rounded-full bg-hover px-2.5 py-0.5 text-xs font-semibold text-ink-3 tabular-nums">
+        {dayLabel(DateTime.makeUnsafe(at), useAtomValue(now))}
+      </span>
     </div>
   );
 }
@@ -233,11 +303,13 @@ function Long({
   seq,
   tree,
   pattern,
+  me,
 }: {
   id: ConversationId;
   seq: number;
   tree: Root;
   pattern: RegExp | null;
+  me: boolean;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
   const [over, setOver] = useState(false);
@@ -268,14 +340,15 @@ function Long({
   return (
     <>
       <div
-        className={["body clip", open && "open", over && "over"].filter(Boolean).join(" ")}
+        className={open ? "body clip open" : "body clip"}
+        data-over={over || undefined}
         ref={measure}
       >
         <Prose tree={tree} pattern={pattern} />
       </div>
       <button
         type="button"
-        className="more"
+        className={`mt-1.5 h-6.5 rounded-full px-3 text-xs font-semibold transition-ink-ring duration-fast ${over ? "inline-flex items-center" : "hidden"} ${me ? "text-me-ink shadow-ring-glass" : "text-ink-2 shadow-ring-line hover:text-ink hover:shadow-ring-ink-3"}`}
         aria-expanded={open}
         onClick={(event) => {
           const bubble = event.currentTarget.closest(".bl");
@@ -303,6 +376,28 @@ function Long({
   );
 }
 
+const hoverChipClass = (shown: boolean) =>
+  `relative inline-flex h-7 items-center gap-1.5 rounded-full bg-island pr-3 pl-2.5 text-xs font-semibold whitespace-nowrap text-ink elevation-float transition-reveal direction-ltr before:absolute before:-inset-0.75 active:scale-press ${shown ? "pointer-events-auto translate-none opacity-full" : "translate-y-lift opacity-none group-focus-within:pointer-events-auto group-focus-within:translate-none group-focus-within:opacity-full group-hover:pointer-events-auto group-hover:translate-none group-hover:opacity-full motion-reduce:translate-none"}`;
+
+const bubbleFillClass = ({
+  me,
+  folded,
+  previewed,
+  tint,
+}: {
+  me: boolean;
+  folded: boolean;
+  previewed: boolean;
+  tint: Tint;
+}) => {
+  if (me) {
+    if (previewed) return tint === "tag" ? "bg-preview-me-tag" : "bg-preview-me";
+    return folded ? "bg-me-fold" : "bg-me-bg";
+  }
+  if (previewed) return tint === "tag" ? "bg-preview-tag" : "bg-preview";
+  return folded ? "bg-transparent shadow-ring-line" : "bg-bubble";
+};
+
 function Bubble({
   id,
   item,
@@ -311,6 +406,9 @@ function Bubble({
   watch,
   mark,
   found,
+  me,
+  folded,
+  tint,
 }: {
   id: ConversationId;
   item: ItemSummary;
@@ -319,6 +417,9 @@ function Bubble({
   watch: Watch | undefined;
   mark: Mark;
   found: Found;
+  me: boolean;
+  folded: boolean;
+  tint: Tint;
 }) {
   const key = hitKey({ _tag: "Item", seq: item.seq });
   const tree = hast(item.body_new);
@@ -329,12 +430,13 @@ function Bubble({
   const digestible = here !== undefined && controls !== null;
   const failed = digestible && run !== undefined ? failedAt(run, action) : undefined;
   const tapped = shown?._tag === "Tap" && shown.seq === item.seq;
+  const previewed =
+    digestible && shown !== null && shown.range !== null && within(shown.range, item.seq);
   const classes = [
-    "bl",
-    digestible && "dg",
-    digestible && run?._tag === "Running" && within(run.range, item.seq) && "busy",
-    digestible && shown !== null && shown.range !== null && within(shown.range, item.seq) && "pv",
-    tapped && "tap",
+    "bl group relative flex min-w-0 max-w-lane",
+    digestible &&
+      `before:absolute before:-inset-y-0.5 before:w-0.5 before:rounded-xs before:transition-opacity before:duration-fast ${me ? "before:-right-1.5" : "before:-left-1.5"} ${tint === "tag" ? "before:bg-tag" : "before:bg-ink"} ${previewed ? "before:opacity-full" : "before:opacity-none"}`,
+    digestible && run?._tag === "Running" && within(run.range, item.seq) && fadeClass,
   ];
   return (
     <>
@@ -351,29 +453,40 @@ function Bubble({
           );
         }}
       >
-        <div className="bb">
+        <div
+          className={`min-w-0 max-w-em-36 rounded-b-2xl px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${bubbleFillClass({ me, folded, previewed, tint })} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
+        >
           {tree.children.length === 0 ? (
-            <p className="body b-none">(no text)</p>
+            <p className="body text-ink-3">(no text)</p>
           ) : (
-            <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} />
+            <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} me={me} />
           )}
         </div>
         {hit?._tag === "Item" && hit.field !== "body" && (
-          <span className="bh" title={`Matched in ${fieldLabels[hit.field]}`}>
+          <span
+            className="ml-2 inline-flex flex-none items-center gap-1.5 self-center text-2xs leading-5 font-semibold whitespace-nowrap text-ink-3 before:size-2 before:rounded-xs before:bg-mk"
+            title={`Matched in ${fieldLabels[hit.field]}`}
+          >
             {fieldLabels[hit.field]}
           </span>
         )}
         {(digestible || item.seq <= mark.seen) && (
-          <span className="dfh-w">
+          <span
+            className={`pointer-events-none absolute inset-x-0 bottom-overlap z-raised flex flex-wrap justify-end-safe gap-1.5 px-2.5 ${me ? "direction-rtl" : ""}`}
+          >
             {item.seq <= mark.seen && (
-              <button type="button" className="mu" onClick={() => mark.unread(item.seq)}>
+              <button
+                type="button"
+                className={`${hoverChipClass(tapped)} hover:bg-hover`}
+                onClick={() => mark.unread(item.seq)}
+              >
                 Mark unread from here
               </button>
             )}
             {digestible && (
               <button
                 type="button"
-                className={`dfh${runs(controls.run, action) ? " on" : ""}`}
+                className={`${hoverChipClass(tapped || runs(controls.run, action))} enabled:hover:bg-hover disabled:cursor-default disabled:text-ink-3`}
                 disabled={controls.run._tag === "Running"}
                 onClick={() => controls.act(action, here.range, here.items)}
                 {...previewing(setPreview, here.range)}
@@ -387,7 +500,11 @@ function Bubble({
         {watch !== undefined && <End seq={item.seq} watch={watch} />}
       </div>
       {failed !== undefined && controls !== null && (
-        <Failure failed={failed} controls={controls} className="bl-e" />
+        <Failure
+          failed={failed}
+          controls={controls}
+          className={`mt-0.5 mb-1.5 max-w-lane ${me ? "self-end" : ""}`}
+        />
       )}
     </>
   );
@@ -398,27 +515,36 @@ function Group({
   group,
   mark,
   found,
+  tint,
   watch,
   controls = null,
+  folded = false,
 }: {
   id: ConversationId;
   group: Bubbles;
   mark: Mark;
   found: Found;
+  tint: Tint;
   watch?: Watch;
   controls?: Controls | null;
+  folded?: boolean;
 }) {
   const name = group.me ? "Me" : group.from.name.trim() || group.from.address;
   const at = DateTime.makeUnsafe(group.at);
   const avatar = (
-    <span className="g-av">
+    <span className="pt-5.25 text-av-md">
       <Avatar address={group.from.address} mark={group.me ? "Me" : monogram(group.from)} />
     </span>
   );
   const column = (
-    <div className="g-col">
-      <div className="g-head">
-        <b title={group.from.address}>{name}</b>
+    <div className={`flex min-w-0 flex-col gap-0.5 ${group.me ? "items-end" : "items-start"}`}>
+      <div className="g-head flex max-w-full items-baseline gap-2 px-3.5 text-xs leading-4.5 whitespace-nowrap text-ink-3 tabular-nums">
+        <b
+          className="overflow-hidden font-bold text-ellipsis text-ink-2"
+          title={group.from.address}
+        >
+          {name}
+        </b>
         <time dateTime={group.at} title={dayAndTime(at)}>
           {clockTime(at)}
         </time>
@@ -433,12 +559,19 @@ function Group({
           watch={watch}
           mark={mark}
           found={found}
+          me={group.me}
+          folded={folded}
+          tint={tint}
         />
       ))}
     </div>
   );
   return (
-    <section className={`sg${group.me ? " me" : ""}`} aria-label={`${name}, ${dayAndTime(at)}`}>
+    <section
+      className={`sg grid gap-x-2.5 gap-y-0 ${folded ? "mt-2.5" : "mt-3"} ${group.me ? "grid-cols-group-me" : "grid-cols-group"}`}
+      data-me={group.me || undefined}
+      aria-label={`${name}, ${dayAndTime(at)}`}
+    >
       {group.me ? column : avatar}
       {group.me ? avatar : column}
     </section>
@@ -448,11 +581,16 @@ function Group({
 function Pin({ id, unfold, view }: { id: ConversationId; unfold: () => void; view: TopicView }) {
   const at = useAtomValue(pins(id)).get(view.key) ?? 1;
   return (
-    <span className="pin-r">
-      <span className="pin-n" aria-live="off">
+    <span className="ml-auto inline-flex items-center gap-2.5 self-center">
+      <span className="text-xs whitespace-nowrap text-ink-3 tabular-nums" aria-live="off">
         {Math.min(at, view.items.length)} of {view.items.length}
       </span>
-      <button type="button" className="pin-x" onClick={unfold} aria-label="Fold the originals back">
+      <button
+        type="button"
+        className="inline-flex h-6.5 items-center gap-1 rounded-full pr-2 pl-2.5 text-xs font-semibold text-ink-2 shadow-ring-line hover:text-ink hover:shadow-ring-ink-3"
+        onClick={unfold}
+        aria-label="Fold the originals back"
+      >
         Fold
         <Chevron up />
       </button>
@@ -478,6 +616,8 @@ function Originals({
   toggle,
   mark,
   found,
+  tint,
+  solo,
 }: {
   id: ConversationId;
   fold: AnyFold;
@@ -485,35 +625,47 @@ function Originals({
   toggle: () => void;
   mark: Mark;
   found: Found;
+  tint: Tint;
+  solo: boolean;
 }) {
   const who = [...new Map(fold.items.map((item) => [item.from_me || item.from.address, item]))];
+  const cellClass = solo ? "col-start-1" : "col-start-2";
   return (
     <>
       <button
         type="button"
-        className={`tp-o${fold.open ? " on" : ""}`}
+        className={`${cellClass} mt-1.5 -ml-1.5 inline-flex h-7.5 items-center gap-1.5 justify-self-start rounded-full pr-2 pl-1.5 text-xs font-semibold tabular-nums transition-tint duration-fast hover:bg-hover hover:text-ink ${fold.open ? "text-ink" : "text-ink-3"}`}
         aria-expanded={fold.open}
         onClick={toggle}
       >
-        <span className="tp-av" aria-hidden="true">
-          {who.slice(0, 3).map(([key, item]) => (
+        <span className="mr-0.5 inline-flex text-av-sm" aria-hidden="true">
+          {who.slice(0, 3).map(([key, item], index) => (
             <Avatar
               key={String(key)}
               address={item.from.address}
               mark={item.from_me ? "Me" : monogram(item.from)}
+              className={index > 0 ? "-ml-1.5 shadow-halo-island" : "shadow-halo-island"}
             />
           ))}
         </span>
         {plural(fold.items.length, noun)}
-        <Chevron />
+        <Chevron flip={fold.open} />
       </button>
       {fold.open && (
-        <div className="unf">
+        <div className={`unf ${cellClass} mt-1 mb-1.5`}>
           {fold.groups.map((group) =>
             group._tag === "Day" ? (
               <DayLine key={blockKey(group)} at={group.at} />
             ) : (
-              <Group key={blockKey(group)} id={id} group={group} mark={mark} found={found} />
+              <Group
+                key={blockKey(group)}
+                id={id}
+                group={group}
+                mark={mark}
+                found={found}
+                tint={tint}
+                folded
+              />
             ),
           )}
         </div>
@@ -522,30 +674,43 @@ function Originals({
   );
 }
 
+const titleClass =
+  "m-0 font-display text-lg leading-normal font-semibold tracking-snug text-balance break-keep wrap-anywhere text-ink palt";
+
 function Topic({
   id,
   view,
   solo,
   mark,
   found,
+  tint,
 }: {
   id: ConversationId;
   view: TopicView;
   solo: boolean;
   mark: Mark;
   found: Found;
+  tint: Tint;
 }) {
   const [, setUi] = useAtom(readerUi(id));
   const toggle = () => setUi(flipped(view));
+  const key = hitKey({ _tag: "Topic", key: view.key });
   return (
     <section
-      className={`tp${view.open ? " open" : ""}${solo ? " solo" : ""}`}
-      {...hitProps(found, hitKey({ _tag: "Topic", key: view.key }))}
+      className={`tp relative grid items-start ${solo ? "solo grid-cols-1" : "grid-cols-topic"}`}
+      {...hitProps(found, key)}
     >
       {!solo ? (
-        <header className={`tp-h${view.open ? " pin" : ""}`} data-key={view.key}>
-          <i className={`tsm tsm-${view.topic.state}`}>{stateNames[view.topic.state]}</i>
-          <h4 className="tp-t">
+        <header
+          className={`col-span-full grid grid-cols-topic-head items-baseline ${bleedClass} ${view.open ? pinClass : ""}`}
+          data-key={view.key}
+        >
+          <i
+            className={`inline-block font-sans text-2xs leading-5 font-bold whitespace-nowrap not-italic before:mr-1.5 before:inline-block before:size-1.75 before:rounded-circle before:align-px ${stateClass[view.topic.state]}`}
+          >
+            {stateNames[view.topic.state]}
+          </i>
+          <h4 className={titleClass}>
             <Highlighted text={view.topic.title} pattern={found.pattern} />
           </h4>
           {view.open && <Pin id={id} unfold={toggle} view={view} />}
@@ -553,15 +718,26 @@ function Topic({
       ) : (
         found.pattern !== null &&
         matches(view.topic.title, found.pattern) && (
-          <h4 className="tp-t">
+          <h4 className={`col-start-1 mb-1 ${titleClass}`}>
             <Highlighted text={view.topic.title} pattern={found.pattern} />
           </h4>
         )
       )}
-      <p className="tp-b">
+      <p
+        className={`leading-loose palt ${solo ? "col-start-1 m-0 max-w-em-38 text-lg text-ink" : "col-start-2 mt-1 mb-0 max-w-em-38 text-base text-ink-2"} ${found.current === key ? `rounded-md ${hitClass} outline-offset-far` : ""}`}
+      >
         <Highlighted text={view.topic.body} pattern={found.pattern} />
       </p>
-      <Originals id={id} fold={view} noun="original" toggle={toggle} mark={mark} found={found} />
+      <Originals
+        id={id}
+        fold={view}
+        noun="original"
+        toggle={toggle}
+        mark={mark}
+        found={found}
+        tint={tint}
+        solo={solo}
+      />
     </section>
   );
 }
@@ -579,6 +755,8 @@ function DigestCard({
   mark,
   found,
   controls,
+  tint,
+  lead,
 }: {
   id: ConversationId;
   block: Extract<Block, { _tag: "DigestCard" }>;
@@ -586,6 +764,8 @@ function DigestCard({
   mark: Mark;
   found: Found;
   controls: Controls | null;
+  tint: Tint;
+  lead: boolean;
 }) {
   const [, setUi] = useAtom(readerUi(id));
   const { digest, items, topics, uncited } = block;
@@ -605,36 +785,45 @@ function DigestCard({
   const redoing =
     run?._tag === "Running" && run.range.from === digest.from_seq && run.range.to === digest.to_seq;
   const failed = run === undefined ? undefined : failedAt(run, action);
+  const key = hitKey({ _tag: "Headline", digest: digest.id });
   return (
     <section
-      className={`dc${solo ? " solo" : ""}${redoing ? " redoing" : ""}`}
+      className={`dc relative ${lead ? "mt-2 pt-3.5" : "mt-10 pt-7 shadow-rule-line"}`}
       aria-label={digest.headline}
       aria-busy={redoing || undefined}
     >
       <header
-        className={`dc-h${pinned ? " pin" : ""}`}
+        className={`${bleedClass} ${pinned ? pinClass : ""}`}
         data-key={only?.key}
-        {...hitProps(found, hitKey({ _tag: "Headline", digest: digest.id }))}
+        {...hitProps(found, key)}
       >
         {digest.from_seq !== digest.to_seq && (
-          <p className="dc-m">
+          <p className="mt-0 mb-2 text-xs leading-4.5 text-ink-3 tabular-nums">
             {meta(digest, items).map((bit) => (
-              <span key={bit}>{bit}</span>
+              <span key={bit} className={separatorClass}>
+                {bit}
+              </span>
             ))}
           </p>
         )}
-        <div className="dc-hl">
-          <h3 className="dc-t">
+        <div className="flex items-start gap-3">
+          <h3
+            className={`m-0 max-w-em-30 min-w-0 flex-1 font-display text-2xl leading-snug font-bold tracking-tight text-balance break-keep wrap-anywhere text-ink palt ${redoing ? fadeClass : ""} ${found.current === key ? `rounded-md ${hitClass} outline-offset-far` : ""}`}
+          >
             <Highlighted text={digest.headline} pattern={found.pattern} />
           </h3>
           {solo && only?.open && <Pin id={id} unfold={unfoldOnly} view={only} />}
-          <button type="button" className="dc-x" onClick={collapse}>
+          <button
+            type="button"
+            className={`${pillClass} text-ink-2 shadow-ring-line transition-ink-ring duration-fast hover:text-ink hover:shadow-ring-ink-3 ${pinned ? "ml-0" : "ml-auto"}`}
+            onClick={collapse}
+          >
             Collapse
           </button>
           {controls !== null && (
             <button
               type="button"
-              className="dc-redo"
+              className={`${pillClass} ml-1.5 transition-ink-ring-fade duration-fast enabled:hover:text-ink enabled:hover:shadow-ring-ink-3 disabled:cursor-default ${redoing ? "text-ink-2 opacity-full" : "text-ink-3 disabled:opacity-half"}`}
               title="Digest this range again with the current prompt and model"
               disabled={controls.run._tag === "Running"}
               onClick={() =>
@@ -650,17 +839,27 @@ function DigestCard({
           )}
         </div>
         {failed !== undefined && (
-          <p className="dc-err" role="alert">
-            Couldn't redo. {reason(failed.cause)} <LogPath failed={failed} />
+          <p className="mt-1.5 mb-0 text-xs text-warn" role="alert">
+            Couldn't redo. {reason(failed.cause)} <LogPath failed={failed} block />
           </p>
         )}
       </header>
-      <div className="tps">
+      <div className={`grid gap-6 ${solo ? "mt-2.5" : "mt-5.5"} ${redoing ? fadeClass : ""}`}>
         {topics.map((view) => (
-          <Topic key={view.key} id={id} view={view} solo={solo} mark={mark} found={found} />
+          <Topic
+            key={view.key}
+            id={id}
+            view={view}
+            solo={solo}
+            mark={mark}
+            found={found}
+            tint={tint}
+          />
         ))}
         {uncited !== null && (
-          <section className={`tp uncited${solo ? " solo" : ""}`}>
+          <section
+            className={`tp uncited relative grid items-start ${solo ? "solo grid-cols-1" : "grid-cols-topic"}`}
+          >
             <Originals
               id={id}
               fold={uncited}
@@ -668,6 +867,8 @@ function DigestCard({
               toggle={() => setUi(flipped(uncited))}
               mark={mark}
               found={found}
+              tint={tint}
+              solo={solo}
             />
           </section>
         )}
@@ -684,6 +885,8 @@ export function BlockView({
   mark,
   found,
   controls,
+  tint,
+  lead,
 }: {
   id: ConversationId;
   block: Block;
@@ -691,15 +894,22 @@ export function BlockView({
   mark: Mark;
   found: Found;
   controls: Controls | null;
+  tint: Tint;
+  lead: boolean;
 }) {
   const [, setUi] = useAtom(readerUi(id));
   const setPreview = useAtomSet(preview);
   switch (block._tag) {
     case "Marker":
       return (
-        <div className="lr" role="separator">
-          <span>
-            <b>{block.kind === "all-new" ? "All new from here" : "Last read"}</b>
+        <div
+          className="lr mt-4 mb-1 flex items-center gap-3 before:h-0.5 before:shrink-0 before:grow-0 before:basis-4.5 before:rounded-xs before:bg-ink after:h-0.5 after:flex-1 after:rounded-xs after:bg-ink"
+          role="separator"
+        >
+          <span className="text-xs whitespace-nowrap text-ink-3">
+            <b className="mr-2 font-bold text-ink">
+              {block.kind === "all-new" ? "All new from here" : "Last read"}
+            </b>
             {block.newCount} new
           </span>
         </div>
@@ -708,29 +918,37 @@ export function BlockView({
       return (
         <button
           type="button"
-          className="older"
+          className={`${foldClass} gap-3 pr-2 pl-4`}
           onClick={() => setUi((ui) => ({ ...ui, earlier: true }))}
         >
-          <span className="o-n">{plural(block.digests.length, "earlier digest")}</span>
-          <span className="o-span">
+          <span className="flex-none text-md font-bold whitespace-nowrap text-ink">
+            {plural(block.digests.length, "earlier digest")}
+          </span>
+          <span className="min-w-0 truncate text-sm text-ink-3 tabular-nums">
             {timeSpan(block.items)} · {plural(block.items.length, "message")}
           </span>
-          <span className="o-go">Show</span>
+          <span className="ml-auto h-7 flex-none rounded-full bg-island px-3 text-xs leading-7 font-semibold text-ink-2">
+            Show
+          </span>
         </button>
       );
     case "DigestRow":
       return (
-        <div className="rr-w">
+        <div className="relative">
           <button
             type="button"
-            className="rr"
+            className={`${foldClass} gap-2.5 px-4 py-3`}
             aria-expanded={false}
             onClick={() =>
               setUi((ui) => ({ ...ui, shapes: new Map(ui.shapes).set(block.digest.id, "card") }))
             }
           >
-            <span className="rr-m">{meta(block.digest, block.items).join(" · ")}</span>
-            <span className="rr-t">{block.digest.headline}</span>
+            <span className="flex-none text-xs whitespace-nowrap text-ink-3 tabular-nums">
+              {meta(block.digest, block.items).join(" · ")}
+            </span>
+            <span className="min-w-0 truncate text-md font-semibold text-ink-2 palt before:mr-2.5 before:font-normal before:text-ink-4 before:content-dot">
+              {block.digest.headline}
+            </span>
           </button>
           <End seq={block.digest.to_seq} watch={watch} />
         </div>
@@ -744,6 +962,8 @@ export function BlockView({
           mark={mark}
           found={found}
           controls={controls}
+          tint={tint}
+          lead={lead}
         />
       );
     case "GapBar": {
@@ -751,16 +971,19 @@ export function BlockView({
       const action: Action = { _tag: "UpTo", seq: block.up_to };
       const failed = controls === null ? undefined : failedAt(controls.run, action);
       if (failed !== undefined && controls !== null) {
-        return <Failure failed={failed} controls={controls} className="ge" gap={block.first} />;
+        return <Failure failed={failed} controls={controls} className="mt-3.5" gap={block.first} />;
       }
       return (
-        <div className="tl-h ge" data-gap={block.first}>
-          <span className="tl-k">Not digested</span>
-          <span className="tl-n">{plural(block.run_items, "message")} above</span>
+        <div
+          className={`${lineClass} mt-3.5 max-wide:flex-wrap max-wide:gap-y-1.5`}
+          data-gap={block.first}
+        >
+          <span className={`${lineKeyClass} text-ink-2`}>Not digested</span>
+          <span className="flex-none">{plural(block.run_items, "message")} above</span>
           {controls !== null && gap !== null && (
             <button
               type="button"
-              className={`gp-go${runs(controls.run, action) ? " on" : ""}`}
+              className={`${chipClass} pl-2.5 ${runs(controls.run, action) ? "opacity-full" : "disabled:opacity-half"}`}
               disabled={controls.run._tag === "Running"}
               onClick={(event) =>
                 controls.act(
@@ -784,18 +1007,20 @@ export function BlockView({
       const action: Action = { _tag: "Now" };
       const failed = controls === null ? undefined : failedAt(controls.run, action);
       if (failed !== undefined && controls !== null) {
-        return <Failure failed={failed} controls={controls} className="tl" />;
+        return <Failure failed={failed} controls={controls} className={lead ? "mt-3" : "mt-10"} />;
       }
       return (
-        <div className="tl-h tl">
-          <span className="tl-k">Not digested</span>
+        <div
+          className={`${lineClass} max-wide:flex-wrap max-wide:gap-y-1.5 ${lead ? "mt-3" : "mt-10"}`}
+        >
+          <span className={`${lineKeyClass} text-ink-2`}>Not digested</span>
           {backlog !== null && (
             <>
-              <span className="tl-n">
+              <span className="flex-none">
                 {backlog.chars.toLocaleString("en")} of {backlog.threshold.toLocaleString("en")}
               </span>
               <span
-                className="tl-m"
+                className="relative h-px min-w-10 flex-1 bg-line max-wide:order-5 max-wide:basis-full"
                 role="meter"
                 aria-label="Characters toward the next digest"
                 aria-valuemin={0}
@@ -803,14 +1028,16 @@ export function BlockView({
                 aria-valuenow={Math.min(backlog.chars, backlog.threshold)}
                 style={{ "--p": Math.min(1, backlog.chars / backlog.threshold) } as CSSProperties}
               >
-                <i />
+                <i
+                  className={`absolute -top-half-px left-0 h-0.5 w-meter rounded-xs ${tintClass[tint]}`}
+                />
               </span>
             </>
           )}
           {controls !== null && now !== null && (
             <button
               type="button"
-              className="tl-go"
+              className="ml-auto h-7.5 flex-none rounded-full bg-capbg px-3.5 text-xs font-bold text-cap-1 elevation-notch transition-press-bg duration-fast enabled:hover:bg-primary-hover active:scale-press disabled:cursor-default disabled:opacity-half"
               disabled={controls.run._tag === "Running"}
               onClick={() =>
                 controls.act(action, { from: now.from_seq, to: now.to_seq }, now.items)
@@ -824,12 +1051,20 @@ export function BlockView({
       );
     }
     case "Skeleton":
-      return <Skeleton items={block.items} />;
+      return <Skeleton items={block.items} tint={tint} lead={lead} />;
     case "Day":
       return <DayLine at={block.at} />;
     case "Bubbles":
       return (
-        <Group id={id} group={block} watch={watch} mark={mark} found={found} controls={controls} />
+        <Group
+          id={id}
+          group={block}
+          watch={watch}
+          mark={mark}
+          found={found}
+          tint={tint}
+          controls={controls}
+        />
       );
   }
 }
@@ -938,9 +1173,15 @@ function Conversation({
   const newCount = detail.items.filter(({ seq }) => seq > frozen).length;
   const home = homeTag(view, detail.tags);
   const tags = detail.tags.filter((tag) => tag !== home);
+  const blocks = reader(
+    detail,
+    frozen,
+    revealing(ui, run),
+    run._tag === "Running" ? run.range : null,
+  );
   return (
     <article
-      className="conv"
+      className="relative px-reader pt-2 pb-30"
       ref={(root) => {
         if (hidden || landed.current || root === null) return;
         landed.current = true;
@@ -949,41 +1190,45 @@ function Conversation({
       aria-label={detail.title}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
-      <header className="r-head">
-        <p className="r-crumb">
-          {home !== undefined && <b>{home}</b>}
+      <header className="pb-2">
+        <p className="mt-0 mb-1.5 text-xs text-ink-3">
+          {home !== undefined && (
+            <b className={`font-semibold text-ink-2 ${separatorClass}`}>{home}</b>
+          )}
           {tags.map((tag) => (
-            <span key={tag} className="tg">
+            <span key={tag} className={separatorClass}>
               {tag}
             </span>
           ))}
-          <span>{detail.source}</span>
-          <span>{newCount > 0 ? `${newCount} new this time` : "Read"}</span>
-          <span>
+          <span className={separatorClass}>{detail.source}</span>
+          <span className={separatorClass}>
+            {newCount > 0 ? `${newCount} new this time` : "Read"}
+          </span>
+          <span className={separatorClass}>
             {plural(detail.items.length, "message")} ·{" "}
             {plural(participants(detail), "person", "people")}
           </span>
-          <span>
+          <span className={separatorClass}>
             {day(detail.first_at)} – {day(detail.last_at)}
           </span>
         </p>
-        <h2 className="r-title">
+        <h2 className="m-0 font-display text-2xl leading-snug font-extrabold tracking-tight text-balance palt">
           <Highlighted text={detail.title} pattern={pattern} />
         </h2>
       </header>
-      {reader(detail, frozen, revealing(ui, run), run._tag === "Running" ? run.range : null).map(
-        (block) => (
-          <BlockView
-            key={blockKey(block)}
-            id={id}
-            block={block}
-            watch={watch}
-            mark={mark}
-            found={found}
-            controls={controls}
-          />
-        ),
-      )}
+      {blocks.map((block, index) => (
+        <BlockView
+          key={blockKey(block)}
+          id={id}
+          block={block}
+          watch={watch}
+          mark={mark}
+          found={found}
+          controls={controls}
+          tint={hue === undefined ? "ink" : "tag"}
+          lead={index === 0 || blocks[index - 1]?._tag === "Marker"}
+        />
+      ))}
     </article>
   );
 }
@@ -995,6 +1240,9 @@ const dockLabels: Record<DockAction, string> = {
   Mute: "Mute",
 };
 
+const dockItemClass =
+  "h-9.5 items-center gap-2 rounded-full text-sm whitespace-nowrap no-underline transition-press-bg duration-fast";
+
 function Dock({ id }: { id: ConversationId }) {
   const shown = useAtomValue(dock(id));
   const [current, navigate] = useAtom(route);
@@ -1003,14 +1251,18 @@ function Dock({ id }: { id: ConversationId }) {
   if (Option.isNone(shown)) return null;
   const { actions, target, open } = shown.value;
   return (
-    <div className="r-dock" role="group" aria-label="Conversation actions">
+    <div
+      className="r-dock absolute inset-x-0 bottom-4 mx-auto flex w-fit max-w-dock items-center gap-1 rounded-full bg-dock p-1.5 elevation-float backdrop-blur-xl backdrop-saturate-dock max-wide:bottom-dock-safe max-wide:gap-0.5"
+      role="group"
+      aria-label="Conversation actions"
+    >
       <button
         type="button"
-        className="back"
+        className={`${dockItemClass} hidden px-4 font-semibold text-ink hover:bg-hover active:scale-press max-wide:inline-flex max-wide:px-2.5`}
         aria-label="Back"
         onClick={() => navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })}
       >
-        <svg className="bk-i" viewBox="0 0 16 16" aria-hidden="true">
+        <svg className={`size-4.5 stroke-1.8 ${iconClass}`} viewBox="0 0 16 16" aria-hidden="true">
           <path d="M10 3.5L5.5 8l4.5 4.5" />
         </svg>
       </button>
@@ -1018,24 +1270,35 @@ function Dock({ id }: { id: ConversationId }) {
         <button
           key={action}
           type="button"
-          className={action === "Done" || action === "Restore" ? "primary" : undefined}
+          className={`${dockItemClass} inline-flex font-semibold active:scale-press ${action === "Done" || action === "Restore" ? "bg-capbg px-5 text-cap-1 hover:bg-primary-hover" : "px-4 text-ink hover:bg-hover max-wide:px-3.5"}`}
           aria-keyshortcuts={action === "Done" ? "e" : undefined}
           onClick={() => (action === "MarkUnread" ? unread(null) : run({ act: action, target }))}
         >
           {dockLabels[action]}
-          {action === "Done" && <kbd aria-hidden="true">e</kbd>}
+          {action === "Done" && (
+            <kbd
+              className="rounded-sm px-1 py-0.5 font-sans text-2xs leading-none font-semibold opacity-muted shadow-ring-current max-wide:hidden"
+              aria-hidden="true"
+            >
+              e
+            </kbd>
+          )}
         </button>
       ))}
       {open !== null && (
         <a
-          className="ext"
+          className={`${dockItemClass} inline-flex px-4 font-medium text-ink-3 hover:text-ink max-wide:px-2.5`}
           href={open.link}
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`Open in ${open.label}`}
         >
-          <span className="ext-t">Open in {open.label}</span>
-          <svg className="ext-i" viewBox="0 0 16 16" aria-hidden="true">
+          <span className="max-wide:hidden">Open in {open.label}</span>
+          <svg
+            className={`-ml-1 size-3.25 stroke-1.6 ${iconClass} max-wide:ml-0 max-wide:size-4.5`}
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
             <path d="M5.5 4.5h6v6M11.2 4.8L4.5 11.5" />
           </svg>
         </a>
@@ -1082,8 +1345,10 @@ export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) 
         onScroll={track}
       >
         {AsyncResult.isFailure(result) && !AsyncResult.isSuccess(result) ? (
-          <div className="calm es warn">
-            <p className="es-alert">Can't load this conversation.</p>
+          <div className="flex h-full flex-col items-center justify-center px-reader pb-16">
+            <p className="m-0 mb-5 font-display text-lg leading-snug font-semibold text-ink">
+              Can't load this conversation.
+            </p>
           </div>
         ) : (
           AsyncResult.isSuccess(result) &&
