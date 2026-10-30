@@ -20,11 +20,21 @@ export function Avatar({
   );
 }
 
-export function Avatars({ senders }: { senders: ReadonlyArray<Sender> }) {
+const stackClass = "-top-em-0.05 mr-em-0.25";
+
+export function Avatars({
+  senders,
+  className = stackClass,
+  on = false,
+}: {
+  senders: ReadonlyArray<Sender>;
+  className?: string;
+  on?: boolean;
+}) {
   if (senders.length === 0) return null;
   return (
     <span
-      className="relative -top-em-0.05 mr-em-0.25 inline-flex align-middle"
+      className={`relative inline-flex align-middle ${className}`}
       aria-hidden="true"
       data-stack=""
     >
@@ -33,7 +43,7 @@ export function Avatars({ senders }: { senders: ReadonlyArray<Sender> }) {
           key={sender.address}
           address={sender.address}
           mark={monogram(sender)}
-          className={`text-em-sm shadow-stack-capbg ${index > 0 ? "-ml-em-0.3" : ""}`}
+          className={`text-em-sm ${on ? "shadow-stack-cap-1" : "shadow-stack-capbg"} ${index > 0 ? "-ml-em-0.3" : ""}`}
         />
       ))}
     </span>
