@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { type Motion, motionOf, type Scene } from "./Morph.ts";
 import { ConversationId } from "./Route.ts";
 
-const scene = (status: boolean, conversation?: number): Scene => ({
+const scene = (status: boolean, conversation?: number, notch = "full"): Scene => ({
   status,
   conversation:
     conversation === undefined ? Option.none() : Option.some(ConversationId.make(conversation)),
+  notch,
 });
 
 describe("motionOf", () => {
@@ -27,6 +28,31 @@ describe("motionOf", () => {
     ],
     ["picking a conversation from Status", scene(true), scene(false, 2), { _tag: "StatusRise" }],
     ["route changing under open Status", scene(true, 1), scene(true, 2), { _tag: "None" }],
+    [
+      "the notch changing on the list",
+      scene(false),
+      scene(false, undefined, "b"),
+      { _tag: "Tick" },
+    ],
+    ["the notch changing while reading", scene(false, 1), scene(false, 1, "b"), { _tag: "Tick" }],
+    [
+      "the notch changing as a conversation opens",
+      scene(false),
+      scene(false, 1, "b"),
+      { _tag: "Mode", open: true },
+    ],
+    [
+      "the notch changing as Status rises",
+      scene(false, 1),
+      scene(true, 1, "b"),
+      { _tag: "StatusRise" },
+    ],
+    [
+      "the notch changing as conversations switch",
+      scene(false, 1),
+      scene(false, 2, "b"),
+      { _tag: "Switch" },
+    ],
   ])("%s", (_, before, after, motion) => {
     expect(motionOf(before, after)).toEqual(motion);
   });

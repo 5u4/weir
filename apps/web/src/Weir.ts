@@ -22,7 +22,7 @@ import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
-import { ConversationId, route, statusOpen, type View } from "./Route.ts";
+import { ConversationId, capCounts, route, statusOpen, type View } from "./Route.ts";
 import {
   type Act,
   exits,
@@ -64,9 +64,17 @@ export const reload = Weir.runtime.fn<void>()(
   { reactivityKeys: ["counts", "list"] },
 );
 
-export const searchOpen = Atom.make(false);
-
 export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
+
+export const capCountsFeed = Atom.make((get) => {
+  get.subscribe(
+    counts,
+    (result) => {
+      if (AsyncResult.isSuccess(result) && !result.waiting) get.set(capCounts, result.value);
+    },
+    { immediate: true },
+  );
+});
 
 export const tagOrder = Atom.make((get) =>
   AsyncResult.getOrElse(
@@ -335,9 +343,8 @@ export const searchGroup = Atom.make(Option.none<View>());
 export const leaveSearch = Atom.writable(
   () => undefined,
   (ctx, _: undefined) => {
-    ctx.set(searchOpen, false);
     ctx.set(searchGroup, Option.none());
-    ctx.set(route, { _tag: "Type", query: "" });
+    ctx.set(route, { _tag: "Leave" });
   },
 );
 

@@ -6,6 +6,7 @@ import { Avatars } from "./Avatar.tsx";
 import { plural } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import {
+  type CapForm,
   type Clause,
   chips,
   clearedWidget,
@@ -20,22 +21,22 @@ import { hitAt, searchHits, searchMatchedIn, stepHit } from "./Reading.ts";
 import { groups, type ResultGroup } from "./Results.ts";
 import {
   type ConversationId,
+  capCounts,
   href,
   listTops,
   type Route,
   route,
+  searchOpen,
   statusOpen,
   type View,
 } from "./Route.ts";
 import { CloseIcon, StatusIcon } from "./Status.tsx";
 import {
-  counts,
   found,
   leaveSearch,
   pickedGroup,
   searchGroup,
   searching,
-  searchOpen,
   searchQuery,
   searchResult,
   tagOrder,
@@ -623,8 +624,6 @@ function HitStepper({ id }: { id: ConversationId }) {
   );
 }
 
-export type CapForm = "full" | "compact" | "search" | "result";
-
 const capClass = (compact: boolean) =>
   `cap fixed top-edge-gap left-reader-gap z-cap mx-auto flex flex-col bg-capbg text-cap-1 elevation-notch **:focus-visible:outline-cap-1 **:focus-visible:outline-offset-near max-wide:left-edge ${compact ? "compact w-fit rounded-full wide:right-stage-gap wide:max-w-compact" : "right-stage-gap rounded-notch max-wide:right-edge"}`;
 
@@ -634,9 +633,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
   const current = useAtomValue(route);
   const setSearching = useAtomSet(searchOpen);
   const leave = useAtomSet(leaveSearch);
-  const loaded = AsyncResult.getOrElse(AsyncResult.map(useAtomValue(counts), Option.some), () =>
-    Option.none(),
-  );
+  const loaded = useAtomValue(capCounts);
   const active = current.query === "" ? current.view : null;
   const result = form === "result";
   return (

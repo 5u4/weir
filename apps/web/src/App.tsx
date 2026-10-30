@@ -1,22 +1,23 @@
 import { useAtom, useAtomMount, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { Cap, type CapForm } from "./Cap.tsx";
+import { Cap } from "./Cap.tsx";
 import { health } from "./Health.ts";
 import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
+import { formOf } from "./Notch.ts";
 import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
-import { route, statusOpen } from "./Route.ts";
+import { route, searchOpen, statusOpen } from "./Route.ts";
 import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
 import {
   arrivals,
+  capCountsFeed,
   found,
   listMotion,
   live,
   searching,
-  searchOpen,
   searchQuery,
   status,
   tabTitle,
@@ -29,6 +30,7 @@ export function App() {
   useAtomMount(arrivals);
   useAtomMount(keys);
   useAtomMount(listMotion);
+  useAtomMount(capCountsFeed);
   const [current, navigate] = useAtom(route);
   const reading = Option.isSome(current.conversation);
   const opened = useAtomValue(searchOpen);
@@ -42,15 +44,7 @@ export function App() {
     Option.none,
   );
   const alert = Option.exists(loaded, ({ health }) => health.alert);
-  const form: CapForm = open
-    ? "compact"
-    : reading
-      ? current.query === ""
-        ? "compact"
-        : "result"
-      : opened || current.query !== ""
-        ? "search"
-        : "full";
+  const form = formOf({ status: open, reading, query: current.query, searching: opened });
   const sheet = open || reading;
   return (
     <>
