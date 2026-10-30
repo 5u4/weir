@@ -156,9 +156,12 @@ const historyWrite = (
   }
 };
 
+let traversals = 0;
+
 export const route: Atom.Writable<Route, Navigation> = Atom.writable(
   (get) => {
     const sync = (event: PopStateEvent) => {
+      traversals += 1;
       const next = parse(location.search);
       commit(() => {
         const status = get.registry.get(statusShown);
@@ -170,25 +173,31 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
         };
       });
     };
-    addEventListener("popstate", sync);
-    get.addFinalizer(() => removeEventListener("popstate", sync));
+    addEventListener("popstate", sync, true);
+    get.addFinalizer(() => removeEventListener("popstate", sync, true));
     return parse(location.search);
   },
-  (ctx, navigation: Navigation) =>
+  (ctx, navigation: Navigation) => {
+    const submitted = traversals;
     commit(() => {
       const previous = ctx.get(route);
+      const before = { status: ctx.get(statusShown), conversation: previous.conversation };
+      if (traversals !== submitted) {
+        return { before, after: before, apply: () => undefined, animate: false };
+      }
       const { target, write } = historyWrite(previous, navigation);
-      const from = location.href;
       return {
-        before: { status: ctx.get(statusShown), conversation: previous.conversation },
+        before,
         after: { status: false, conversation: target.conversation },
         apply: () => {
+          if (traversals !== submitted) return;
           ctx.set(statusShown, false);
-          if (Option.isNone(write) || location.href !== from) return;
+          if (Option.isNone(write)) return;
           write.value();
           ctx.setSelf(target);
         },
         animate: navigation._tag !== "Type",
       };
-    }),
+    });
+  },
 );
