@@ -45,7 +45,7 @@ const status = (sources: ReadonlyArray<Source>): Status => ({
 const text = (sources: ReadonlyArray<Source>) => {
   const value = status(sources);
   const markup = renderToStaticMarkup(<StatusView status={value} health={health(value)} />);
-  const list = /<ul class="sv-srcs">([\s\S]*?)<\/section>/.exec(markup)?.[1] ?? "";
+  const list = /id="sv-h-src">Sources<\/h3>([\s\S]*?)<\/section>/.exec(markup)?.[1] ?? "";
   return list
     .replace(/<\/(li|p|span|b)>/g, " ")
     .replace(/<[^>]*>/g, "")

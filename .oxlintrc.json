@@ -51,7 +51,7 @@
     "better-tailwindcss/no-unknown-classes": [
       "error",
       {
-        "ignore": ["^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|cap-in|qc-x)$"]
+        "ignore": ["^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|cap-in)$"]
       }
     ],
     "better-tailwindcss/no-restricted-classes": [
@@ -80,7 +80,7 @@
   },
   "overrides": [
     {
-      "files": ["apps/web/src/Reader.tsx", "apps/web/src/Status.tsx"],
+      "files": ["apps/web/src/Reader.tsx"],
       "rules": {
         "better-tailwindcss/no-unknown-classes": "off"
       }
