@@ -1,7 +1,7 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { face, type Intents, intentFor, moved, neighbor, shown, tagHue } from "./Rows.ts";
+import { exits, face, type Intents, intentFor, moved, neighbor, shown, tagHue } from "./Rows.ts";
 
 const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   id,
@@ -50,6 +50,18 @@ describe("rows shown under pending intents", () => {
     expect(ids(shown("untagged", [row(1, 5), row(2, 6)], intents))).toEqual([2]);
     expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([]);
     expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
+  });
+});
+
+describe("which dismissals slide the row out first", () => {
+  it.each([
+    { view: "untagged", act: "Done", searching: false, expected: true },
+    { view: "tag:Work", act: "Mute", searching: false, expected: true },
+    { view: "cleared", act: "Restore", searching: false, expected: false },
+    { view: "cleared", act: "Done", searching: false, expected: false },
+    { view: "untagged", act: "Done", searching: true, expected: false },
+  ] as const)("$act in $view, searching $searching", ({ view, act, searching, expected }) => {
+    expect(exits(view, act, searching)).toBe(expected);
   });
 });
 

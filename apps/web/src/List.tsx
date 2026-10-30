@@ -54,6 +54,7 @@ function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { see
   const state = { unread, selected };
   return (
     <li
+      data-k={row.id}
       className={rowClass(selected)}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >

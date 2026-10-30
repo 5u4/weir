@@ -13,6 +13,7 @@ import { theme } from "./Theme.ts";
 import {
   arrivals,
   found,
+  listMotion,
   live,
   searching,
   searchOpen,
@@ -27,6 +28,7 @@ export function App() {
   useAtomMount(live);
   useAtomMount(arrivals);
   useAtomMount(keys);
+  useAtomMount(listMotion);
   const [current, navigate] = useAtom(route);
   const reading = Option.isSome(current.conversation);
   const opened = useAtomValue(searchOpen);

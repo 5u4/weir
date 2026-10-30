@@ -132,7 +132,13 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  return { rows, requests, digests, replies, details, running, queued, Source, location };
+  const page = { row: null as object | null };
+  vi.stubGlobal("document", {
+    hidden: false,
+    querySelector: () => page.row,
+    elementFromPoint: () => page.row,
+  });
+  return { rows, requests, digests, replies, details, running, queued, Source, location, page };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -170,6 +176,7 @@ afterEach(() => {
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
+  daemon.page.row = null;
 });
 
 const refetched = async (event: Event, expected: ReadonlyArray<string>) => {
@@ -286,6 +293,42 @@ it("a Mute the daemon refuses puts the row back", async () => {
 
   expect(daemon.requests).toContain("POST /conversations/1/mute");
   expect(visible()).toEqual([1, 2]);
+  registry.dispose();
+});
+
+it("Done on a visible row waits for its exit before the row leaves, and drops a second Done meanwhile", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+
+  const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
+  const flags = new Set<string>();
+  const fake = {
+    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 50 }),
+    contains: (node: unknown) => node === fake,
+    setAttribute: (name: string) => flags.add(name),
+    removeAttribute: (name: string) => flags.delete(name),
+    style: { removeProperty: () => "" },
+    getAnimations: () => [{ finished: exited }],
+  };
+  daemon.page.row = fake;
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+  const done = () => daemon.requests.filter((request) => request === "POST /conversations/1/done");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  registry.set(dismiss, { act: "Done", target });
+  expect(registry.get(intents).size).toBe(0);
+  expect(done()).toEqual([]);
+
+  exit();
+  await vi.waitFor(() => expect(done()).toHaveLength(1));
+  await vi.waitFor(() => expect(registry.get(intents).size).toBe(0));
+  expect(done()).toHaveLength(1);
   registry.dispose();
 });
 
