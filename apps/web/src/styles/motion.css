@@ -338,6 +338,11 @@
   }
 }
 
+/* Unlayered so it beats the clone's Tailwind margin utilities. */
+[data-ghost] > * {
+  margin: 0;
+}
+
 @keyframes vt-out {
   to {
     opacity: 0;
