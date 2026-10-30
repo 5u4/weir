@@ -192,9 +192,16 @@ const deferredTransitions = () => {
   const updates: Array<() => Promise<void>> = [];
   const started: Array<Running> = [];
   const running: Array<Running> = [];
+  const rises: Array<string> = [];
+  const article = {
+    setAttribute: (_: string, rise: string) => rises.push(rise),
+    removeAttribute: () => {},
+    getAnimations: () => [],
+  };
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
   vi.stubGlobal("document", {
     hidden: false,
+    querySelector: () => article,
     startViewTransition: (options: {
       readonly update: () => Promise<void>;
       readonly types: ReadonlyArray<string>;
@@ -245,6 +252,7 @@ const deferredTransitions = () => {
   return {
     types,
     started,
+    rises,
     runUpdates,
     finishAll,
     runAll: async () => {
@@ -470,5 +478,46 @@ describe("notch ticks", () => {
     expect(transitions.types).toEqual([["tick"], ["mode", "open"]]);
     expect(transitions.started[0]?.skipped).toBe(true);
     expect(registry.get(route).conversation).toEqual(Option.some(ConversationId.make(7)));
+  });
+});
+
+const heldArrivals = () => {
+  const held = new Map<ConversationId, PromiseWithResolvers<void>>();
+  onTestFinished(
+    awaitArrivals((id) => {
+      const arrived = Promise.withResolvers<void>();
+      held.set(id, arrived);
+      return arrived.promise;
+    }),
+  );
+  return (id: number) => {
+    const arrived = held.get(ConversationId.make(id));
+    arrived?.resolve();
+    return arrived?.promise;
+  };
+};
+
+describe("the switch rise", () => {
+  it("plays after counts refetch while the next conversation loads", async () => {
+    const { navigate, registry, transitions } = notch("/?c=7");
+    const arrive = heldArrivals();
+    navigate(open("", 9));
+    registry.set(capCounts, counts(2));
+    registry.set(capCounts, counts(1));
+    await transitions.runAll();
+    await arrive(9);
+    expect(transitions.types).toEqual([["tick"]]);
+    expect(transitions.rises).toEqual(["switch"]);
+  });
+
+  it("is dropped when the reader moves on before the conversation loads", async () => {
+    const { navigate, transitions } = notch("/?c=7");
+    const arrive = heldArrivals();
+    navigate(open("", 9));
+    navigate(open("", 11));
+    await arrive(9);
+    expect(transitions.rises).toEqual([]);
+    await arrive(11);
+    expect(transitions.rises).toEqual(["switch"]);
   });
 });

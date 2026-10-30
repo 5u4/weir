@@ -160,7 +160,7 @@ const lift = (target: Element | null, rise: "switch" | "status") => {
   );
 };
 
-let commits = 0;
+let departures = 0;
 
 export const commit = (plan: () => Commit) => {
   if (gate._tag === "Capturing" || (gate._tag === "Arriving" && gate.queued.length > 0)) {
@@ -173,7 +173,9 @@ export const commit = (plan: () => Commit) => {
     gate.queued.push(plan);
     return;
   }
-  commits += 1;
+  if (before.status !== after.status || !Equal.equals(before.conversation, after.conversation)) {
+    departures += 1;
+  }
   if (motion._tag === "Mode") {
     return play(
       ["mode", motion.open ? "open" : "close"],
@@ -190,9 +192,9 @@ export const commit = (plan: () => Commit) => {
     return lift(document.querySelector(".r-scroll:not([hidden])"), "status");
   }
   if (Option.isNone(after.conversation)) return;
-  const landed = commits;
+  const departed = departures;
   void arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs)).then(() => {
-    if (landed !== commits || gate._tag === "Capturing" || gate._tag === "Arriving") return;
+    if (departed !== departures || gate._tag === "Capturing" || gate._tag === "Arriving") return;
     flushSync(() => undefined);
     lift(document.querySelector(".r-scroll:not([hidden]) > article"), "switch");
   });
