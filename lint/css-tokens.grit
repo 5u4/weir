@@ -1,0 +1,46 @@
+language css
+
+`$prop: $value` where {
+  $filename <: not r".*/apps/web/src/(?:theme|app)\.css",
+  or {
+    and {
+      $prop <: r"--.*",
+      $value <: r"(?is).*(?:\d*\.?\d+(?:px|ms|s|rem|em)|#[0-9a-f]{3,8}\b|\b(?:oklch|oklab|rgba?|hsla?|lab|lch|hwb)\(\s*[-.\d]).*",
+      register_diagnostic(span=$value, message="Token definition outside theme.css: add it to @theme.")
+    },
+    and {
+      $prop <: r"(?i)(?:font-size|font|line-height|letter-spacing|border(?:-[a-z]+)*-radius|transition(?:-duration|-delay)?|animation(?:-duration|-delay)?)",
+      $value <: r"(?s).*(?:\d*\.?\d+(?:px|ms|s|r?em|%)).*",
+      register_diagnostic(span=$value, message="Literal font size, radius or duration: use a theme token var(--...).")
+    },
+    and {
+      $prop <: r"(?i)line-height",
+      $value <: r"\s*\d*\.?\d+\s*",
+      register_diagnostic(span=$value, message="Literal line-height: use var(--leading-*).")
+    },
+    and {
+      $prop <: r"(?i)font",
+      $value <: r"(?s).*/\s*\d*\.?\d+(?:\s.*)?",
+      register_diagnostic(span=$value, message="Literal line-height: use var(--leading-*).")
+    },
+    and {
+      $prop <: r"(?i)letter-spacing",
+      $value <: r"(?s).*\d*\.?\d+em.*",
+      register_diagnostic(span=$value, message="Literal letter-spacing: use var(--tracking-*).")
+    },
+    and {
+      $prop <: r"(?i)(?:margin|padding|gap|row-gap|column-gap|inset|top|right|bottom|left)(?:-[a-z-]+)?",
+      $value <: r"(?s).*(?:\d*\.?\d+(?:px|r?em)).*",
+      register_diagnostic(span=$value, message="Literal spacing: use var(--spacing-*).")
+    },
+    and {
+      $prop <: r"(?i)z-index",
+      $value <: r"-?\d+",
+      register_diagnostic(span=$value, message="Literal z-index: use var(--z-index-*).")
+    },
+    and {
+      $value <: r"(?is).*(?:#[0-9a-f]{3,8}\b|\b(?:oklch|oklab|rgba?|hsla?|lab|lch|hwb)\(\s*[-.\d]).*",
+      register_diagnostic(span=$value, message="Literal color: use var(--color-*).")
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["eslint-plugin-better-tailwindcss"],
+  "settings": {
+    "better-tailwindcss": {
+      "cwd": "apps/web",
+      "entryPoint": "src/theme.css"
+    }
+  },
+  "rules": {
+    "better-tailwindcss/no-unknown-classes": [
+      "error",
+      { "ignore": ["^(?:cws|cw|on|list|r-scroll|lr|bl|pin|tp|cap-in)$"] }
+    ],
+    "better-tailwindcss/no-restricted-classes": [
+      "error",
+      {
+        "restrict": [
+          { "pattern": "\\[", "message": "Arbitrary value: add a token to @theme instead." },
+          { "pattern": "/", "message": "Opacity modifier: add a named color token instead." },
+          {
+            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy])-\\d",
+            "message": "Off-scale number: use a named token step."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/Avatar.tsx",
+        "apps/web/src/Cap.tsx",
+        "apps/web/src/List.tsx",
+        "apps/web/src/Reader.tsx",
+        "apps/web/src/ResultList.tsx",
+        "apps/web/src/Status.tsx"
+      ],
+      "rules": {
+        "better-tailwindcss/no-unknown-classes": "off"
+      }
+    }
+  ]
+}
