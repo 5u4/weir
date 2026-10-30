@@ -9,7 +9,8 @@ export const fold = (track: Track, folded: boolean, y: number, at: number) => {
   if (y <= unfoldAt) return { track: { ...track, y, down: 0 }, folded: false };
   if (y <= track.y) return { track: { ...track, y, down: 0 }, folded };
   const down = track.down + y - track.y;
-  return { track: { ...track, y, down }, folded: folded || down > foldAfter };
+  const next = folded || down > foldAfter;
+  return { track: { ...track, y, down: next ? 0 : down }, folded: next };
 };
 
 export const quieted = (track: Track, at: number): Track => ({
