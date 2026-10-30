@@ -289,4 +289,29 @@ describe("writes while a view transition is pending", () => {
     expect(browser.url()).toBe("/");
     expect(browser.canGoForwardTo()).toEqual(["/?v=cleared"]);
   });
+
+  it("Back while the opened conversation is still loading wins over a click made before it", async () => {
+    const { browser, registry, shown } = session("/");
+    const transitions = deferredTransitions();
+    const reached = Promise.withResolvers<void>();
+    const loaded = Promise.withResolvers<void>();
+    onTestFinished(
+      awaitArrivals(() => {
+        reached.resolve();
+        return loaded.promise;
+      }),
+    );
+    registry.set(route, open("", 7));
+    const running = transitions.runAll();
+    await reached.promise;
+    registry.set(route, open("", 9));
+    browser.back();
+    browser.deliverHistoryMoves();
+    loaded.resolve();
+    await running;
+    await transitions.runAll();
+    expect(browser.url()).toBe("/");
+    expect(shown()).toBe("/");
+    expect(browser.canGoForwardTo()).toEqual(["/?c=7"]);
+  });
 });

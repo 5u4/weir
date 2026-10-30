@@ -15,6 +15,7 @@ import {
   live,
   runDigest,
   viewList,
+  visibleRows,
 } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
@@ -40,7 +41,15 @@ const daemon = vi.hoisted(() => {
     }
     const done = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/done$/)?.[1]));
     if (method === "POST" && done !== undefined) {
-      const next: Row = { ...done, cleared_seq: done.last_seq, state: "done" };
+      const body = input instanceof Request ? await input.text() : init?.body;
+      const { seq } = JSON.parse(
+        typeof body === "string" ? body : new TextDecoder().decode(body as Uint8Array),
+      );
+      const next: Row = {
+        ...done,
+        cleared_seq: seq,
+        state: seq >= done.last_seq ? "done" : "read",
+      };
       rows.set(next.id, next);
       return Response.json(next);
     }
@@ -132,7 +141,14 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  return { rows, requests, digests, replies, details, running, queued, Source, location };
+  vi.stubGlobal("getComputedStyle", () => ({ translate: "none", opacity: "1" }));
+  const page = { row: null as object | null, hit: null as object | null };
+  vi.stubGlobal("document", {
+    hidden: false,
+    querySelector: () => page.row,
+    elementFromPoint: () => page.hit ?? page.row,
+  });
+  return { rows, requests, digests, replies, details, running, queued, Source, location, page };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -160,6 +176,21 @@ const settled = <A, E>(
   atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) => Effect.runPromise(AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true }));
 
+const leaving = (flags: Set<string>, finished: Promise<void>) => {
+  const neighbour = {};
+  const fake = {
+    neighbour,
+    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 50 }),
+    parentElement: { contains: (node: unknown) => node === fake || node === neighbour },
+    hasAttribute: (name: string) => flags.has(name),
+    setAttribute: (name: string) => flags.add(name),
+    removeAttribute: (name: string) => flags.delete(name),
+    style: { setProperty: () => {}, removeProperty: () => "" },
+    getAnimations: () => [{ finished }],
+  };
+  return fake;
+};
+
 afterEach(() => {
   daemon.rows.clear();
   daemon.requests.length = 0;
@@ -170,6 +201,8 @@ afterEach(() => {
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
+  daemon.page.row = null;
+  daemon.page.hit = null;
 });
 
 const refetched = async (event: Event, expected: ReadonlyArray<string>) => {
@@ -286,6 +319,107 @@ it("a Mute the daemon refuses puts the row back", async () => {
 
   expect(daemon.requests).toContain("POST /conversations/1/mute");
   expect(visible()).toEqual([1, 2]);
+  registry.dispose();
+});
+
+it("Done on a visible row waits for its exit before the row leaves, and drops a second Done meanwhile", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+
+  const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, exited);
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+  const done = () => daemon.requests.filter((request) => request === "POST /conversations/1/done");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  registry.set(dismiss, { act: "Done", target });
+  expect(registry.get(intents).size).toBe(0);
+  expect(done()).toEqual([]);
+
+  exit();
+  await vi.waitFor(() => expect(done()).toHaveLength(1));
+  await vi.waitFor(() => expect(registry.get(intents).size).toBe(0));
+  expect(done()).toHaveLength(1);
+  registry.dispose();
+});
+
+it("a reply that lands while Done slides the row out leaves the row shown and unmarked", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  registry.mount(visibleRows("untagged"));
+  await settled(registry, list);
+
+  const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, exited);
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  daemon.rows.set(1, row(1, 6));
+  registry.refresh(list);
+  await settled(registry, list);
+
+  exit();
+  await settled(registry, dismiss);
+  expect(registry.get(visibleRows("untagged")).map(({ id }) => id)).toContain(1);
+  expect(flags.has("data-leave")).toBe(false);
+  registry.dispose();
+});
+
+it("a Done cut off during its exit leaves the row unmarked", async () => {
+  daemon.rows.set(1, row(1, 5));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, new Promise<void>(() => {}));
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+
+  registry.set(dismiss, { act: "Done", target });
+  expect(flags.has("data-leave")).toBe(true);
+  registry.dispose();
+  await vi.waitFor(() => expect(flags.has("data-leave")).toBe(false));
+});
+
+it("Done slides out a row a sliding neighbour overlaps, but not a row the reader sheet covers", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+  const [first, second] = [daemon.rows.get(1), daemon.rows.get(2)];
+  if (first === undefined || second === undefined) throw new Error("fixture rows missing");
+
+  const overlapped = new Set<string>();
+  const fake = leaving(overlapped, Promise.resolve());
+  daemon.page.row = fake;
+  daemon.page.hit = fake.neighbour;
+  registry.set(dismiss, { act: "Done", target: first });
+  expect(overlapped.has("data-leave")).toBe(true);
+  await settled(registry, dismiss);
+
+  const covered = new Set<string>();
+  daemon.page.row = leaving(covered, Promise.resolve());
+  daemon.page.hit = {};
+  registry.set(dismiss, { act: "Done", target: second });
+  expect(covered.has("data-leave")).toBe(false);
+  await settled(registry, dismiss);
   registry.dispose();
 });
 

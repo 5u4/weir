@@ -27,6 +27,33 @@
     animation: status-rise var(--duration-spring) var(--ease-standard);
   }
 
+  [data-k][data-enter] {
+    animation: row-enter var(--duration-spring) var(--ease-standard)
+      calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards;
+  }
+
+  [data-k][data-flip] {
+    animation: row-move var(--duration-spring) var(--ease-standard);
+  }
+
+  [data-k][data-leave] {
+    animation: row-leave var(--duration-base) var(--ease-standard) forwards;
+  }
+
+  @variant motion-reduce {
+    [data-k][data-enter] {
+      animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
+    }
+
+    [data-k][data-flip] {
+      animation: none;
+    }
+
+    [data-k][data-leave] {
+      animation: row-fade-out var(--duration-base) var(--ease-standard) forwards;
+    }
+  }
+
   ::view-transition {
     pointer-events: none;
   }
@@ -158,7 +185,7 @@
   to {
     opacity: 0;
     filter: blur(var(--blur-morph));
-    transform: scale(0.94);
+    transform: scale(var(--scale-press-firm));
   }
 }
 
@@ -166,7 +193,7 @@
   from {
     opacity: 0;
     filter: blur(var(--blur-morph));
-    transform: scale(0.96);
+    transform: scale(var(--scale-press));
   }
 }
 
@@ -217,14 +244,14 @@
 @keyframes dock-in {
   from {
     opacity: 0;
-    transform: translateY(var(--spacing-7)) scale(0.96);
+    transform: translateY(var(--spacing-7)) scale(var(--scale-press));
   }
 }
 
 @keyframes dock-out {
   to {
     opacity: 0;
-    transform: translateY(var(--spacing-5)) scale(0.96);
+    transform: translateY(var(--spacing-5)) scale(var(--scale-press));
   }
 }
 
@@ -251,5 +278,40 @@
   from {
     opacity: 0;
     transform: translateY(var(--spacing-3));
+  }
+}
+
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    translate: 0 var(--spacing-2\.5);
+  }
+}
+
+@keyframes row-move {
+  from {
+    translate: var(--flip-x) var(--flip-y);
+  }
+}
+
+@keyframes row-leave {
+  from {
+    opacity: var(--leave-opacity, 1);
+    translate: var(--leave-translate, none);
+  }
+
+  to {
+    opacity: 0;
+    translate: var(--spacing-10) 0;
+  }
+}
+
+@keyframes row-fade-out {
+  from {
+    opacity: var(--leave-opacity, 1);
+  }
+
+  to {
+    opacity: 0;
   }
 }

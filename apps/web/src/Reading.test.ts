@@ -133,6 +133,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("document", {
     visibilityState: "visible",
     hasFocus: () => true,
+    querySelector: () => null,
     addEventListener: () => {},
     removeEventListener: () => {},
   });

@@ -335,6 +335,7 @@
     1
   );
 
+  --duration-stagger: 24ms;
   --duration-fast: 150ms;
   --duration-base: 250ms;
   --duration-spring: 420ms;

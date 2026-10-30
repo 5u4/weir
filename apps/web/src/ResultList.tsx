@@ -73,6 +73,7 @@ function ResultRow({ result, selected }: { result: Result; selected: boolean }) 
   const settled = cleared(result);
   return (
     <li
+      data-k={result.id}
       className={rowClass(selected)}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >

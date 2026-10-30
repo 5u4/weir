@@ -11,7 +11,8 @@
   "plugins": [
     "./lint/no-react-effect.grit",
     "./lint/no-ambient-time.grit",
-    "./lint/css-tokens.grit"
+    "./lint/css-tokens.grit",
+    "./lint/motion-in-css.grit"
   ],
   "css": {
     "parser": {

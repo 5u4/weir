@@ -31,6 +31,9 @@ export const intentFor = (act: Act, target: Target): Intent => {
 
 export const leaves = (view: View, act: Act) => (act === "Restore") === (view === "cleared");
 
+export const exits = (view: View, act: Act, searching: boolean) =>
+  act !== "Restore" && !searching && leaves(view, act);
+
 export const shown = (view: View, rows: ReadonlyArray<Row>, intents: Intents) =>
   rows.filter((row) => {
     const intent = intents.get(row.id);

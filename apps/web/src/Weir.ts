@@ -17,12 +17,22 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
+import { capture, leave, stay } from "./Flip.ts";
 import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
 import { ConversationId, route, statusOpen, type View } from "./Route.ts";
-import { type Act, type Intents, intentFor, leaves, neighbor, shown, type Target } from "./Rows.ts";
+import {
+  type Act,
+  exits,
+  type Intents,
+  intentFor,
+  leaves,
+  neighbor,
+  shown,
+  type Target,
+} from "./Rows.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -349,11 +359,57 @@ export const listedRows = Atom.make(
     get(searching) ? get(searchRows) : get(visibleRows(get(route).view)),
 );
 
+const listing = Atom.make((get) => {
+  const searched = get(searching);
+  const { view } = get(route);
+  return {
+    list: searched ? ("search" as const) : view,
+    ids: get(listedRows)
+      .map(({ id }) => id)
+      .join(),
+    loaded: searched ? Option.isSome(get(found)) : !AsyncResult.isInitial(get(viewList(view))),
+  };
+});
+
+export const listMotion = Atom.make((get) => {
+  let painted = false;
+  let last: { readonly list: View | "search"; readonly ids: string } | undefined;
+  get.subscribe(
+    listing,
+    (next) => {
+      if (last !== undefined && (next.list !== last.list || next.ids !== last.ids)) {
+        capture(painted);
+      }
+      painted ||= next.loaded;
+      last = next;
+    },
+    { immediate: true },
+  );
+});
+
+let exiting = false;
+
 export const dismiss = Weir.runtime
   .fn<{ readonly act: Act; readonly target: Target }>()(
     ({ act, target }, get) =>
       Effect.gen(function* () {
         const client = yield* Weir;
+        if (exiting) return;
+        const key = String(target.id);
+        const exit = exits(get.registry.get(route).view, act, get.registry.get(searching))
+          ? leave(key)
+          : null;
+        if (exit !== null) {
+          exiting = true;
+          yield* Effect.promise(() => exit).pipe(
+            Effect.onInterrupt(() => Effect.sync(() => stay(key))),
+            Effect.ensuring(
+              Effect.sync(() => {
+                exiting = false;
+              }),
+            ),
+          );
+        }
         const current = get.registry.get(route);
         const { view } = current;
         const open = Option.contains(current.conversation, target.id);
@@ -371,6 +427,7 @@ export const dismiss = Weir.runtime
         const before = get.registry.get(intents).get(target.id);
         const intent = intentFor(act, target);
         get.registry.update(intents, (map) => changed(map, target.id, intent));
+        if (get.registry.get(listedRows).some(({ id }) => id === target.id)) stay(key);
         const params = { id: target.id };
         const request =
           act === "Done"
