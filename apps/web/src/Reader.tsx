@@ -44,7 +44,7 @@ import {
 import type { DockAction } from "./Dock.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
-import { Highlighted, Prose } from "./Marked.tsx";
+import { Highlighted, Prose, proseClass } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
 import {
   dock,
@@ -304,12 +304,14 @@ function Long({
   tree,
   pattern,
   me,
+  className,
 }: {
   id: ConversationId;
   seq: number;
   tree: Root;
   pattern: RegExp | null;
   me: boolean;
+  className: string;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
   const [over, setOver] = useState(false);
@@ -321,7 +323,7 @@ function Long({
       const observer = new ResizeObserver(() => setOver(overflows()));
       observer.observe(body);
       const reveal = (event: FocusEvent) => {
-        if (body.classList.contains("open") || !overflows()) return;
+        if (body.hasAttribute("data-open") || !overflows()) return;
         setUi((current) => ({ ...current, long: new Set(current.long).add(seq) }));
         const target = event.target;
         if (target instanceof HTMLElement) {
@@ -340,7 +342,9 @@ function Long({
   return (
     <>
       <div
-        className={open ? "body clip open" : "body clip"}
+        className={className}
+        data-clip
+        data-open={open || undefined}
         data-over={over || undefined}
         ref={measure}
       >
@@ -438,6 +442,7 @@ function Bubble({
       `before:absolute before:-inset-y-0.5 before:w-0.5 before:rounded-xs before:transition-opacity before:duration-fast ${me ? "before:-right-1.5" : "before:-left-1.5"} ${tint === "tag" ? "before:bg-tag" : "before:bg-ink"} ${previewed ? "before:opacity-full" : "before:opacity-none"}`,
     digestible && run?._tag === "Running" && within(run.range, item.seq) && fadeClass,
   ];
+  const foldedClass = me ? "text-md leading-relaxed" : "text-md leading-relaxed text-ink-2";
   return (
     <>
       <div
@@ -457,9 +462,16 @@ function Bubble({
           className={`min-w-0 max-w-em-36 rounded-b-2xl px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${bubbleFillClass({ me, folded, previewed, tint })} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
         >
           {tree.children.length === 0 ? (
-            <p className="body text-ink-3">(no text)</p>
+            <p className={`m-0 ${folded ? foldedClass : "text-ink-3"}`}>(no text)</p>
           ) : (
-            <Long id={id} seq={item.seq} tree={tree} pattern={found.pattern} me={me} />
+            <Long
+              id={id}
+              seq={item.seq}
+              tree={tree}
+              pattern={found.pattern}
+              me={me}
+              className={folded ? `${proseClass} ${foldedClass}` : proseClass}
+            />
           )}
         </div>
         {hit?._tag === "Item" && hit.field !== "body" && (
@@ -569,7 +581,6 @@ function Group({
   return (
     <section
       className={`sg grid gap-x-2.5 gap-y-0 ${folded ? "mt-2.5" : "mt-3"} ${group.me ? "grid-cols-group-me" : "grid-cols-group"}`}
-      data-me={group.me || undefined}
       aria-label={`${name}, ${dayAndTime(at)}`}
     >
       {group.me ? column : avatar}

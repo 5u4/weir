@@ -52,7 +52,7 @@
       "error",
       {
         "ignore": [
-          "^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|dc|unf|solo|uncited|sg|g-head|body|clip|open|cap-in)$"
+          "^(?:cap|cws|cw|on|list|reader|r-scroll|lr|bl|pin|tp|dc|unf|solo|uncited|sg|g-head|cap-in)$"
         ]
       }
     ],

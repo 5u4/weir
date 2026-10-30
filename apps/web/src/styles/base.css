@@ -1,0 +1,42 @@
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    font: var(--text-base) / var(--leading-relaxed) var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-ground);
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border: 0;
+    background: none;
+    padding: 0;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: var(--outline-offset-out);
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-island);
+  }
+}

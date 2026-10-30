@@ -20,8 +20,8 @@ and delete the old path in the same change, with no compatibility shims.
 - Web UI styles use the tokens in `apps/web/src/theme.css`. A value with no step gets a new token
   there, never a literal, an `[arbitrary]` class or a `(--var)` shorthand. `bun run lint` enforces
   this on class strings and, through `lint/css-tokens.grit`, on literals in CSS other than
-  `theme.css` and legacy `app.css` (type, radius, duration and spacing properties, colors, z-index
-  and custom properties).
+  `theme.css` (type, radius, duration and spacing properties, colors, z-index and custom
+  properties).
   Tailwind inlines `--shadow-*` values into `shadow-*` classes, so only the color vars inside them
   follow the theme; a shadow whose geometry changes per theme is an `--elevation-*` token, used as
   `elevation-*`.
@@ -29,7 +29,8 @@ and delete the old path in the same change, with no compatibility shims.
   named `…Class` (see `apps/web/src/ListClasses.ts`); beyond `class`/`className` attributes, the
   lint checks only variables named `className(s)`, `classes`, `style(s)` or `…Class`. Styles
   utilities cannot express (sibling selectors, masks) go in `apps/web/src/styles/*.css` under
-  `@layer components`, imported from `theme.css`.
+  `@layer components`, imported from `theme.css`; element resets live in `styles/base.css` under
+  `@layer base`.
 - `design/prototype/ui/final/` is historical reference only, never imported. Run it with
   `cd design/prototype && bun ux/serve.ts` (`PORT` env, default 9347).
 

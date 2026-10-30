@@ -194,7 +194,7 @@ const revealed = (of: Detail, query: string) => {
 const landedOn = (of: Detail, query: string) =>
   revealed(of, query).map(
     ({ key, target }) =>
-      `${key} ${target === null ? "missing" : /<mark>|title="Matched in /.test(target) ? "marked" : "unmarked"}`,
+      `${key} ${target === null ? "missing" : /<mark\b|title="Matched in /.test(target) ? "marked" : "unmarked"}`,
   );
 
 describe("hits", () => {
@@ -366,27 +366,31 @@ describe("newsletter body", () => {
       ),
     ]);
     const markup = rendered(unsafe, closedUi, { pattern: null, hits: new Map(), current: null });
-    expect(markup).toContain('class="body clip"');
+    expect(markup).toContain("data-clip");
     expect(markup).not.toContain("<img");
     expect(markup).not.toContain("src=");
     expect(markup).not.toContain("javascript:");
-    expect(markup).toContain("<p>run</p>");
+    expect(markup).toMatch(/<p class="[^"]*">run<\/p>/);
     const links = [...markup.matchAll(/<a\b[^>]*>(.*?)<\/a>/g)];
     expect(links.length).toBeGreaterThan(0);
     for (const [, text] of links) expect(text?.replace(/<[^>]+>/g, "").trim()).not.toBe("");
     expect(markup).toContain("&lt;b&gt;raw tags&lt;/b&gt;");
     expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
-    expect(markup).toContain('class="b-img"');
+    expect(markup).toMatch(
+      /<span class="[^"]*">Chart: merge conflicts per thousand edits, falling from 41 to 6<\/span>/,
+    );
   });
 
   it("a long body starts clipped and opens when a search lands on it", () => {
     const found = { pattern: null, hits: new Map(), current: null };
+    const body = (markup: string) => /<div [^>]*data-clip[^>]*>/.exec(markup)?.[0];
     const closed = rendered(newsletter, closedUi, found);
-    expect(closed).toContain('<div class="body clip">');
+    expect(body(closed)).toContain('data-clip="true"');
+    expect(body(closed)).not.toContain("data-open");
     expect(closed).toContain('aria-expanded="false">Show all</button>');
     const landed = reveal(closedUi, newsletter, { _tag: "Item", seq: 1, field: "body" });
     const open = rendered(newsletter, landed, found);
-    expect(open).toContain('<div class="body clip open">');
+    expect(body(open)).toContain('data-open="true"');
     expect(open).toContain('aria-expanded="true">Show less</button>');
   });
 });

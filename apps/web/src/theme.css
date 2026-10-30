@@ -1,9 +1,11 @@
 @layer theme, base, components, utilities;
 
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "./styles/base.css";
 @import "./styles/shell.css";
 @import "./styles/list.css";
 @import "./styles/cap.css";
+@import "./styles/prose.css";
 
 @theme {
   --*: initial;
@@ -49,6 +51,12 @@
   --color-me-fold: color-mix(in oklch, var(--color-me-bg) 72%, transparent);
   --color-preview: color-mix(in oklch, var(--color-ink) 12%, var(--color-bubble));
   --color-preview-me: color-mix(in oklch, var(--color-ink) 24%, var(--color-me-bg));
+  --color-code: color-mix(in oklch, currentColor 7%, transparent);
+  --color-link-rule: color-mix(in oklch, currentColor 40%, transparent);
+  --color-quote: color-mix(in oklch, currentColor 72%, transparent);
+  --color-quote-rule: color-mix(in oklch, currentColor 25%, transparent);
+  --color-alt: color-mix(in oklch, currentColor 62%, transparent);
+  --color-alt-rule: color-mix(in oklch, currentColor 30%, transparent);
 
   --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -64,6 +72,7 @@
   --text-2xl: 22px;
   --text-3xl: 28px;
   --text-em-sm: 0.9em;
+  --text-em-base: 1em;
   --text-av-sm: 22px;
   --text-av-md: 28px;
   --text-av-lg: 32px;
@@ -142,6 +151,7 @@
   --spacing-em-0\.7: 0.7em;
   --spacing-em-1: 1em;
   --spacing-em-1\.4: 1.4em;
+  --spacing-em-3\.2: 3.2em;
 
   --inset-edge: var(--spacing-6);
   --inset-gap: var(--spacing-2\.5);
@@ -170,6 +180,7 @@
   --max-width-em-30: 30em;
   --max-width-em-36: 36em;
   --max-width-em-38: 38em;
+  --max-height-clip: 19.5em;
   --width-segment-fill: calc((100% - var(--spacing-2)) / 3);
   --padding-reader: var(--spacing-10);
 

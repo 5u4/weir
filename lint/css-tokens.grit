@@ -1,7 +1,7 @@
 language css
 
 `$prop: $value` where {
-  $filename <: not r".*/apps/web/src/(?:theme|app)\.css",
+  $filename <: not r".*/apps/web/src/theme\.css",
   or {
     and {
       $prop <: r"--.*",

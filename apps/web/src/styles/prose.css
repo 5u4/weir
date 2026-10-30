@@ -1,0 +1,22 @@
+@property --clip {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@layer components {
+  [data-clip] {
+    --clip: var(--max-height-clip);
+    max-height: var(--clip);
+    overflow: hidden;
+  }
+
+  [data-clip][data-over] {
+    mask-image: linear-gradient(var(--color-mask) calc(100% - var(--spacing-em-3\.2)), transparent);
+  }
+
+  [data-clip][data-open] {
+    max-height: none;
+    mask-image: none;
+  }
+}
