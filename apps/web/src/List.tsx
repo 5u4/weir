@@ -183,7 +183,7 @@ function ViewList() {
             list.length === 0 ? (
               <Empty view={view} />
             ) : (
-              <ul className={rowsClass} ref={restore}>
+              <ul key={view} className={rowsClass} ref={restore}>
                 {list.map((row) => {
                   const props: RowProps = {
                     row,
