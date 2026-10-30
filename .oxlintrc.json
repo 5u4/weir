@@ -73,7 +73,7 @@
             "message": "Opacity modifier: add a named color token instead."
           },
           {
-            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy]|ring|inset-ring|outline|outline-offset|border(?:-[xytrblse])?|divide-[xy])-\\d",
+            "pattern": "(?:^|:)!?-?(?:duration|delay|z|tracking|opacity|scale|rotate|translate-[xy]|ring|inset-ring|outline|outline-offset|underline-offset|decoration|border(?:-[xytrblse])?|divide-[xy])-\\d",
             "message": "Off-scale number: use a named token step."
           }
         ]

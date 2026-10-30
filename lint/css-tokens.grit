@@ -39,6 +39,11 @@ language css
       register_diagnostic(span=$value, message="Literal z-index: use var(--z-index-*).")
     },
     and {
+      $prop <: r"(?i)(?:outline(?:-width|-offset)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?(?:-width)?|text-underline-offset|text-decoration(?:-thickness)?)",
+      $value <: r"(?is).*(?:^|[^\w-])-?\d*\.?\d+(?:px|cm|mm|q|in|pt|pc|r?em|r?ex|r?cap|r?ch|r?ic|r?lh|[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))\b.*",
+      register_diagnostic(span=$value, message="Literal width or offset: use a theme token var(--...).")
+    },
+    and {
       $value <: r"(?is).*(?:#[0-9a-f]{3,8}\b|\b(?:oklch|oklab|rgba?|hsla?|lab|lch|hwb)\(\s*[-.\d]).*",
       register_diagnostic(span=$value, message="Literal color: use var(--color-*).")
     }

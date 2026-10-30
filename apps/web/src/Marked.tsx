@@ -2,7 +2,7 @@ import type { Root } from "@weir/daemon/Markdown";
 import { segments } from "@weir/daemon/Match";
 import type { Element, ElementContent } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import { jsx, jsxs } from "react/jsx-runtime";
 
 const markClass = "-mx-em-0.1 rounded-xs bg-mk px-em-0.1 text-mk-ink box-decoration-clone";
@@ -13,7 +13,7 @@ const headingClass = "mt-em-1 mb-em-0.4 text-em-base leading-snug";
 const listClass = "mt-em-0.4 mb-em-0.7 pl-em-1.4";
 const cellClass = "border border-line-2 px-2 py-1 text-left align-top";
 const linkClass =
-  "text-inherit underline decoration-link-rule underline-offset-2 hover:decoration-current";
+  "text-inherit underline decoration-link-rule underline-offset-near hover:decoration-current";
 
 const tagClass: Partial<Record<string, string>> = {
   h3: headingClass,
@@ -112,13 +112,17 @@ const styled = (
 };
 
 export function Prose({ tree, pattern }: { tree: Root; pattern: RegExp | null }) {
-  return toJsxRuntime(
-    {
-      ...tree,
-      children: tree.children.flatMap((child) =>
-        child.type === "doctype" ? [] : styled(child, "root", pattern),
+  return useMemo(
+    () =>
+      toJsxRuntime(
+        {
+          ...tree,
+          children: tree.children.flatMap((child) =>
+            child.type === "doctype" ? [] : styled(child, "root", pattern),
+          ),
+        },
+        { Fragment, jsx, jsxs },
       ),
-    },
-    { Fragment, jsx, jsxs },
+    [tree, pattern],
   );
 }
