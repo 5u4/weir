@@ -239,7 +239,7 @@
       animation: sheet-out var(--duration-spring) var(--ease-standard) both;
     }
 
-    :root:active-view-transition-type(tick) .list {
+    :root:active-view-transition-type(tick) #app:not([data-reading]) .list {
       view-transition-name: list;
     }
 
