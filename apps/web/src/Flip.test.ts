@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { type Band, flipPlan, type Rect } from "./Flip.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type Band, capture, flipPlan, type Rect } from "./Flip.ts";
 
 const band: Band = { top: -60, bottom: 860 };
 
@@ -105,5 +105,80 @@ describe("flipPlan", () => {
     const plan = flipPlan(before, after, band);
     expect([...plan.enter]).toEqual(enter);
     expect([...plan.move]).toEqual(move);
+  });
+});
+
+class Row {
+  readonly dataset: { k: string };
+  readonly parentElement: object;
+  readonly attributes = new Set<string>();
+  readonly vars = new Map<string, string>();
+  readonly style = {
+    setProperty: (name: string, value: string) => void this.vars.set(name, value),
+    removeProperty: (name: string) => void this.vars.delete(name),
+  };
+  top = 0;
+
+  constructor(key: string, parentElement: object) {
+    this.dataset = { k: key };
+    this.parentElement = parentElement;
+  }
+
+  getBoundingClientRect = (): Rect => ({ left: 0, top: this.top, bottom: this.top + 100 });
+  getAnimations = () => (this.attributes.size > 0 ? [{ finished: new Promise(() => {}) }] : []);
+  hasAttribute = (name: string) => this.attributes.has(name);
+  setAttribute = (name: string) => void this.attributes.add(name);
+  removeAttribute = (name: string) => void this.attributes.delete(name);
+}
+
+describe("a list update while rows are still rising in", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the rise running and slides the rows to their new places", () => {
+    const list = {};
+    const rows = new Map<string, Row>();
+    let shown: Row[] = [];
+    const show = (keys: ReadonlyArray<string>) => {
+      shown = keys.map((key, index) => {
+        const row = rows.get(key) ?? new Row(key, list);
+        rows.set(key, row);
+        row.top = index * 100;
+        return row;
+      });
+    };
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("innerHeight", 800);
+    vi.stubGlobal("document", { querySelectorAll: () => shown });
+    vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
+    const update = (keys: ReadonlyArray<string>) => {
+      capture(true);
+      show(keys);
+      for (const frame of frames.splice(0)) frame(0);
+    };
+
+    show(["6"]);
+    update(["7", "8", "6"]);
+    update(["9", "7", "8", "6"]);
+
+    const seen = (key: string) => {
+      const row = rows.get(key);
+      return {
+        attributes: [...(row?.attributes ?? [])].sort(),
+        vars: Object.fromEntries(row?.vars ?? []),
+      };
+    };
+    expect(seen("7")).toEqual({
+      attributes: ["data-enter", "data-flip"],
+      vars: { "--i": "0", "--flip-x": "0px", "--flip-y": "-100px" },
+    });
+    expect(seen("8")).toEqual({
+      attributes: ["data-enter", "data-flip"],
+      vars: { "--i": "1", "--flip-x": "0px", "--flip-y": "-100px" },
+    });
+    expect(seen("9")).toEqual({ attributes: ["data-enter"], vars: { "--i": "0" } });
+    expect(seen("6")).toEqual({
+      attributes: ["data-flip"],
+      vars: { "--flip-x": "0px", "--flip-y": "-100px" },
+    });
   });
 });

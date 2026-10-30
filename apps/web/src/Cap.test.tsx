@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { Chip, hitStep, SentenceWidget } from "./Cap.tsx";
+import { Chip, changeOf, hitStep, popOf, rollOf, type Seen, SentenceWidget } from "./Cap.tsx";
 import type { Widget } from "./Notch.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
@@ -46,6 +46,43 @@ describe.each([
       expect(anchor.attr("title")).toBe(qualifier);
     },
   );
+});
+
+const rerender = <A, B>(values: ReadonlyArray<A>, change: (from: A, to: A) => B) => {
+  let seen: Seen<A, B> = { value: values[0] as A, change: undefined };
+  const renders = [seen];
+  for (const value of values.slice(1)) {
+    seen = changeOf(seen, value, change);
+    renders.push(seen);
+  }
+  return renders;
+};
+
+describe("count roll and chip pop", () => {
+  it("a count rolls up when it rises, down when it falls, and keeps its roll on an unchanged rerender", () => {
+    const renders = rerender([4, 5, 5, 3, 7], rollOf);
+    expect(renders.map(({ change }) => change)).toEqual([undefined, "up", "up", "down", "up"]);
+    expect(renders[2]).toBe(renders[1]);
+  });
+
+  it("a view pops each time it is picked again, and not on an unchanged rerender", () => {
+    const renders = rerender([false, true, true, false, true], popOf);
+    expect(renders.map(({ change }) => change)).toEqual([undefined, true, true, false, true]);
+    expect(renders[2]).toBe(renders[1]);
+  });
+
+  it.each([
+    [
+      "sentence",
+      <SentenceWidget key="sentence" widget={widget("updates", "Me", 2)} active="tag:Me" />,
+    ],
+    ["chip", <Chip key="chip" widget={widget("updates", "Me", 2)} active="tag:Me" />],
+  ])("a %s mounted already current neither pops nor rolls", (_, element) => {
+    const markup = renderToStaticMarkup(element);
+    expect(link(markup).attr("aria-current")).toBe("page");
+    expect(markup).not.toContain("data-pop");
+    expect(markup).not.toContain("data-roll");
+  });
 });
 
 describe("Enter in the result pill", () => {

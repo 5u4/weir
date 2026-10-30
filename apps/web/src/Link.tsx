@@ -8,12 +8,14 @@ const plainLeftClick = (event: MouseEvent) =>
 export function Link({
   to,
   current,
+  pop = false,
   className,
   description,
   children,
 }: {
   to: Route;
   current: boolean;
+  pop?: boolean;
   className: string;
   description?: string | undefined;
   children: ReactNode;
@@ -24,6 +26,7 @@ export function Link({
       className={`${className}${current ? " on" : ""}`}
       href={href(to)}
       aria-current={current ? "page" : undefined}
+      data-pop={pop || undefined}
       aria-description={description}
       title={description}
       onClick={(event) => {

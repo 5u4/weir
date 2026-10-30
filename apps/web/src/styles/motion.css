@@ -36,6 +36,14 @@
     animation: row-move var(--duration-spring) var(--ease-standard);
   }
 
+  [data-k][data-enter][data-flip] {
+    animation:
+      row-enter var(--duration-spring) var(--ease-standard)
+      calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards,
+      row-move var(--duration-spring) var(--ease-standard);
+    animation-composition: replace, add;
+  }
+
   [data-k][data-leave] {
     animation: row-leave var(--duration-base) var(--ease-standard) forwards;
   }
@@ -49,8 +57,48 @@
       animation: none;
     }
 
+    [data-k][data-enter][data-flip] {
+      animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
+    }
+
     [data-k][data-leave] {
       animation: row-fade-out var(--duration-base) var(--ease-standard) forwards;
+    }
+  }
+
+  [data-roll] {
+    animation: roll-up var(--duration-spring) var(--duration-base) var(--ease-standard) backwards;
+  }
+
+  [data-roll="down"] {
+    animation-name: roll-down;
+  }
+
+  [data-quick] {
+    animation-duration: var(--duration-base);
+    animation-delay: initial;
+  }
+
+  [data-pop] {
+    animation: pop var(--duration-spring) var(--ease-spring) both;
+  }
+
+  [data-chip] {
+    animation: chip-in var(--duration-spring) var(--ease-spring) both;
+  }
+
+  @variant motion-reduce {
+    [data-roll],
+    [data-roll="down"] {
+      animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
+    }
+
+    [data-pop] {
+      animation: pop-fade var(--duration-base) var(--ease-standard) both;
+    }
+
+    [data-chip] {
+      animation: none;
     }
   }
 
@@ -313,5 +361,39 @@
 
   to {
     opacity: 0;
+  }
+}
+
+@keyframes roll-up {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-em-0\.7));
+  }
+}
+
+@keyframes roll-down {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing-em-0\.7) * -1));
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: var(--opacity-faded);
+    transform: scale(var(--scale-press-deep));
+  }
+}
+
+@keyframes pop-fade {
+  from {
+    opacity: var(--opacity-faded);
+  }
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-enter));
   }
 }
