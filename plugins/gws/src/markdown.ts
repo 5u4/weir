@@ -1,374 +1,252 @@
-import TurndownService from "turndown";
+import type { Element, Root as HastRoot } from "hast";
+import { fromHtml } from "hast-util-from-html";
+import { defaultHandlers as htmlHandlers, toMdast } from "hast-util-to-mdast";
+import type { Link, Nodes, Parents, PhrasingContent, Root, RootContent } from "mdast";
+import { gfmToMarkdown } from "mdast-util-gfm";
+import {
+  type Handlers,
+  defaultHandlers as markdownHandlers,
+  toMarkdown,
+} from "mdast-util-to-markdown";
 
 const QUOTED = ["gmail_signature", "gmail_quote", "gmail_attr"];
 
-const KINDS = [
-  { tags: ["strong", "b"], open: "\uE000", close: "\uE001", delimiter: "**" },
-  { tags: ["em", "i"], open: "\uE002", close: "\uE003", delimiter: "*" },
-] as const;
-const BOTH = [0, 1] as const;
-type Kind = (typeof BOTH)[number];
-const ATOM_OPEN = "\uE004";
-const ATOM_CLOSE = "\uE005";
-const TEXT_URL = "\uE006";
-const AUTOLINK = "\uE007";
-const WORD_JOINER = "\u2060";
-const SENTINELS = /[\uE000-\uE007]|&#(?:x0*e00[0-7](?![\da-f])|0*57(?:34[4-9]|35[01])(?!\d));?/gi;
-const MARKERS = /[\uE000-\uE007]/g;
-const BLANK = /^[\s\u200b\u200c\u2060\ufeff]+$/u;
-const INVISIBLES = /[\s\u200b\u200c\u2060\ufeff]/g;
-const PARAGRAPH_BREAK = /(\n\s*\n)/;
-const BLOCK_LINE =
-  /\n[ \t]*(?:#{1,6}(?:[ \t]|$)|[-+*][ \t]|\d{1,9}[.)][ \t]|>|```|~~~|(?:-+|=+)[ \t]*(?:\n|$))/;
-const BLOCKS = "h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr";
-const DELIMITING = /[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
-const ESCAPED =
-  /((?<![A-Za-z])[hH][tT][tT][pP][sS]?:\/\/\S*|(?<=^|[\s*_~(])[wW]{3}\.\S*)|[\\*]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
-const LABEL_UNSAFE = /[\\*[\]`]|(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu;
-const BARE_URL =
-  /^(?:https?:\/\/|www\.)[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+(?::\d+)?(?:[/?#][^\s<>\\`[\]]*)?$/u;
-const URL_TRAIL = "?!.,:*_~)";
-const DROPPED_TRAIL = `!"',.:;?*_~`;
-
-type Class = "space" | "punctuation" | "other";
-
-const classOf = (char: string): Class =>
-  /[\p{Zs}\t\n\f\r]/u.test(char) ? "space" : /[\p{P}\p{S}]/u.test(char) ? "punctuation" : "other";
-
-interface Unit {
-  text: string;
-  readonly head: Class;
-  readonly tail: Class;
-  readonly blank: boolean;
-  readonly word: boolean;
-  readonly solid: boolean;
-  readonly link: -1 | 0 | 1;
-  readonly marks: [boolean, boolean];
-  readonly breaks: [boolean, boolean];
-}
-
-const tokenize = (marked: string): Array<Unit> => {
-  const units: Array<Unit> = [];
-  const depth: [number, number] = [0, 0];
-  let atom: string | undefined;
-  let prefix: string | undefined = "";
-  let backslash = false;
-  const add = (text: string, link: Unit["link"], isAtom: boolean) => {
-    const chars = Array.from(text);
-    const head = classOf(chars[0] ?? "");
-    const tail = classOf(chars.at(-1) ?? "");
-    const blank = !isAtom && BLANK.test(text);
-    const word = !isAtom && !blank && chars.length === 1 && head === "other";
-    const solid = isAtom && link === 0;
-    const marks: [boolean, boolean] = [depth[0] > 0, depth[1] > 0];
-    const previous = units.at(-1);
-    if (word && previous?.word && previous.marks.every((mark, kind) => mark === marks[kind])) {
-      previous.text += text;
-      return;
-    }
-    units.push({ text, head, tail, blank, word, solid, link, marks, breaks: [false, false] });
-  };
-  const endPrefix = () => {
-    if (prefix) {
-      const text = prefix;
-      units.push({
-        text,
-        head: "space",
-        tail: "space",
-        blank: true,
-        word: false,
-        solid: true,
-        link: 0,
-        marks: [false, false],
-        breaks: [false, false],
-      });
-    }
-    prefix = undefined;
-  };
-  const flush = () => {
-    if (backslash) add("\\", 0, false);
-    backslash = false;
-  };
-  for (const char of marked) {
-    if (atom !== undefined) {
-      if (char !== ATOM_CLOSE) atom += char;
-      else {
-        add(atom, atom.startsWith("[") ? 1 : atom.startsWith("]") ? -1 : 0, true);
-        atom = undefined;
-      }
-      continue;
-    }
-    if (prefix !== undefined) {
-      if (char === ">" || char === " " || char === "\t") {
-        prefix += char;
-        continue;
-      }
-      endPrefix();
-    }
-    const kind = BOTH.find((each) => char === KINDS[each].open || char === KINDS[each].close);
-    if (kind !== undefined) {
-      flush();
-      depth[kind] += char === KINDS[kind].open ? 1 : -1;
-    } else if (char === ATOM_OPEN) {
-      flush();
-      atom = "";
-    } else if (backslash) {
-      backslash = false;
-      add(`\\${char}`, 0, false);
-    } else if (char === "\\") backslash = true;
-    else add(char, 0, false);
-    if (char === "\n") prefix = "";
-  }
-  flush();
-  endPrefix();
-  return units;
+const unquote = (parent: HastRoot | Element) => {
+  parent.children = parent.children.filter((child) => {
+    const classes = child.type === "element" ? child.properties.className : undefined;
+    return !(Array.isArray(classes) && classes.some((name) => QUOTED.includes(String(name))));
+  });
+  for (const child of parent.children) if (child.type === "element") unquote(child);
 };
 
-const endsUrl = (units: ReadonlyArray<Unit>, from: number) => {
-  for (let index = from; index < units.length; index++) {
-    for (const char of units[index]?.text ?? "") {
-      if (" \t\n".includes(char)) return true;
-      if (!URL_TRAIL.includes(char)) return false;
-    }
-  }
-  return true;
+const ATTENTION: Record<string, true> = { strong: true, emphasis: true, delete: true };
+const PHRASING: Record<string, true> = {
+  ...ATTENTION,
+  link: true,
+  text: true,
+  break: true,
+  image: true,
+  inlineCode: true,
+  html: true,
 };
+const BLANK = /^[\s\u200b\u200c\u2060\ufeff]*$/u;
+const LEADING_SPACE = /^[\p{Zs}\t\n\f\r]+/u;
+const TRAILING_SPACE = /[\p{Zs}\t\n\f\r]+$/u;
+const URL = /(?<![a-z])https?:\/\/[^\s<>"]+/giu;
+const URL_TRAIL = `!"'),.:;?*_~`;
 
-const count = (text: string, char: string) => text.split(char).length - 1;
+type Wrapper = Extract<PhrasingContent, Parents>;
+
+const isPhrasing = (node: RootContent): node is PhrasingContent => PHRASING[node.type] === true;
+
+const blank = (node: Nodes): boolean =>
+  node.type === "text"
+    ? BLANK.test(node.value)
+    : node.type === "break" || ("children" in node && node.children.every(blank));
 
 const urlEnd = (url: string) => {
   let end = url.length;
-  let unmatched = count(url, ")") - count(url, "(");
+  let unmatched = url.split(")").length - url.split("(").length;
   for (;;) {
     const char = url[end - 1] ?? "";
-    if (char !== "" && DROPPED_TRAIL.includes(char)) end--;
-    else if (char === ")" && unmatched > 0) {
-      end--;
-      unmatched--;
-    } else return end;
+    if (char === ")" && unmatched > 0) unmatched--;
+    else if (char === ")" || !URL_TRAIL.includes(char)) return end;
+    end--;
   }
 };
 
-const bare = (url: string, autolink: boolean) =>
-  BARE_URL.test(url) &&
-  (!autolink || url.startsWith("http")) &&
-  urlEnd(url) === url.length &&
-  count(url, "(") === count(url, ")");
-
-const anchor = (units: ReadonlyArray<Unit>) => {
-  let depth = 0;
-  return units.flatMap((unit, index) => {
-    depth += unit.link;
-    const kind = unit.solid ? unit.text[0] : undefined;
-    if (kind !== AUTOLINK && kind !== TEXT_URL) return [unit];
-    const url = unit.text.slice(1);
-    const before = units[index - 1]?.text.at(-1) ?? " ";
-    const opens = url.startsWith("www.") ? /[ \t\n(*_~]/.test(before) : !/[A-Za-z]/.test(before);
-    const safe = depth === 0 && opens && endsUrl(units, index + 1);
-    if (safe && bare(url, kind === AUTOLINK)) return [{ ...unit, text: url }];
-    const label = url.replace(LABEL_UNSAFE, "\\$&");
-    const markdown =
-      kind === AUTOLINK
-        ? `${atom("[")}${label}${atom(`](${url.replace(/[()]/g, "\\$&")})`)}`
-        : label.replace(/(https?(?=:)|www(?=\.))(.)/gi, "$1\\$2");
-    return tokenize(markdown).map((part) => ({
-      ...part,
-      marks: [...unit.marks] as [boolean, boolean],
-    }));
-  });
-};
-
-const runs = (units: ReadonlyArray<Unit>, kind: Kind) => {
-  const found: Array<[number, number]> = [];
-  units.forEach((unit, index) => {
-    if (!unit.marks[kind]) return;
-    const last = found.at(-1);
-    if (last?.[1] === index - 1 && !unit.breaks[kind]) last[1] = index;
-    else found.push([index, index]);
-  });
-  return found;
-};
-
-const balanced = (units: ReadonlyArray<Unit>, first: number, last: number) => {
-  let depth = 0;
-  for (let index = first; index <= last; index++) {
-    depth += units[index]?.link ?? 0;
-    if (depth < 0) return false;
+const linkify = (value: string): PhrasingContent[] => {
+  const out: PhrasingContent[] = [];
+  let last = 0;
+  for (const match of value.matchAll(URL)) {
+    const url = match[0].slice(0, urlEnd(match[0]));
+    if (!/:\/\/[^/?#]/.test(url)) continue;
+    if (match.index > last) out.push({ type: "text", value: value.slice(last, match.index) });
+    out.push({ type: "link", url, children: [{ type: "text", value: url }] });
+    last = match.index + url.length;
   }
-  return depth === 0;
+  if (last < value.length) out.push({ type: "text", value: value.slice(last) });
+  return out;
 };
 
-// A `*` run with punctuation on both sides can both open and close, so CommonMark may mis-pair it.
-const stuck = (unit: Unit, edge: Class, outside: Class) =>
-  edge === "punctuation" && (unit.solid ? outside === "other" : outside !== "space");
-
-const trim = (units: Array<Unit>, kind: Kind) => {
-  const tailBefore = (index: number) => units[index - 1]?.tail ?? "space";
-  const headAfter = (index: number) => units[index + 1]?.head ?? "space";
-  let split = true;
-  while (split) {
-    split = false;
-    for (const [start, end] of runs(units, kind)) {
-      let first = start;
-      let last = end;
-      for (let unit = units[first]; unit && first <= last; unit = units[++first]) {
-        if (!unit.blank && !stuck(unit, unit.head, tailBefore(first))) break;
-        unit.marks[kind] = false;
-      }
-      for (let unit = units[last]; unit && last >= first; unit = units[--last]) {
-        if (!unit.blank && !stuck(unit, unit.tail, headAfter(last))) break;
-        unit.marks[kind] = false;
-      }
-      if (first > last || balanced(units, first, last)) continue;
-      for (let index = first; index <= last; index++) {
-        const unit = units[index];
-        if (unit && unit.link !== 0) unit.marks[kind] = false;
-      }
-      split = true;
-    }
+const hoistEdges = (node: Wrapper): PhrasingContent[] => {
+  const children = [...node.children];
+  const lead: PhrasingContent[] = [];
+  const trail: PhrasingContent[] = [];
+  for (let first = children[0]; first; first = children[0]) {
+    const space = first.type === "text" ? LEADING_SPACE.exec(first.value)?.[0] : undefined;
+    if (first.type !== "break" && space === undefined) break;
+    if (first.type === "text" && space !== undefined && space !== first.value) {
+      children[0] = { ...first, value: first.value.slice(space.length) };
+      lead.push({ type: "text", value: space });
+    } else lead.push(children.shift() as PhrasingContent);
   }
-};
-
-const settle = (units: Array<Unit>) => {
-  let unsettled = true;
-  while (unsettled) {
-    for (const kind of BOTH) trim(units, kind);
-    const previous = units.map((unit) => [...unit.breaks]);
-    for (const unit of units) unit.breaks.fill(false);
-    const [strong, em] = BOTH.map((kind) => runs(units, kind));
-    for (const [outer, inner, kind] of [
-      [strong, em, 1],
-      [em, strong, 0],
-    ] as const) {
-      let next = 0;
-      for (const [start, end] of outer ?? []) {
-        while ((inner?.[next]?.[0] ?? Number.POSITIVE_INFINITY) <= start) next++;
-        for (let index = next; (inner?.[index]?.[0] ?? Number.POSITIVE_INFINITY) <= end; index++) {
-          const after = units[end + 1];
-          if (after && (inner?.[index]?.[1] ?? 0) > end) after.breaks[kind] = true;
-        }
-      }
-    }
-    unsettled = units.some((unit, index) =>
-      unit.breaks.some((broken, kind) => broken !== previous[index]?.[kind]),
-    );
+  for (let last = children.at(-1); last; last = children.at(-1)) {
+    const space = last.type === "text" ? TRAILING_SPACE.exec(last.value)?.[0] : undefined;
+    if (last.type !== "break" && space === undefined) break;
+    if (last.type === "text" && space !== undefined && space !== last.value) {
+      children[children.length - 1] = { ...last, value: last.value.slice(0, -space.length) };
+      trail.unshift({ type: "text", value: space });
+    } else trail.unshift(children.pop() as PhrasingContent);
   }
-  return units;
+  return [...lead, ...(children.length > 0 ? [{ ...node, children } as Wrapper] : []), ...trail];
 };
 
-const serialize = (units: ReadonlyArray<Unit>) => {
-  const ends = BOTH.map((kind) => {
-    const end: Array<number> = [];
-    let current = -1;
-    for (let index = units.length - 1; index >= 0; index--) {
-      const fresh = current === -1 || units[index + 1]?.breaks[kind] === true;
-      current = units[index]?.marks[kind] ? (fresh ? index : current) : -1;
-      end[index] = current;
-    }
-    return end;
-  });
-  const open: Array<Kind> = [];
-  let markdown = "";
-  for (let index = 0; index <= units.length; index++) {
-    const unit = units[index];
-    const marks = unit?.marks ?? [false, false];
-    const cut = open.findIndex((kind) => !marks[kind] || unit?.breaks[kind]);
-    const closing = cut === -1 ? [] : open.splice(cut).reverse();
-    const opening = BOTH.filter((kind) => marks[kind] && !open.includes(kind)).sort(
-      (left, right) => (ends[right]?.[index] ?? 0) - (ends[left]?.[index] ?? 0) || left - right,
-    );
-    for (const kind of [...closing, ...opening]) markdown += KINDS[kind].delimiter;
-    open.push(...opening);
-    if (!unit) continue;
-    const previous = units[index - 1];
-    if (unit.link === 1 && closing.length + opening.length === 0 && previous?.text === "!") {
-      markdown = `${markdown.slice(0, -1)}\\!`;
-    }
-    const glued = closing.length + opening.length === 0 && unit.solid && previous?.solid;
-    if (glued && previous.text.endsWith("`") && unit.text.startsWith("`")) markdown += WORD_JOINER;
-    markdown += unit.text;
+const merge = (nodes: ReadonlyArray<PhrasingContent>): PhrasingContent[] => {
+  const out: PhrasingContent[] = [];
+  for (const node of nodes) {
+    const last = out.at(-1);
+    if (last?.type === "inlineCode" && node.type === "inlineCode") {
+      out[out.length - 1] = { ...last, value: last.value + node.value };
+    } else if (last && ATTENTION[node.type] && last.type === node.type) {
+      const children = merge([...(last as Wrapper).children, ...(node as Wrapper).children]);
+      out[out.length - 1] = { ...last, children } as Wrapper;
+    } else out.push(node);
   }
-  return markdown;
+  return out;
 };
 
-const wrap = (open: string, close: string, text: string) => {
-  const inner = text.trim();
-  if (inner === "") return text;
-  const lead = text.slice(0, text.length - text.trimStart().length);
-  const trail = text.slice(text.trimEnd().length);
-  return `${lead}${open}${inner}${close}${trail}`;
-};
-
-const emphasis =
-  ({ open, close }: (typeof KINDS)[number]) =>
-  (content: string, node: TurndownService.Node) =>
-    (node.textContent ?? "").replace(INVISIBLES, "") === "" ||
-    BLOCK_LINE.test(content.trim()) ||
-    node.querySelectorAll(BLOCKS).length > 0
-      ? content
-      : content
-          .split(PARAGRAPH_BREAK)
-          .map((piece) => wrap(open, close, piece))
-          .join("");
-
-const atom = (markdown: string) => (markdown === "" ? "" : `${ATOM_OPEN}${markdown}${ATOM_CLOSE}`);
-
-const turndown = (dropQuoted: boolean) => {
-  const options: TurndownService.Options = {
-    br: "",
-    headingStyle: "atx",
-    codeBlockStyle: "fenced",
-    bulletListMarker: "-",
+const regroup = <Item, Group extends Item, Out>(
+  items: ReadonlyArray<Item>,
+  grouped: (item: Item) => item is Group,
+  run: (group: Group[]) => Out,
+  single: (item: Item) => Out,
+) => {
+  const out: Out[] = [];
+  let pending: Group[] = [];
+  const flush = () => {
+    if (pending.length > 0) out.push(run(pending));
+    pending = [];
   };
-  const builtIn = new TurndownService(options);
-  const markdownOf: TurndownService.ReplacementFunction = (content, node, settings) =>
-    builtIn.rules.forNode(node).replacement?.(content, node, settings) ?? content;
-  const service = new TurndownService(options);
-  service.escape = (text) =>
-    text.replace(ESCAPED, (match, url: string | undefined) => {
-      if (url === undefined) return `\\${match}`;
-      const end = urlEnd(url);
-      return `${atom(`${TEXT_URL}${url.slice(0, end)}`)}${url.slice(end).replace(DELIMITING, "\\$&")}`;
-    });
-  service.remove(["style", "script", "head", "title"]);
-  service.addRule("atomicCode", {
-    filter: (node) =>
-      node.nodeName === "CODE" &&
-      !(node.parentNode?.nodeName === "PRE" && !node.previousSibling && !node.nextSibling),
-    replacement: (content, node, settings) =>
-      atom(markdownOf(content.replace(MARKERS, ""), node, settings)),
-  });
-  service.addRule("atomicImage", {
-    filter: "img",
-    replacement: (...args) => atom(markdownOf(...args)),
-  });
-  service.addRule("atomicLink", {
-    filter: (node) => node.nodeName === "A" && Boolean(node.getAttribute("href")),
-    replacement: (content, node, settings) =>
-      `${atom("[")}${content}${atom(markdownOf(content, node, settings).slice(content.length + 1))}`,
-  });
-  service.addRule("autolink", {
-    filter: (node) =>
-      node.nodeName === "A" &&
-      node.children.length === 0 &&
-      node.getAttribute("href") === node.textContent,
-    replacement: (_, node) => atom(node.textContent ? `${AUTOLINK}${node.textContent}` : ""),
-  });
-  for (const kind of KINDS) {
-    service.addRule(kind.tags[0], { filter: [...kind.tags], replacement: emphasis(kind) });
+  for (const item of items) {
+    if (grouped(item)) pending.push(item);
+    else {
+      flush();
+      out.push(single(item));
+    }
   }
-  if (dropQuoted) {
-    service.addRule("quoted", {
-      filter: (node) => QUOTED.some((name) => node.classList?.contains(name) ?? false),
-      replacement: () => "",
-    });
-  }
-  return (html: string) =>
-    serialize(settle(anchor(tokenize(service.turndown(html.replace(SENTINELS, "\uFFFD"))))));
+  flush();
+  return out;
 };
 
-export const htmlBody = turndown(false);
-export const htmlBodyNew = turndown(true);
+const clean = (nodes: ReadonlyArray<PhrasingContent>, inside: Readonly<Record<string, true>>) =>
+  merge(
+    nodes.flatMap((node): PhrasingContent[] => {
+      if (node.type === "text") return inside.link ? [node] : linkify(node.value);
+      if (node.type === "inlineCode") return node.value === "" ? [] : [node];
+      if (node.type === "link") {
+        const children = clean(node.children, { ...inside, link: true });
+        if (!node.url) return children;
+        if (!children.some((child) => child.type === "link")) return [{ ...node, children }];
+        return regroup(
+          children,
+          (child): child is Exclude<PhrasingContent, Link> => child.type !== "link",
+          (group): PhrasingContent => ({ ...node, children: group }),
+          (child) => child,
+        );
+      }
+      if (!ATTENTION[node.type]) return [node];
+      const wrapper = node as Wrapper;
+      const children = clean(wrapper.children, { ...inside, [node.type]: true });
+      if (inside[node.type] || children.every(blank)) return children;
+      return hoistEdges({ ...wrapper, children } as Wrapper);
+    }),
+  );
+
+const edge = (node: PhrasingContent | undefined) =>
+  node?.type === "break" || (node?.type === "text" && node.value.trim() === "");
+
+const tidy = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
+  nodes.flatMap((node): RootContent[] => {
+    if (node.type !== "paragraph" && node.type !== "heading") {
+      return "children" in node
+        ? [{ ...node, children: tidy(node.children) } as RootContent]
+        : [node];
+    }
+    const children = clean(node.children, {});
+    while (edge(children[0])) children.shift();
+    while (edge(children.at(-1))) children.pop();
+    return children.length > 0 ? [{ ...node, children }] : [];
+  });
+
+const wrapInto = (block: RootContent, wrapper: Wrapper): RootContent =>
+  block.type === "paragraph" || block.type === "heading"
+    ? { ...block, children: [{ ...wrapper, children: block.children } as Wrapper] }
+    : "children" in block
+      ? ({
+          ...block,
+          children: block.children.map((child) => wrapInto(child, wrapper)),
+        } as RootContent)
+      : block;
+
+const lift = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
+  nodes.flatMap((node): RootContent[] => {
+    if (node.type === "paragraph" || node.type === "heading") {
+      return regroup(
+        lift(node.children),
+        isPhrasing,
+        (children): RootContent => ({ ...node, children }),
+        (block) => block,
+      );
+    }
+    if (!("children" in node)) return [node];
+    if (!isPhrasing(node)) return [{ ...node, children: lift(node.children) } as RootContent];
+    const inner = lift(node.children);
+    if (inner.every(isPhrasing)) return [{ ...node, children: inner } as Wrapper];
+    return regroup(
+      inner,
+      isPhrasing,
+      (children): RootContent => ({ ...node, children }) as Wrapper,
+      (block) => wrapInto(block, node),
+    );
+  });
+
+// micromark treats these as whitespace when pairing `*` runs; CommonMark does not, so write them as references.
+const MISCLASSIFIED = /[\v\u2028\u2029\ufeff]/gu;
+const EMAIL =
+  /^[\w.#$%&'*+/=?^`{|}~-]+@[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)*$/i;
+
+const handlers: Partial<Handlers> = {
+  text: (node, parent, state, info) =>
+    markdownHandlers
+      .text(node, parent, state, info)
+      .replace(MISCLASSIFIED, (char) => `&#x${char.codePointAt(0)?.toString(16).toUpperCase()};`),
+  // mdast-util-to-markdown writes any `mailto:` link as `<address>`; micromark parses only ASCII addresses there.
+  link: (node, parent, state, info) => {
+    if (!node.url.startsWith("mailto:") || EMAIL.test(node.url.slice("mailto:".length))) {
+      return markdownHandlers.link(node, parent, state, info);
+    }
+    const { options } = state;
+    state.options = { ...options, resourceLink: true };
+    try {
+      return markdownHandlers.link(node, parent, state, info);
+    } finally {
+      state.options = options;
+    }
+  },
+};
+
+const convert = (dropQuoted: boolean) => (html: string) => {
+  const hast = fromHtml(html);
+  if (dropQuoted) unquote(hast);
+  const mdast = toMdast(hast, {
+    handlers: {
+      table: htmlHandlers.div,
+      tr: htmlHandlers.div,
+      td: htmlHandlers.div,
+      th: htmlHandlers.div,
+    },
+    nodeHandlers: { comment: () => undefined },
+  });
+  const root: Root = {
+    type: "root",
+    children: tidy(lift(mdast.type === "root" ? mdast.children : [])),
+  };
+  return toMarkdown(root, { bullet: "-", extensions: [gfmToMarkdown()], handlers }).trimEnd();
+};
+
+export const htmlBody = convert(false);
+export const htmlBodyNew = convert(true);
 
 const TAGS =
   /<\/?(?:details|summary|picture|source|img|sub|sup|br|div|span|p|a|b|i|em|strong|code|kbd|table|thead|tbody|tr|td|th|ul|ol|li|hr|h[1-6]|blockquote|pre|g-emoji)\b[^<>]*>/gi;

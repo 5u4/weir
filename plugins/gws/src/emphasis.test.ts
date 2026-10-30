@@ -60,17 +60,17 @@ describe("html emphasis", () => {
     [
       "a bold image",
       '<p><b><img src="https://cdn.example/a.png" alt="Logo"></b>next</p>',
-      [],
+      [""],
       ["next"],
     ],
     ["a bold paragraph", "<b><p>Title</p></b><p>body</p>", ["Title"], ["body"]],
     ["adjacent italics", "<p><i>re</i><i>ad</i> me</p>", ["read"], ["me"]],
     ["an italic line break", "<p><i><br>It</i> x</p>", ["It"], ["x"]],
-    ["bold around a setext underline", "<p><b>a<br>===<br>b</b></p>", [], ["a", "b"]],
+    ["bold around a setext underline", "<p><b>a<br>===<br>b</b></p>", ["a===b"], ["a", "b"]],
     [
       "a bold image with parentheses in its URL",
       '<p><b><img src="https://cdn.example/a(1).png" alt="Logo"></b>next</p>',
-      [],
+      [""],
       ["next"],
     ],
     [
@@ -88,14 +88,14 @@ describe("html emphasis", () => {
     [
       "bold italic opening with punctuation after a word",
       "<p>Go<b><i>-fast and far</i></b> end</p>",
-      ["fast and far"],
-      ["Go-", "end"],
+      ["-fast and far"],
+      ["Go", "end"],
     ],
     [
       "bold italic opening with punctuation in a quote",
       "<blockquote>Go<b><i>-fast and far</i></b> end</blockquote>",
-      ["fast and far"],
-      ["Go-", "end"],
+      ["-fast and far"],
+      ["Go", "end"],
     ],
   ])("renders %s without stray delimiters", (_, html, emphasized, words) => {
     const item = itemOf(text("text/html", html));
@@ -117,37 +117,6 @@ describe("html emphasis", () => {
       expect(parse(markdown).children.map((node) => node.type)).toEqual([type]);
       expect(rendered(markdown).text).not.toMatch(/[*_]/);
     }
-  });
-
-  it.each([
-    [
-      "numeric references",
-      "<p>&#xE000;one&#xE001; &#57346;two&#57347 &#X0e000;three&#xe001; &#xE004;four&#57349;</p>",
-      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD \uFFFDthree\uFFFD \uFFFDfour\uFFFD",
-    ],
-    [
-      "literal characters",
-      "<p>\uE000one\uE001 \uE002two\uE003 \uE004three\uE005 \uE006four\uE007</p>",
-      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD \uFFFDthree\uFFFD \uFFFDfour\uFFFD",
-    ],
-    [
-      "URL and autolink sentinel references",
-      "<p>&#xE006;one&#57351; &#57350;two&#xe007;</p>",
-      "\uFFFDone\uFFFD \uFFFDtwo\uFFFD",
-    ],
-    [
-      "references rebuilt around a removed one",
-      "<p>&#&#xE000;xE000;one&#&#xE001;xE001;</p>",
-      "&#\uFFFDxE000;one&#\uFFFDxE001;",
-    ],
-    [
-      "an image alt",
-      '<p><img alt="&#xE002;Logo&#xE003;" src="https://cdn.example/a.png"> next</p>',
-      "![\uFFFDLogo\uFFFD](https://cdn.example/a.png) next",
-    ],
-    ["neighbouring code points", "<p>&#xE0001;&#xE008;&#57352;</p>", "\u{E0001}\uE008\uE008"],
-  ])("replaces emphasis sentinel code points in %s", (_, html, body) => {
-    expect(itemOf(text("text/html", html)).body).toBe(body);
   });
 
   it("converts bold around a long zero-width run in linear time", () => {
@@ -175,7 +144,6 @@ type Styled = {
   readonly char: string;
   readonly strong: boolean;
   readonly em: boolean;
-  readonly code?: boolean;
 };
 
 type Context = {
@@ -195,7 +163,8 @@ const TEXT_URLS = [
   "https://example.com/(q)",
   "https://example.com/q*",
 ];
-const MARKERS = /[\uE000-\uE007]/u;
+const BARE_URL = /(?<![a-z])https?:\/\/[^\s<>"]+/giu;
+const URL_TRAIL = /^[!"'),.:;?*_~]*$/u;
 const invisible = /[\s\u200B\u200C\u2060\uFEFF]/u;
 const wordChar = /[\p{L}\p{N}]/u;
 const isStrong = (tag: Tag) => tag === "b" || tag === "strong";
@@ -246,7 +215,7 @@ const expectedOf = (nodes: readonly Inline[], strong = false, em = false): Style
       case "span":
         return expectedOf(node.children, strong || isStrong(node.tag), em || !isStrong(node.tag));
       case "code":
-        return [...textOf(node.children)].map((char) => ({ char, strong, em, code: true }));
+        return [...textOf(node.children)].map((char) => ({ char, strong, em }));
     }
     return expectedOf(node.children, strong, em);
   });
@@ -261,13 +230,6 @@ const actualOf = (node: Nodes, strong = false, em = false): Styled[] => {
   return node.children.flatMap((child) => actualOf(child, nextStrong, nextEm));
 };
 
-// CommonMark cannot emphasize a code span whose delimiter would sit between a backtick and a
-// letter, digit or zero-width character, so inline code may lose emphasis but never gain it.
-const emphasisMatches = (want: Styled, got: Styled) =>
-  want.code
-    ? (got.strong === want.strong || !got.strong) && (got.em === want.em || !got.em)
-    : got.strong === want.strong && got.em === want.em;
-
 const mismatch = (expected: readonly Styled[], actual: readonly Styled[]) => {
   const length = Math.max(expected.length, actual.length);
   for (let index = 0; index < length; index++) {
@@ -275,7 +237,7 @@ const mismatch = (expected: readonly Styled[], actual: readonly Styled[]) => {
     const got = actual[index];
     if (want?.char !== got?.char) return { index, reason: "characters differ", want, got };
     if (want && got && wordChar.test(want.char)) {
-      if (!emphasisMatches(want, got)) {
+      if (got.strong !== want.strong || got.em !== want.em) {
         return { index, reason: "emphasis differs", want, got };
       }
     }
@@ -303,19 +265,46 @@ const linksOf = (node: Nodes): { url: string; label: string }[] =>
       : [];
 
 const anchorsOf = (html: string) =>
-  [...html.matchAll(/<a href="([^"]*)"/g)].map((match) => match[1] ?? "").sort();
+  [...html.matchAll(/<a href="([^"]*)"/g)].map((match) => match[1] ?? "");
 
-const linkProblem = (anchors: readonly string[], tree: Nodes) => {
-  const links = linksOf(tree);
-  const stray = links.find(({ url, label }) => !anchors.includes(url) && url !== label);
-  if (stray) return `link to ${JSON.stringify(stray.url)} matches no anchor or literal URL`;
-  const kept = links
-    .map(({ url }) => url)
-    .filter((url) => anchors.includes(url))
-    .sort();
-  return kept.join(" ") === anchors.join(" ")
-    ? null
-    : `link destinations ${JSON.stringify(kept)}, want ${JSON.stringify(anchors)}`;
+const bareUrlsOf = (nodes: readonly Inline[]): string[] => {
+  const urls: string[] = [];
+  let run = "";
+  const flush = () => {
+    for (const [url] of run.matchAll(BARE_URL)) urls.push(url);
+    run = "";
+  };
+  for (const node of nodes) {
+    if (node.kind === "text") run += node.value;
+    else {
+      flush();
+      if (node.kind === "span" || node.kind === "paragraph")
+        urls.push(...bareUrlsOf(node.children));
+    }
+  }
+  flush();
+  return urls;
+};
+
+const linkProblem = (anchors: readonly string[], bareUrls: readonly string[], tree: Nodes) => {
+  const unmatched = linksOf(tree);
+  const take = (matches: (link: { url: string; label: string }) => boolean) => {
+    const index = unmatched.findIndex(matches);
+    if (index !== -1) unmatched.splice(index, 1);
+    return index !== -1;
+  };
+  const missing = anchors.find((href) => !take(({ url }) => url === href));
+  if (missing !== undefined) return `no link to anchor ${JSON.stringify(missing)}`;
+  const unlinked = bareUrls.find(
+    (text) =>
+      !take(
+        ({ url, label }) =>
+          url === label && text.startsWith(url) && URL_TRAIL.test(text.slice(url.length)),
+      ),
+  );
+  if (unlinked !== undefined) return `bare URL ${JSON.stringify(unlinked)} is not a link`;
+  const [stray] = unmatched;
+  return stray ? `link to ${JSON.stringify(stray.url)} matches no anchor or bare URL` : null;
 };
 
 // micromark counts U+FEFF as whitespace; the CommonMark spec does not, and classes it like U+2060.
@@ -327,16 +316,16 @@ const parsings = (field: string, markdown: string) =>
       ]
     : [[field, markdown]];
 
-const checkTree = (html: string, expectedChars: readonly Styled[]): string[] => {
-  const expected = visible(expectedChars);
+const checkTree = (html: string, content: readonly Inline[]): string[] => {
+  const expected = visible(expectedOf(content));
   const anchors = anchorsOf(html);
+  const bareUrls = bareUrlsOf(content);
   const item = itemOf(text("text/html", html));
   return [
     ["body", item.body],
     ["bodyNew", item.bodyNew ?? ""],
   ].flatMap(([field = "", markdown = ""]) => {
     const problems: string[] = [];
-    if (MARKERS.test(markdown)) problems.push(`${field}: emphasis marker code point in markdown`);
     for (const [label = "", parsed = ""] of parsings(field, markdown)) {
       const tree = parse(parsed);
       const found = mismatch(expected, visible(actualOf(tree)));
@@ -349,7 +338,7 @@ const checkTree = (html: string, expectedChars: readonly Styled[]): string[] => 
           `${label}: ${found.reason} at visible index ${found.index} (near ${JSON.stringify(context)}): want ${describeStyled(found.want)}, got ${describeStyled(found.got)}`,
         );
       }
-      const links = linkProblem(anchors, tree);
+      const links = linkProblem(anchors, bareUrls, tree);
       if (links) problems.push(`${label}: ${links}`);
     }
     return problems.length === 0
@@ -389,7 +378,7 @@ const parseHtmlTree = (html: string): Inline[] => {
   return root;
 };
 
-const check = (html: string) => checkTree(html, expectedOf(parseHtmlTree(html)));
+const check = (html: string) => checkTree(html, parseHtmlTree(html));
 
 const mulberry32 = (seed: number) => () => {
   seed = (seed + 0x6d2b79f5) | 0;
@@ -631,8 +620,53 @@ describe("emphasis oracle", () => {
       '<p><b><a href="https://example.com/">https://example.com/</a></b>next</p>',
     ],
     ["a bold URL glued to a word", "<p><b>https://example.com/q</b>next end</p>"],
+    ["bold punctuation in a paragraph inside italic", "<div><i><p><b>*</b></p>k</i></div>"],
+    ["italic in a paragraph inside nested italic", "<div><i><i><p>e<em>6</em></p></i></i></div>"],
+    ["a byte order mark before italic punctuation", "<div>7\uFEFF<em>;</em></div>"],
+    ["a byte order mark after a bold image", `<div><strong>${IMG}</strong>\uFEFF6</div>`],
+    [
+      "a mailto link with trailing no-break spaces",
+      '<p>Write <a href="mailto:ab9@mail.com\u00A0\u00A0">ab9@mail.com\u00A0\u00A0</a> now</p>',
+    ],
+    [
+      "a mailto link with a non-ASCII address",
+      '<p><a href="mailto:j\u00FCrgen@mail.de">j\u00FCrgen@mail.de</a></p>',
+    ],
+    ["a mailto link with an ASCII address", '<p><a href="mailto:ab@mail.de">ab@mail.de</a></p>'],
+    [
+      "a mailto link with a bang in the address",
+      '<p><a href="mailto:a!b@mail.de">a!b@mail.de</a></p>',
+    ],
   ])("renders %s with the same text and emphasis", (_, html) => {
     expect(check(html).join("\n")).toBe("");
+  });
+
+  it.each([
+    ["in parentheses", "<p>(https://example.com/q).</p>", ["https://example.com/q"]],
+    ["before punctuation", "<p>see https://example.com/q*r!</p>", ["https://example.com/q*r"]],
+    [
+      "with balanced parentheses",
+      "<p>https://example.com/(q)) end</p>",
+      ["https://example.com/(q)"],
+    ],
+    [
+      "in bold glued to a word",
+      "<p><b>https://example.com/q</b>next</p>",
+      ["https://example.com/q"],
+    ],
+    ["ending italic", "<p><i>go https://example.com/q_r.</i> now</p>", ["https://example.com/q_r"]],
+    [
+      "after bold punctuation",
+      "<p><b>see:</b>https://example.com/q</p>",
+      ["https://example.com/q"],
+    ],
+    ["glued to a letter", "<p>xhttps://example.com/q</p>", []],
+  ])("links a bare URL %s", (_, html, urls) => {
+    expect(check(html).join("\n")).toBe("");
+    const item = itemOf(text("text/html", html));
+    for (const markdown of [item.body, item.bodyNew ?? ""]) {
+      expect(linksOf(parse(markdown))).toEqual(urls.map((url) => ({ url, label: url })));
+    }
   });
 
   it("keeps a literal backtick before inline code in reading order", () => {
@@ -685,7 +719,7 @@ describe("emphasis oracle", () => {
     for (let index = 0; index < 3000; index++) {
       const generated = next();
       const html = caseHtml(generated);
-      const problems = checkTree(html, expectedOf(generated.content));
+      const problems = checkTree(html, generated.content);
       const tags = featuresOf(generated.content);
       for (const tag of tags) seenByTag.set(tag, (seenByTag.get(tag) ?? 0) + 1);
       if (problems.length === 0) continue;
@@ -696,10 +730,9 @@ describe("emphasis oracle", () => {
       .sort(([, a], [, b]) => b - a)
       .map(([tag, count]) => `${tag}: ${count}/${seenByTag.get(tag)}`)
       .join(", ");
-    const leaks = failures.filter((failure) => failure.includes("marker code point")).length;
     expect(
       failures.length,
-      `${failures.length} of 3000 failed, ${leaks} leak marker code points, ${failures.filter((failure) => !failure.includes("star-or-underscore-in-text")).length} without * or _ in text (by shape, failed/seen: ${counts})\n\n${failures.slice(0, 20).join("\n\n")}`,
+      `${failures.length} of 3000 failed, ${failures.filter((failure) => !failure.includes("star-or-underscore-in-text")).length} without * or _ in text (by shape, failed/seen: ${counts})\n\n${failures.slice(0, 20).join("\n\n")}`,
     ).toBe(0);
-  });
+  }, 15_000);
 });

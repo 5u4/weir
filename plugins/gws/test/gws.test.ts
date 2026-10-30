@@ -19,6 +19,10 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
 import { abortableSleep, GwsError, Message, type MessagePart, type Sleep } from "../src/gws.ts";
@@ -445,7 +449,7 @@ describe("gws plugin against fake-gws", () => {
     });
   });
 
-  it("returns the scenario text as bodyNew for every message", async () => {
+  it("returns bodyNew that parses to the scenario text's markdown tree for every message", async () => {
     const people: Record<string, { addr: string }> = scenarios.people;
     const expected = new Map(
       scenarios.threads.flatMap((t) =>
@@ -453,10 +457,30 @@ describe("gws plugin against fake-gws", () => {
       ),
     );
     expect(expected.size).toBe(32);
+    const shapeOf = (node: Nodes): unknown => {
+      if (node.type === "text" || node.type === "html") {
+        return { type: "text", value: node.value.replace(/\s+/g, " ") };
+      }
+      const { position: _, ...rest } = node;
+      if (!("children" in node)) return rest;
+      const children: { type: string; value?: string }[] = [];
+      for (const child of node.children.map(shapeOf) as { type: string; value?: string }[]) {
+        const last = children.at(-1);
+        if (last?.type === "text" && child.type === "text")
+          last.value = `${last.value}${child.value}`;
+        else children.push(child);
+      }
+      return { ...rest, children };
+    };
+    const tree = (markdown: string) =>
+      shapeOf(
+        fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }),
+      );
     const { items } = await syncAll(sourceFor(seeded()), null);
+    expect(items.size).toBe(32);
     for (const item of items.values()) {
       const key = `${Date.parse(item.occurredAt)} ${item.from.address}`;
-      expect(item.bodyNew?.trim(), key).toBe(expected.get(key));
+      expect(tree(item.bodyNew ?? ""), key).toEqual(tree(expected.get(key) ?? ""));
     }
   });
 
