@@ -322,6 +322,7 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
   parts.forEach((part, k) => {
     const i = order[k];
     if (i === null || i === undefined) return;
+    plays.delete(part);
     part.style.setProperty("--i", String(i));
     part.setAttribute("data-fold", "");
   });
