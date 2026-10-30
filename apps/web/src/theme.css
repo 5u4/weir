@@ -41,6 +41,9 @@
   --color-glass: oklch(1 0 0 / 0.3);
   --color-head: color-mix(in oklch, var(--color-ground) 88%, transparent);
   --color-cap-raised: color-mix(in oklch, var(--color-capbg), var(--color-cap-1) 12%);
+  --color-cap-faint: color-mix(in oklch, var(--color-cap-1) 30%, transparent);
+  --color-ok-glow: color-mix(in oklch, var(--color-ok) 22%, transparent);
+  --color-warn-glow: color-mix(in oklch, var(--color-warn) 24%, transparent);
 
   --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -121,7 +124,9 @@
   --spacing-18: 72px;
   --spacing-20: 80px;
   --spacing-21: 84px;
+  --spacing-24: 96px;
   --spacing-30: 120px;
+  --spacing-40: 160px;
   --spacing-em-0\.05: 0.05em;
   --spacing-em-0\.1: 0.1em;
   --spacing-em-0\.25: 0.25em;
@@ -148,8 +153,13 @@
   --height-band: calc(2 * var(--inset-gap) + var(--size-pill));
   --height-pill: var(--size-pill);
   --size-pill: var(--spacing-12);
+  --max-width-status: 760px;
+  --max-width-error: 44ch;
+  --width-segment-fill: calc((100% - var(--spacing-2)) / 3);
   --padding-reader: var(--spacing-10);
 
+  --size-1\.75: 7px;
+  --size-3\.25: 13px;
   --size-2\.75: 11px;
   --size-4\.5: 18px;
   --size-9: 36px;
@@ -160,11 +170,21 @@
   --width-em-6: 6em;
   --width-em-9: 9em;
   --min-width-em-6: 6em;
+  --stroke-width-1\.6: 1.6;
   --stroke-width-1\.7: 1.7;
   --stroke-width-1\.8: 1.8;
+  --border-width-thick: 2px;
   --grid-template-columns-row: 32px minmax(0, 1fr) auto;
   --grid-template-columns-query: minmax(0, max-content) auto;
   --grid-template-columns-query-wide: minmax(0, max-content) 1fr;
+  --grid-template-columns-verdict: auto 1fr;
+  --grid-template-columns-source: 10px minmax(0, 1fr) auto;
+  --grid-template-columns-stream: minmax(0, 1fr) auto;
+  --grid-template-columns-field: 8.5em minmax(0, 1fr);
+  --grid-template-columns-stack: 1fr;
+  --grid-template-columns-sync: 8px max-content max-content;
+  --grid-template-columns-segments: repeat(3, 96px);
+  --grid-template-columns-segments-fill: repeat(3, 1fr);
   --blur-md: 12px;
   --opacity-none: 0;
   --opacity-half: 0.5;
@@ -175,6 +195,7 @@
   --scale-dot: 30%;
   --outline-offset-inset: -2px;
   --outline-offset-near: 2px;
+  --outline-offset-tight: 1px;
 
   --elevation-row:
     0 0 0 1px oklch(0.3 0.02 255 / 0.06), 0 1px 2px oklch(0.3 0.02 255 / 0.06),
@@ -197,6 +218,8 @@
   --shadow-halo-cap-1: 0 0 0 2.5px var(--color-cap-1);
   --shadow-stack-capbg: 0 0 0 0.09em var(--color-capbg);
   --shadow-stack-cap-1: 0 0 0 0.09em var(--color-cap-1);
+  --shadow-glow-ok: 0 0 0 3px var(--color-ok-glow);
+  --shadow-glow-warn: 0 0 0 3px var(--color-warn-glow);
   --shadow-under-g-line: 0 1px 0 var(--color-g-line);
 
   --transition-property-bg: background-color;
@@ -204,6 +227,8 @@
   --transition-property-tint-ring: box-shadow, background-color, color;
   --transition-property-fade-tint-ring: opacity, background-color, color, box-shadow;
   --transition-property-fade-tint-shown: opacity, visibility, background-color, color;
+  --transition-property-press-bg: scale, background-color;
+  --transition-property-ink: color;
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
@@ -255,6 +280,21 @@
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
 
+  --animate-trace: trace var(--duration-loop) var(--ease-glide) var(--duration-fast) both;
+  --animate-spin: spin var(--duration-spin) linear infinite;
+
+  @keyframes trace {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
   --z-index-raised: 2;
   --z-index-dock: 20;
   --z-index-cap: 40;
@@ -274,6 +314,7 @@
   --color-avatar: oklch(var(--av-bg) var(--h));
   --color-avatar-ink: oklch(var(--av-ink) var(--h));
   --color-tag: oklch(var(--cl-l) var(--cl-c) var(--bh));
+  --translate-segment: calc(var(--i) * 100%);
 }
 
 @utility transition-pop {
@@ -288,6 +329,10 @@
 
 @utility linejoin-round {
   stroke-linejoin: round;
+}
+
+@utility dash-path {
+  stroke-dasharray: 1;
 }
 
 @utility scrollbar-none {

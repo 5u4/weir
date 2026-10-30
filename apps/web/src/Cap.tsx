@@ -402,14 +402,14 @@ function QueryField({ stepping, form }: { stepping: ConversationId | null; form:
               <span>{chip.value}</span>
               <button
                 type="button"
-                className="qc-x ml-1 grid size-6 place-items-center rounded-circle text-cap-2 transition-tint hover:bg-cap-hover hover:text-cap-1"
+                className="ml-1 grid size-6 place-items-center rounded-circle text-cap-2 transition-tint hover:bg-cap-hover hover:text-cap-1"
                 aria-label={`Remove ${chipText(chip)}`}
                 title="Remove"
                 onClick={() =>
                   write({ ...field, chips: field.chips.filter((_, index) => index !== at) })
                 }
               >
-                <CloseIcon />
+                <CloseIcon small />
               </button>
             </span>
           ))}
