@@ -158,10 +158,10 @@ const historyWrite = (
 
 export const route: Atom.Writable<Route, Navigation> = Atom.writable(
   (get) => {
-    const sync = (event: PopStateEvent) =>
+    const sync = (event: PopStateEvent) => {
+      const next = parse(location.search);
       commit(() => {
         const status = get.registry.get(statusShown);
-        const next = parse(location.search);
         return {
           before: { status, conversation: get.registry.get(route).conversation },
           after: { status, conversation: next.conversation },
@@ -169,6 +169,7 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
           animate: !event.hasUAVisualTransition,
         };
       });
+    };
     addEventListener("popstate", sync);
     get.addFinalizer(() => removeEventListener("popstate", sync));
     return parse(location.search);
@@ -177,12 +178,13 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
     commit(() => {
       const previous = ctx.get(route);
       const { target, write } = historyWrite(previous, navigation);
+      const from = location.href;
       return {
         before: { status: ctx.get(statusShown), conversation: previous.conversation },
         after: { status: false, conversation: target.conversation },
         apply: () => {
           ctx.set(statusShown, false);
-          if (Option.isNone(write)) return;
+          if (Option.isNone(write) || location.href !== from) return;
           write.value();
           ctx.setSelf(target);
         },
