@@ -3,6 +3,7 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./styles/shell.css";
 @import "./styles/list.css";
+@import "./styles/cap.css";
 
 @theme {
   --*: initial;
@@ -39,6 +40,7 @@
   --color-mask: #000;
   --color-glass: oklch(1 0 0 / 0.3);
   --color-head: color-mix(in oklch, var(--color-ground) 88%, transparent);
+  --color-cap-raised: color-mix(in oklch, var(--color-capbg), var(--color-cap-1) 12%);
 
   --font-display: "Inter Tight", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -65,6 +67,7 @@
   --leading-normal: 1.5;
   --leading-relaxed: 1.6;
   --leading-loose: 1.7;
+  --leading-auto: normal;
   --leading-4\.5: 18px;
   --leading-5: 20px;
   --leading-7: 28px;
@@ -108,9 +111,11 @@
   --spacing-5\.5: 22px;
   --spacing-6: 24px;
   --spacing-7: 28px;
+  --spacing-8: 32px;
   --spacing-10: 40px;
   --spacing-11: 44px;
   --spacing-12: 48px;
+  --spacing-14: 56px;
   --spacing-14\.5: 58px;
   --spacing-16: 64px;
   --spacing-18: 72px;
@@ -133,20 +138,43 @@
   --inset-stage: calc((100vw - var(--stage-width)) / 2);
   --inset-reader: calc(var(--inset-stage) + var(--width-list) + var(--stage-gap));
   --inset-list: calc(var(--inset-edge) + var(--cap-clear));
+  --inset-edge-gap: calc(var(--inset-edge) + var(--inset-gap));
+  --inset-reader-gap: calc(var(--inset-reader) + var(--inset-gap));
+  --inset-stage-gap: calc(var(--inset-stage) + var(--inset-gap));
+  --inset-half: 50%;
   --width-list: clamp(300px, calc(var(--stage-width) * 0.3), 420px);
   --width-reader: calc(var(--stage-width) - var(--width-list) - var(--stage-gap));
+  --max-width-compact: calc(var(--width-reader) - 2 * var(--inset-gap) - 2 * var(--size-pill));
   --height-band: calc(2 * var(--inset-gap) + var(--size-pill));
+  --height-pill: var(--size-pill);
   --size-pill: var(--spacing-12);
   --padding-reader: var(--spacing-10);
 
   --size-2\.75: 11px;
+  --size-4\.5: 18px;
+  --size-9: 36px;
+  --height-4\.5: 18px;
   --height-7\.5: 30px;
+  --height-8\.5: 34px;
+  --height-9: 36px;
+  --width-em-6: 6em;
+  --width-em-9: 9em;
+  --min-width-em-6: 6em;
+  --stroke-width-1\.7: 1.7;
+  --stroke-width-1\.8: 1.8;
   --grid-template-columns-row: 32px minmax(0, 1fr) auto;
+  --grid-template-columns-query: minmax(0, max-content) auto;
+  --grid-template-columns-query-wide: minmax(0, max-content) 1fr;
   --blur-md: 12px;
   --opacity-none: 0;
+  --opacity-half: 0.5;
   --opacity-full: 1;
   --scale-press: 97%;
+  --scale-press-firm: 94%;
+  --scale-press-deep: 92%;
+  --scale-dot: 30%;
   --outline-offset-inset: -2px;
+  --outline-offset-near: 2px;
 
   --elevation-row:
     0 0 0 1px oklch(0.3 0.02 255 / 0.06), 0 1px 2px oklch(0.3 0.02 255 / 0.06),
@@ -165,13 +193,17 @@
   --shadow-halo-ground: 0 0 0 2.5px var(--color-ground);
   --shadow-halo-g-hover: 0 0 0 2.5px var(--color-g-hover);
   --shadow-halo-island: 0 0 0 2.5px var(--color-island);
+  --shadow-halo-capbg: 0 0 0 2.5px var(--color-capbg);
+  --shadow-halo-cap-1: 0 0 0 2.5px var(--color-cap-1);
   --shadow-stack-capbg: 0 0 0 0.09em var(--color-capbg);
+  --shadow-stack-cap-1: 0 0 0 0.09em var(--color-cap-1);
   --shadow-under-g-line: 0 1px 0 var(--color-g-line);
 
   --transition-property-bg: background-color;
   --transition-property-tint: background-color, color;
   --transition-property-tint-ring: box-shadow, background-color, color;
   --transition-property-fade-tint-ring: opacity, background-color, color, box-shadow;
+  --transition-property-fade-tint-shown: opacity, visibility, background-color, color;
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
@@ -242,6 +274,28 @@
   --color-avatar: oklch(var(--av-bg) var(--h));
   --color-avatar-ink: oklch(var(--av-ink) var(--h));
   --color-tag: oklch(var(--cl-l) var(--cl-c) var(--bh));
+}
+
+@utility transition-pop {
+  transition:
+    opacity var(--duration-base),
+    scale var(--duration-spring) var(--ease-spring);
+}
+
+@utility linecap-round {
+  stroke-linecap: round;
+}
+
+@utility linejoin-round {
+  stroke-linejoin: round;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @utility scrollbar-thin {

@@ -12,6 +12,7 @@ import {
   enumerate,
   sentence,
   type Widget,
+  type WidgetKind,
   widgetDescription,
 } from "./Notch.ts";
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
@@ -50,8 +51,8 @@ const measureCap = (cap: HTMLDivElement) => {
 
 const fadeStrip = (strip: HTMLElement) => {
   const fade = () => {
-    strip.classList.toggle("fl", strip.scrollLeft > 1);
-    strip.classList.toggle("fr", strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
+    strip.toggleAttribute("data-fl", strip.scrollLeft > 1);
+    strip.toggleAttribute("data-fr", strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
   };
   const resized = new ResizeObserver(fade);
   const observeChips = () => {
@@ -93,7 +94,11 @@ const scrollStrip = (arrow: HTMLElement, direction: 1 | -1) => {
 
 function Chevron({ direction }: { readonly direction: 1 | -1 }) {
   return (
-    <svg className="ch-i" viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      className="size-4 fill-none stroke-current stroke-1.8 linecap-round linejoin-round"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <path d={direction === -1 ? "M10 3.5L5.5 8l4.5 4.5" : "M6 3.5L10.5 8 6 12.5"} />
     </svg>
   );
@@ -104,7 +109,7 @@ function StripArrow(props: { readonly direction: 1 | -1 }) {
   return (
     <button
       type="button"
-      className={prev ? "cws-a prev" : "cws-a next"}
+      className={`invisible absolute top-half -mt-3.5 grid size-7 place-items-center rounded-circle bg-capbg text-cap-2 opacity-none transition-fade-tint-shown hover:bg-cap-raised hover:text-cap-1 active:scale-press-deep ${prev ? "left-0 peer-data-fl:visible peer-data-fl:opacity-full" : "right-0 peer-data-fr:visible peer-data-fr:opacity-full"}`}
       tabIndex={-1}
       aria-label={prev ? "Scroll tags left" : "Scroll tags right"}
       onClick={({ currentTarget }) => scrollStrip(currentTarget, props.direction)}
@@ -165,8 +170,12 @@ function ViewStrip({
     [shown, loaded],
   );
   return (
-    <span className="cws-w" ref={centre}>
-      <nav className="cws" aria-label="Views" ref={fadeStrip}>
+    <span className="relative flex min-w-0 shrink-100 overflow-hidden" ref={centre}>
+      <nav
+        className="cws peer flex min-w-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain scrollbar-none"
+        aria-label="Views"
+        ref={fadeStrip}
+      >
         {widgets.map((widget) => (
           <Chip key={widget.view} widget={widget} active={active} />
         ))}
@@ -179,21 +188,35 @@ function ViewStrip({
 
 const viewRoute = (view: View): Route => ({ view, query: "", conversation: Option.none() });
 
-function SearchIcon() {
+function SearchIcon({ className = "" }: { className?: string }) {
   return (
-    <svg className="q-i" viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      className={`size-4.5 fill-none stroke-current stroke-1.7 linecap-round ${className}`}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <circle cx="7" cy="7" r="4.6" />
       <path d="M10.4 10.4l3.4 3.4" />
     </svg>
   );
 }
 
-function StatusButton({ className, alert }: { className: string; alert: boolean }) {
+const toolClass = (on: boolean) =>
+  `relative grid size-10 place-items-center rounded-circle transition-tint ${on ? "bg-cap-1 text-on-c" : "text-cap-2 hover:bg-cap-hover hover:text-cap-1"}`;
+
+const chipShapeClass =
+  "inline-flex h-9 flex-none items-center gap-1.5 rounded-full font-sans text-md leading-none font-medium transition-bg max-wide:h-8.5 max-wide:px-2.5 max-wide:text-sm";
+
+function StatusButton({ chip, alert }: { chip: boolean; alert: boolean }) {
   const [open, setOpen] = useAtom(statusOpen);
   return (
     <button
       type="button"
-      className={`${className}${alert ? " alert" : ""}${open ? " on" : ""}`}
+      className={
+        chip
+          ? `${chipShapeClass} relative ml-0.5 px-3 ${open ? "bg-cap-1 text-on-c" : "text-cap-2 hover:bg-cap-hover hover:text-cap-1"}`
+          : toolClass(open)
+      }
       aria-label="Status"
       title="Status"
       aria-pressed={open}
@@ -201,66 +224,129 @@ function StatusButton({ className, alert }: { className: string; alert: boolean 
       onClick={() => setOpen(!open)}
     >
       <StatusIcon />
-      <i className="st-dot" aria-hidden="true" />
+      <i
+        className={`absolute size-2 rounded-circle bg-warn-cap transition-pop motion-reduce:transition-none ${chip ? "top-1.5 right-1.5" : "top-2 right-2"} ${alert ? "scale-none opacity-full" : "scale-dot opacity-none"} ${open ? "shadow-halo-cap-1" : "shadow-halo-capbg"}`}
+        aria-hidden="true"
+      />
     </button>
   );
 }
 
-export function SentenceWidget({ widget, active }: { widget: Widget; active: View | null }) {
+const glueClass = "font-normal text-cap-2";
+
+const widgetClass = (on: boolean) =>
+  `relative inline-block mx-em-0.05 rounded-chip px-em-0.3 py-em-0.05 whitespace-nowrap transition-bg ${on ? "bg-cap-1 text-on-c" : "hover:bg-cap-hover"}`;
+
+const widgetCountClass = (tail: boolean) =>
+  `mr-em-0.05 inline-block tracking-tighter tabular-nums ${tail ? "font-semibold" : "font-bold"}`;
+
+export function SentenceWidget({
+  widget,
+  active,
+  tail = false,
+}: {
+  widget: Widget;
+  active: View | null;
+  tail?: boolean;
+}) {
+  const on = active === widget.view;
   return (
     <Link
       to={viewRoute(widget.view)}
-      current={active === widget.view}
-      className={`w w-${widget.kind}`}
+      current={on}
+      className={`${widgetClass(on)} leading-snug no-underline ${on ? "" : widget.kind === "clear" ? "text-cap-2" : "text-cap-1"}`}
       description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
         <>
-          <span className="w-u">{widget.name}</span> <span className="w-n">{widget.count}</span>
+          <span className={on ? "" : "text-cap-2"}>{widget.name}</span>{" "}
+          <span className={widgetCountClass(tail)}>{widget.count}</span>
         </>
       ) : (
         <>
-          <Avatars senders={widget.senders} />
-          {widget.kind !== "clear" && <span className="w-n">{widget.count}</span>}
+          <Avatars senders={widget.senders} on={on} />
+          {widget.kind !== "clear" && (
+            <span className={widgetCountClass(tail)}>{widget.count}</span>
+          )}
           {widget.kind !== "clear" && " "}
-          <span className="w-name">{widget.name}</span>
+          <span className={tail ? "font-medium" : "font-semibold"}>{widget.name}</span>
         </>
       )}
     </Link>
   );
 }
 
-function SentenceClause({ clause, active }: { clause: Clause; active: View | null }) {
+const endGlueClass = (afterOn: boolean, tail: boolean) =>
+  `${glueClass} ${afterOn ? "" : tail ? "-ml-em-0.3" : "-ml-em-0.25"}`;
+
+function SentenceClause({
+  clause,
+  active,
+  tail = false,
+}: {
+  clause: Clause;
+  active: View | null;
+  tail?: boolean;
+}) {
   return clause.map(({ lead, widget, end }, at) => (
     <Fragment key={widget.view}>
       {at > 0 && " "}
-      <span className="grp">
-        {lead !== "" && <span className="glue">{lead}</span>}
-        <SentenceWidget widget={widget} active={active} />
-        {end !== "" && <span className="glue end">{end}</span>}
+      <span className="whitespace-nowrap">
+        {lead !== "" && <span className={glueClass}>{lead}</span>}
+        <SentenceWidget widget={widget} active={active} tail={tail} />
+        {end !== "" && <span className={endGlueClass(active === widget.view, tail)}>{end}</span>}
       </span>
     </Fragment>
   ));
 }
 
-export function Chip({ widget, active }: { widget: Widget; active: View | null }) {
+const chipKindClass: Record<
+  WidgetKind,
+  { readonly count: string; readonly name: string; readonly tone: string }
+> = {
+  updates: { count: "font-bold", name: "", tone: "" },
+  quiet: { count: "font-semibold", name: "font-medium", tone: "text-cap-2" },
+  clear: { count: "font-bold", name: "", tone: "text-cap-3" },
+  cleared: { count: "font-medium", name: "font-medium", tone: "text-cap-2" },
+};
+
+export function Chip({
+  widget,
+  active,
+  className = "",
+}: {
+  widget: Widget;
+  active: View | null;
+  className?: string;
+}) {
+  const on = active === widget.view;
+  const kind = chipKindClass[widget.kind];
+  const tone = on ? "text-on-c" : kind.tone;
+  const count = (
+    <span
+      className={`inline-block font-display text-base leading-none tracking-tighter ${kind.count} ${tone}`}
+    >
+      {widget.count}
+    </span>
+  );
+  const name = <span className={`${kind.name} ${tone}`}>{widget.name}</span>;
   return (
     <Link
       to={viewRoute(widget.view)}
-      current={active === widget.view}
-      className={`cw cw-${widget.kind}`}
+      current={on}
+      className={`cw ${chipShapeClass} px-3.5 no-underline ${on ? "bg-cap-1 text-on-c" : "text-cap-1 hover:bg-cap-hover"} ${className}`}
       description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
         <>
-          <span className="cw-name">{widget.name}</span> <span className="w-n">{widget.count}</span>
+          {name} {count}
         </>
       ) : (
         <>
-          <Avatars senders={widget.senders} />
-          {widget.kind !== "clear" && <span className="w-n">{widget.count}</span>}
+          <Avatars senders={widget.senders} className="top-0 mr-px -ml-1.5 text-av-sm" on={on} />
+          {widget.kind !== "clear" && count}
           {widget.kind !== "clear" && " "}
-          <span className="cw-name">{widget.name}</span>
+          {name}
         </>
       )}
     </Link>
@@ -284,7 +370,7 @@ export const hitStep = (event: EnterKey): 1 | -1 | null => {
   return event.shiftKey ? -1 : 1;
 };
 
-function QueryField({ stepping }: { stepping: ConversationId | null }) {
+function QueryField({ stepping, form }: { stepping: ConversationId | null; form: CapForm }) {
   const [current, navigate] = useAtom(route);
   const tags = useAtomValue(tagOrder);
   const opened = useAtomValue(searchOpen);
@@ -292,6 +378,7 @@ function QueryField({ stepping }: { stepping: ConversationId | null }) {
   const [tops, setTops] = useAtom(listTops);
   const step = useAtomSet(stepHit);
   const field = fieldOf(current.query, tags);
+  const wide = form === "search";
   const write = (next: Field) => {
     const query = queryOf(next);
     if (query === "") setGroup(Option.none());
@@ -301,16 +388,21 @@ function QueryField({ stepping }: { stepping: ConversationId | null }) {
     navigate({ _tag: "Type", query });
   };
   return (
-    <span className="q-field">
+    <span
+      className={`grid items-center ${wide ? "min-w-0 flex-1 grid-cols-query-wide" : "min-w-auto flex-initial grid-cols-query"}`}
+    >
       {field.chips.length > 0 && (
-        <span className="q-chips">
+        <span className="-my-1 mr-0.5 -ml-1 flex gap-1.5 overflow-x-auto overscroll-x-contain p-1 scrollbar-none">
           {field.chips.map((chip, at) => (
-            <span key={chip.key} className="q-chip">
-              <span className="qc-k">{chip.key}:</span>
-              <span className="qc-v">{chip.value}</span>
+            <span
+              key={chip.key}
+              className="inline-flex h-7.5 flex-none items-center rounded-full bg-cap-hover pr-0.5 pl-3 font-sans text-md leading-none font-semibold whitespace-nowrap text-cap-1"
+            >
+              <span className="mr-0.5 font-medium text-cap-2">{chip.key}:</span>
+              <span>{chip.value}</span>
               <button
                 type="button"
-                className="qc-x"
+                className="qc-x ml-1 grid size-6 place-items-center rounded-circle text-cap-2 transition-tint hover:bg-cap-hover hover:text-cap-1"
                 aria-label={`Remove ${chipText(chip)}`}
                 title="Remove"
                 onClick={() =>
@@ -324,7 +416,7 @@ function QueryField({ stepping }: { stepping: ConversationId | null }) {
         </span>
       )}
       <input
-        className="cap-in"
+        className={`cap-in col-2 h-9 rounded-full border-none border-current bg-cap-hover px-3.5 py-0 font-sans text-md leading-none font-medium text-cap-1 placeholder:text-cap-3 ${wide ? "w-full min-w-em-6" : "w-em-9 max-wide:w-em-6"}`}
         type="search"
         aria-label="Search"
         placeholder="Search"
@@ -356,16 +448,25 @@ function GroupWidget({ group, on }: { group: ResultGroup; on: boolean }) {
   return (
     <button
       type="button"
-      className={`w w-group${on ? " on" : ""}`}
+      className={`${widgetClass(on)} ${on ? "" : "text-cap-1"}`}
       aria-pressed={on}
       aria-description={on ? "Show all results" : "Show only these"}
       onClick={() => setGroup(on ? Option.none() : Option.some(group.view))}
     >
-      <Avatars senders={group.senders} />
-      <span className="w-n">{group.count}</span> <span className="w-name">{group.name}</span>
+      <Avatars senders={group.senders} className="-top-em-0.05 mr-em-0.1" on={on} />
+      <span className={widgetCountClass(false)}>{group.count}</span>{" "}
+      <span className="font-semibold">{group.name}</span>
     </button>
   );
 }
+
+const sentenceMainClass =
+  "m-0 font-display text-2xl leading-relaxed font-medium tracking-snug text-balance text-cap-1 max-wide:text-xl";
+const sentenceSearchClass = `${sentenceMainClass} wrap-anywhere`;
+const sentenceTailClass = "mx-0 mt-1 mb-0 font-sans text-md leading-loose font-normal text-cap-2";
+const allClearClass = "font-bold text-cap-1";
+const hintCodeClass =
+  "rounded-sm bg-cap-hover px-1.5 py-px font-mono text-em-sm leading-auto font-medium text-cap-1";
 
 function SearchSentence() {
   const active = useAtomValue(searching);
@@ -376,9 +477,10 @@ function SearchSentence() {
   const picked = useAtomValue(pickedGroup);
   if (!active) {
     return (
-      <p className="s-tail q-hint">
+      <p className={sentenceTailClass}>
         Searches titles, digests, originals, senders and sources, done and muted included. Every
-        word must appear. Narrow with <code>from:</code> <code>in:</code> <code>source:</code>
+        word must appear. Narrow with <code className={hintCodeClass}>from:</code>{" "}
+        <code className={hintCodeClass}>in:</code> <code className={hintCodeClass}>source:</code>
       </p>
     );
   }
@@ -386,38 +488,43 @@ function SearchSentence() {
   return Option.match(results, {
     onNone: () =>
       AsyncResult.isFailure(result) ? (
-        <p className="s-main">
-          <span className="allclear">Can't search right now.</span>
+        <p className={sentenceSearchClass}>
+          <span className={allClearClass}>Can't search right now.</span>
         </p>
       ) : (
-        <p className="s-main">
-          <span className="glue">Searching for {quoted}…</span>
+        <p className={sentenceSearchClass}>
+          <span className={glueClass}>Searching for {quoted}…</span>
         </p>
       ),
     onSome: (list) =>
       list.length === 0 ? (
         <>
-          <p className="s-main">
-            <span className="allclear">Nothing matches {quoted}.</span>
+          <p className={sentenceSearchClass}>
+            <span className={allClearClass}>Nothing matches {quoted}.</span>
           </p>
-          <p className="s-tail">Try fewer words, or drop a filter.</p>
+          <p className={sentenceTailClass}>Try fewer words, or drop a filter.</p>
         </>
       ) : (
         <>
-          <p className="s-main">
-            <span className="glue">{`${quoted} ${query.text === "" ? "matches" : "appears in"} `}</span>
-            {enumerate(groups(list, tags), "", ".").map(({ lead, widget, end }, at) => (
-              <Fragment key={widget.view}>
-                {at > 0 && " "}
-                <span className="grp">
-                  {lead !== "" && <span className="glue">{lead}</span>}
-                  <GroupWidget group={widget} on={Option.contains(picked, widget.view)} />
-                  {end !== "" && <span className="glue end">{end}</span>}
-                </span>
-              </Fragment>
-            ))}
+          <p className={sentenceSearchClass}>
+            <span
+              className={glueClass}
+            >{`${quoted} ${query.text === "" ? "matches" : "appears in"} `}</span>
+            {enumerate(groups(list, tags), "", ".").map(({ lead, widget, end }, at) => {
+              const on = Option.contains(picked, widget.view);
+              return (
+                <Fragment key={widget.view}>
+                  {at > 0 && " "}
+                  <span className="whitespace-nowrap">
+                    {lead !== "" && <span className={glueClass}>{lead}</span>}
+                    <GroupWidget group={widget} on={on} />
+                    {end !== "" && <span className={endGlueClass(on, false)}>{end}</span>}
+                  </span>
+                </Fragment>
+              );
+            })}
           </p>
-          <p className="s-tail">
+          <p className={sentenceTailClass}>
             {plural(list.length, "conversation")}.{" "}
             {Option.isSome(picked)
               ? "Click the lit group again to see all."
@@ -428,6 +535,9 @@ function SearchSentence() {
   });
 }
 
+const hitCountClass =
+  "mr-1.5 font-display text-md leading-none font-semibold whitespace-nowrap text-cap-2 tabular-nums";
+
 function HitStepper({ id }: { id: ConversationId }) {
   const hits = useAtomValue(searchHits(id));
   const matched = useAtomValue(searchMatchedIn(id));
@@ -435,25 +545,29 @@ function HitStepper({ id }: { id: ConversationId }) {
   const step = useAtomSet(stepHit);
   if (Option.isNone(hits)) return null;
   const total = hits.value.length;
+  const stepperClass =
+    "flex flex-none items-center before:mr-3 before:ml-3.5 before:h-4.5 before:w-px before:bg-cap-rule max-wide:shrink";
   if (total === 0) {
     return (
-      <span className="q-st">
-        <span className="q-n q-conv">{Option.getOrNull(matched)}</span>
+      <span className={stepperClass}>
+        <span className="mr-1.5 font-sans text-sm leading-none font-medium whitespace-nowrap text-cap-2 max-wide:leading-tight max-wide:whitespace-normal">
+          {Option.getOrNull(matched)}
+        </span>
       </span>
     );
   }
   return (
-    <span className="q-st">
-      <span className="q-n" role="status" aria-label={`Match ${at + 1} of ${total}`}>
-        <b>{at + 1}</b>
-        <span>/</span>
+    <span className={stepperClass}>
+      <span className={hitCountClass} role="status" aria-label={`Match ${at + 1} of ${total}`}>
+        <b className="font-bold text-cap-1">{at + 1}</b>
+        <span className="mx-0.5 text-cap-2">/</span>
         {total}
       </span>
       {([-1, 1] as const).map((direction) => (
         <button
           key={direction}
           type="button"
-          className="q-b"
+          className="grid size-9 place-items-center rounded-circle text-cap-1 transition-bg enabled:hover:bg-cap-hover enabled:active:scale-press-firm disabled:cursor-default disabled:text-cap-3 disabled:opacity-half"
           aria-label={direction === -1 ? "Previous match" : "Next match"}
           title={direction === -1 ? "Previous match" : "Next match"}
           disabled={direction === -1 ? at === 0 : at === total - 1}
@@ -468,6 +582,11 @@ function HitStepper({ id }: { id: ConversationId }) {
 
 export type CapForm = "full" | "compact" | "search" | "result";
 
+const capClass = (compact: boolean) =>
+  `cap fixed top-edge-gap left-reader-gap z-cap mx-auto flex flex-col bg-capbg text-cap-1 elevation-notch **:focus-visible:outline-cap-1 **:focus-visible:outline-offset-near max-wide:left-edge ${compact ? "compact w-fit rounded-full wide:right-stage-gap wide:max-w-compact" : "right-stage-gap rounded-notch max-wide:right-edge"}`;
+
+const capDivClass = "mr-2.5 ml-3.5 h-4.5 w-px flex-none bg-cap-rule max-wide:mr-1.5 max-wide:ml-2";
+
 export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
   const current = useAtomValue(route);
   const setSearching = useAtomSet(searchOpen);
@@ -476,9 +595,10 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
     Option.none(),
   );
   const active = current.query === "" ? current.view : null;
+  const result = form === "result";
   return (
     <div
-      className={`cap${form === "full" ? "" : form === "result" ? " compact result" : ` ${form}`}`}
+      className={capClass(form === "compact" || result)}
       role="region"
       aria-label="weir"
       ref={measureCap}
@@ -488,21 +608,28 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
     >
       {form !== "full" ? (
         <div
-          className={form === "search" ? "cap-q" : "cap-nav"}
+          className={
+            form === "search"
+              ? "flex min-w-0 items-center pt-3.5 pr-3.5 pl-7"
+              : `flex h-pill min-w-0 items-center whitespace-nowrap ${result ? "pr-1.5 pl-5" : "px-1.5"}`
+          }
           role={form === "compact" ? undefined : "search"}
           onMouseDown={keepFocus}
         >
-          {form !== "compact" && <SearchIcon />}
+          {form !== "compact" && (
+            <SearchIcon className={`flex-none text-cap-2 ${result ? "mr-2" : "mr-2.5"}`} />
+          )}
           <QueryField
-            stepping={form === "result" ? Option.getOrNull(current.conversation) : null}
+            stepping={result ? Option.getOrNull(current.conversation) : null}
+            form={form}
           />
-          {form === "result" && Option.isSome(current.conversation) && (
+          {result && Option.isSome(current.conversation) && (
             <HitStepper id={current.conversation.value} />
           )}
           {form !== "compact" ? (
             <button
               type="button"
-              className="q-x"
+              className={`ml-2 grid flex-none place-items-center rounded-circle text-cap-2 transition-tint hover:bg-cap-hover hover:text-cap-1 ${result ? "size-9" : "size-10"}`}
               aria-label="Close search"
               title="Close search"
               onClick={() => leave(undefined)}
@@ -511,39 +638,39 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
             </button>
           ) : (
             <>
-              <span className="cap-div" />
+              <span className={capDivClass} />
               <ViewStrip
                 widgets={Option.match(loaded, { onNone: () => [], onSome: chips })}
                 active={active}
                 shown={`${active}|${Option.getOrElse(current.conversation, () => "")}`}
               />
-              <span className="cap-div" />
+              <span className={capDivClass} />
               {Option.isSome(loaded) && (
-                <Chip widget={clearedWidget(loaded.value)} active={active} />
+                <Chip widget={clearedWidget(loaded.value)} active={active} className="-ml-1" />
               )}
-              <StatusButton className="cw cw-st" alert={alert} />
+              <StatusButton chip alert={alert} />
             </>
           )}
         </div>
       ) : (
-        <div className="cap-nav">
+        <div className="py-5 pr-16 pl-7 max-wide:py-3.5 max-wide:pr-14 max-wide:pl-5">
           {Option.match(loaded, {
             onNone: () => null,
             onSome: (value) => {
               const { main, tail } = sentence(value);
               return (
                 <nav aria-label="Views">
-                  <p className="s-main">
+                  <p className={sentenceMainClass}>
                     {main._tag === "CaughtUp" ? (
-                      <span className="allclear">All caught up.</span>
+                      <span className={allClearClass}>All caught up.</span>
                     ) : (
                       <SentenceClause clause={main.clause} active={active} />
                     )}
                   </p>
-                  <p className="s-tail">
+                  <p className={sentenceTailClass}>
                     {tail.map((clause) => (
-                      <span key={clause[0]?.widget.kind} className="cl">
-                        <SentenceClause clause={clause} active={active} />
+                      <span key={clause[0]?.widget.kind} className="mr-em-0.3">
+                        <SentenceClause clause={clause} active={active} tail />
                       </span>
                     ))}
                   </p>
@@ -551,22 +678,22 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
               );
             },
           })}
-          <span className="cap-tools">
+          <span className="absolute top-3.5 right-3.5 flex flex-col gap-0.5 max-wide:top-2 max-wide:right-2">
             <button
               type="button"
-              className="q-go"
+              className={toolClass(false)}
               aria-label="Search"
               title="Search"
               onClick={() => setSearching(true)}
             >
               <SearchIcon />
             </button>
-            <StatusButton className="st-go" alert={alert} />
+            <StatusButton chip={false} alert={alert} />
           </span>
         </div>
       )}
       {form === "search" && (
-        <div className="cap-nav" aria-live="polite" onMouseDown={keepFocus}>
+        <div className="px-7 pt-2 pb-5" aria-live="polite" onMouseDown={keepFocus}>
           <SearchSentence />
         </div>
       )}

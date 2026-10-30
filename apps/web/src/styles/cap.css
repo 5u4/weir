@@ -1,0 +1,33 @@
+@layer components {
+  .cws {
+    --fl: var(--spacing-0);
+    --fr: var(--spacing-0);
+    mask-image: linear-gradient(
+      90deg,
+      transparent calc(var(--fl) - var(--spacing-3\.5)),
+      var(--color-mask) var(--fl),
+      var(--color-mask) calc(100% - var(--fr)),
+      transparent calc(100% - var(--fr) + var(--spacing-3\.5))
+    );
+  }
+
+  .cws[data-fl] {
+    --fl: var(--spacing-8);
+  }
+
+  .cws[data-fr] {
+    --fr: var(--spacing-8);
+  }
+
+  @variant max-wide {
+    .cap.compact {
+      right: var(--inset-edge);
+      max-width: calc(100vw - 2 * var(--inset-edge) - 2 * var(--inset-gap));
+    }
+
+    [data-reading]:not(:has(.r-dock)) + .cap.compact {
+      right: calc(var(--inset-edge) + var(--size-pill) + var(--inset-gap));
+      max-width: calc(100vw - 2 * var(--inset-edge) - 3 * var(--inset-gap) - var(--size-pill));
+    }
+  }
+}
