@@ -847,7 +847,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <p>打开一个 conversation，阅读区按顺序回答三个问题：这是什么事，上次之后有什么新进展，原文怎么说的。</p>
 <ul>
 <li>顶部是标题和 meta：带的 tag、所属的 source、这次的新消息数、消息条数、参与人数和日期跨度。一个 conversation 只属于一个 source，所以 source 只在这里写一次，不放在气泡上。参与人数是不同发件人的个数。没有「发给你」「抄送你」这类标记，因为 RawItem 不带收件人。</li>
-<li>顶部吸在阅读区最上面。往下连续滚过 24 像素（中途没有往回滚）时，它向上收起，换成一行悬浮的条：tag 色点、标题，以及这次的新消息数（没有新消息时写消息条数，窄屏不显示这一项）。滚回离顶部 8 像素以内，或者点这一行条，顶部重新展开，展开时盖在内容上面，不改滚动位置。收起后被藏住的一边不能用 Tab 聚焦。打开时落到 Last read、Digest earlier 落地时保持 Not digested 条的位置、搜索跳到命中、Show all 和 Show less 把气泡滚回视口、展开收起原文时校正位置，以及 digest 落地或新数据让块增减时，之后 700 毫秒里的滚动既不收起也不展开顶部。搜索跳到命中时顶部收起，命中落在一行条和它的 topic 头下面。离开这个 conversation 后，下次打开顶部是展开的。</li>
+<li>顶部吸在阅读区最上面。往下连续滚过 24 像素（中途没有往回滚）时，它向上收起，换成一行悬浮的条：tag 色点、标题，以及这次的新消息数（没有新消息时写消息条数，窄屏不显示这一项）。滚回离顶部 8 像素以内，或者点这一行条，顶部重新展开，展开时盖在内容上面，不改滚动位置。点条展开后，要从那里再往下连续滚过 24 像素才会收起。收起后被藏住的一边不能用 Tab 聚焦。打开时落到 Last read、Digest earlier 落地时保持 Not digested 条的位置、搜索跳到命中、Show all 和 Show less 把气泡滚回视口、展开收起原文时校正位置，以及 digest 落地或新数据让块增减、改了消息内容时，之后 700 毫秒里的滚动既不收起也不展开顶部。搜索跳到命中时顶部收起，命中落在一行条和它的 topic 头下面。离开这个 conversation 后，下次打开顶部是展开的。</li>
 <li>已经读过的 digest 每份收成一行，写 headline、时间跨度和消息条数。点这一行在原处展开成卡片，卡片上有 Collapse。旧的太多时，前面的再折成一行 <code>N earlier digests</code>。</li>
 <li>没读过的 digest，也就是打开时 <code>to_seq</code> 大于 <code>seen_seq</code> 的，显示成卡片。卡片上是 headline、每个 topic 和 Collapse。topic 有标题、状态 chip、正文和 <code>N originals</code>。Collapse 把卡片收成和已读 digest 一样的一行，Last read 标记留在它上面。收起只在这次打开里有效，不存储。</li>
 <li>点 <code>N originals</code>，这个 topic 涉及的原文在它下面展开。展开时 topic 头吸顶，显示你读到第几条 <code>n of N</code> 和 Fold 按钮。顶部收起时，吸顶的 topic 头停在那一行条下面。</li>
