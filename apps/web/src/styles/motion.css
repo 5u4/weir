@@ -3,19 +3,19 @@
     view-transition-name: none;
   }
 
-  .cap {
+  :root:active-view-transition .cap {
     view-transition-name: cap;
   }
 
-  .r-scroll {
+  :root:active-view-transition .r-scroll {
     view-transition-name: rc;
   }
 
-  .r-x {
+  :root:active-view-transition .r-x {
     view-transition-name: rx;
   }
 
-  .r-dock {
+  :root:active-view-transition .r-dock {
     view-transition-name: dock;
   }
 
@@ -130,9 +130,9 @@
   }
 
   @variant max-wide {
-    .r-scroll,
-    .r-dock,
-    .r-x {
+    :root:active-view-transition .r-scroll,
+    :root:active-view-transition .r-dock,
+    :root:active-view-transition .r-x {
       view-transition-name: none;
     }
 
