@@ -7,6 +7,24 @@ import { type CSSProperties, useCallback } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
 import { Link } from "./Link.tsx";
+import {
+  emptyBigClass,
+  emptyClass,
+  emptySubClass,
+  headActionClass,
+  headClass,
+  headMetaClass,
+  headNameClass,
+  rowAvatarClass,
+  rowAvClass,
+  rowClass,
+  rowLineClass,
+  rowLinkClass,
+  rowMetaClass,
+  rowsClass,
+  rowTimeClass,
+  rowTitleClass,
+} from "./ListClasses.ts";
 import { reading } from "./Reading.ts";
 import { ResultList } from "./ResultList.tsx";
 import { ConversationId, href, listTops, route, type View, viewLabel } from "./Route.ts";
@@ -33,43 +51,40 @@ function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { see
   const { from, mark, preview, who, names } = face(row);
   const cleared = view === "cleared";
   const unread = row.state === "unread" && seen < row.last_seq;
+  const state = { unread, selected };
   return (
     <li
-      className={`row${unread ? " unread" : ""}${selected ? " sel" : ""}`}
+      className={rowClass(selected)}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
       <Link
         to={{ ...current, conversation: Option.some(ConversationId.make(row.id)) }}
         current={selected}
-        className="row-link"
+        className={rowLinkClass}
       >
-        <span className="row-av">
-          <Avatar address={from.address} mark={mark} />
+        <span className={`${rowAvClass(state, hue)} row-end-4`}>
+          <Avatar address={from.address} mark={mark} className={rowAvatarClass} />
         </span>
-        <span className="row-title">{row.title}</span>
-        <span className="row-line">{preview}</span>
-        <span className="row-meta">
-          {who !== "" && (
-            <span className="row-who" title={names}>
-              {who}
-            </span>
-          )}
-          <span className="row-n">
+        <span className={rowTitleClass(state)}>{row.title}</span>
+        <span className={`${rowLineClass(unread)} row-start-2`}>{preview}</span>
+        <span className={`${rowMetaClass} row-start-3`}>
+          {who !== "" && <span title={names}>{who}</span>}
+          <span className={who === "" ? undefined : "before:mx-em-0.5 before:content-dot"}>
             {plural(row.items, "message")}
             {unread && row.new > 0 && `, ${row.new} new`} · {row.source}
           </span>
         </span>
         {cleared ? (
-          <span className="row-badge">{row.muted ? "Muted" : "Done"}</span>
+          <span className={rowTimeClass(false)}>{row.muted ? "Muted" : "Done"}</span>
         ) : (
-          <time className="row-time" dateTime={row.last_at} title={dayAndTime(last)}>
+          <time className={rowTimeClass(unread)} dateTime={row.last_at} title={dayAndTime(last)}>
             {shortTime(last, at)}
           </time>
         )}
       </Link>
       <button
         type="button"
-        className={`row-act${cleared ? " restore" : ""}`}
+        className={`absolute right-3.5 bottom-3 h-6 rounded-full bg-island px-3 text-xs font-semibold text-ink shadow-ring-line transition-fade-tint-ring hover:bg-ink hover:text-island hover:shadow-none active:scale-press ${cleared ? "" : "opacity-none group-focus-within:opacity-full group-hover:opacity-full"}`}
         title={cleared ? undefined : "Done. It leaves the list until something new arrives."}
         onClick={onDismiss}
       >
@@ -81,16 +96,16 @@ function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { see
 
 function Empty({ view }: { view: View }) {
   return view === "cleared" ? (
-    <div className="empty">
-      <p className="empty-big">Nothing cleared yet.</p>
-      <p className="empty-sub">
+    <div className={emptyClass}>
+      <p className={emptyBigClass}>Nothing cleared yet.</p>
+      <p className={emptySubClass}>
         Done and muted conversations land here. Restore any of them at any time.
       </p>
     </div>
   ) : (
-    <div className="empty">
-      <p className="empty-big">{viewLabel(view)} is clear.</p>
-      <p className="empty-sub">New messages bring a conversation back here as unread.</p>
+    <div className={emptyClass}>
+      <p className={emptyBigClass}>{viewLabel(view)} is clear.</p>
+      <p className={emptySubClass}>New messages bring a conversation back here as unread.</p>
     </div>
   );
 }
@@ -134,16 +149,16 @@ function ViewList() {
   );
   return (
     <>
-      <header className="l-head">
-        <h1 className="l-name">{viewLabel(view)}</h1>
-        {Option.isSome(rows) && <span className="l-meta">{headMeta(view, rows.value)}</span>}
+      <header className={headClass}>
+        <h1 className={headNameClass}>{viewLabel(view)}</h1>
+        {Option.isSome(rows) && <span className={headMetaClass}>{headMeta(view, rows.value)}</span>}
         {view !== "cleared" &&
           Option.isSome(loaded) &&
           Option.isSome(rows) &&
           rows.value.length > 0 && (
             <button
               type="button"
-              className="clearall"
+              className={headActionClass}
               onClick={() => {
                 const ids = rows.value.map((row) => row.id);
                 if (open !== null && ids.includes(open)) {
@@ -157,8 +172,8 @@ function ViewList() {
           )}
       </header>
       {AsyncResult.isFailure(result) && Option.isNone(loaded) ? (
-        <div className="empty">
-          <p className="empty-big">Can't load {viewLabel(view)}.</p>
+        <div className={emptyClass}>
+          <p className={emptyBigClass}>Can't load {viewLabel(view)}.</p>
         </div>
       ) : (
         Option.match(rows, {
@@ -167,7 +182,7 @@ function ViewList() {
             list.length === 0 ? (
               <Empty view={view} />
             ) : (
-              <ul className={`rows${view === "cleared" ? " cleared" : ""}`} ref={restore}>
+              <ul className={rowsClass} ref={restore}>
                 {list.map((row) => {
                   const props: RowProps = {
                     row,

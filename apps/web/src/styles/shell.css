@@ -1,0 +1,21 @@
+@layer components {
+  .r-scroll {
+    position: absolute;
+    inset: var(--cap-clear) 0 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-scroll) transparent;
+    mask-image: linear-gradient(transparent, var(--color-mask) var(--spacing-5));
+  }
+
+  .r-x {
+    display: grid;
+  }
+
+  @variant max-wide {
+    .r-dock ~ .r-x {
+      display: none;
+    }
+  }
+}

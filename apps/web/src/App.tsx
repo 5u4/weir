@@ -39,25 +39,31 @@ export function App() {
       : opened || current.query !== ""
         ? "search"
         : "full";
+  const sheet = open || reading;
   return (
     <>
-      <div id="app" className={open || reading ? "reading" : undefined}>
-        <main className="list">
+      <div id="app" data-reading={sheet || undefined}>
+        <main className="list fixed top-edge bottom-0 left-stage w-list scrollbar-thin overflow-y-auto overscroll-contain max-wide:top-list max-wide:right-0 max-wide:left-0 max-wide:w-auto max-wide:px-1.5">
           <List />
         </main>
-        <section className={`reader${open ? " sv-open" : ""}`} aria-label="Reader">
+        <section
+          className={`fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : "max-wide:hidden"}`}
+          aria-label="Reader"
+        >
           {Option.isSome(current.conversation) && (
             <Reader id={current.conversation.value} hidden={open} />
           )}
           {(open || !reading) && (
             <div className="r-scroll">
               {AsyncResult.isFailure(result) && Option.isNone(loaded) ? (
-                <div className="calm es warn">
-                  <p className="es-alert">Can't reach the weir daemon.</p>
+                <div className="flex h-full flex-col items-center justify-center px-reader pb-16">
+                  <p className="m-0 mb-5 font-display text-lg leading-snug font-semibold text-ink">
+                    Can't reach the weir daemon.
+                  </p>
                 </div>
               ) : !open && looking ? (
-                <div className="calm calm-q">
-                  <p>
+                <div className="flex h-full items-center justify-center px-reader pb-16 text-center text-ink-3">
+                  <p className="m-0 text-base">
                     {Option.exists(results, (list) => list.length === 0)
                       ? `Nothing matches “${queryText(query)}”.`
                       : "Pick a result to read it."}
@@ -76,30 +82,20 @@ export function App() {
               )}
             </div>
           )}
-          {open ? (
+          {sheet && (
             <button
               type="button"
-              className="r-x"
+              className="r-x absolute top-gap right-gap size-pill place-items-center rounded-circle text-ink-3 transition-tint hover:bg-hover hover:text-ink"
               title="Close (Esc)"
               aria-label="Close"
-              onClick={() => setOpen(false)}
+              onClick={() =>
+                open
+                  ? setOpen(false)
+                  : navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })
+              }
             >
               <CloseIcon />
             </button>
-          ) : (
-            reading && (
-              <button
-                type="button"
-                className="r-x"
-                title="Close (Esc)"
-                aria-label="Close"
-                onClick={() =>
-                  navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })
-                }
-              >
-                <CloseIcon />
-              </button>
-            )
           )}
         </section>
       </div>
