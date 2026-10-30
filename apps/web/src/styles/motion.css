@@ -142,6 +142,18 @@
     animation-timing-function: var(--ease-glide);
   }
 
+  :root:active-view-transition-type(tick)::view-transition-group(cap) {
+    animation-duration: var(--duration-spring);
+  }
+
+  :root:active-view-transition-type(tick)::view-transition-old(cap) {
+    animation: vt-fade-out var(--duration-base) linear both;
+  }
+
+  :root:active-view-transition-type(tick)::view-transition-new(cap) {
+    animation: vt-fade-in var(--duration-base) linear both;
+  }
+
   ::view-transition-group(rc) {
     animation-duration: var(--duration-morph);
     animation-timing-function: var(--ease-glide);
@@ -225,6 +237,15 @@
 
     ::view-transition-old(reader):only-child {
       animation: sheet-out var(--duration-spring) var(--ease-standard) both;
+    }
+
+    :root:active-view-transition-type(tick) .list {
+      view-transition-name: list;
+    }
+
+    ::view-transition-group(list) {
+      animation-duration: var(--duration-spring);
+      animation-timing-function: var(--ease-spring);
     }
   }
 }

@@ -1,6 +1,7 @@
 import type { Counts } from "@weir/daemon/Api";
+import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { type Clause, monogram, sentence, type Widget } from "./Notch.ts";
+import { type Clause, formOf, monogram, notchKey, sentence, type Widget } from "./Notch.ts";
 
 const view = (unread: number, open = unread) => ({ unread, open, senders: [] });
 
@@ -95,6 +96,46 @@ describe("notch sentence", () => {
       count: 3,
       senders,
     });
+  });
+});
+
+describe("notch key", () => {
+  const shown = counts([["Work", 3]], [2], 1);
+  it.each([
+    ["full", true],
+    ["compact", true],
+    ["search", false],
+    ["result", false],
+  ] as const)("%s: a count change ticks only where counts show (%s)", (form, ticks) => {
+    const after = counts([["Work", 2]], [2], 2);
+    expect(notchKey(form, Option.some(shown)) !== notchKey(form, Option.some(after))).toBe(ticks);
+  });
+
+  it("a refetch with the same numbers keeps the key", () => {
+    expect(notchKey("full", Option.some(shown))).toBe(
+      notchKey("full", Option.some(counts([["Work", 3]], [2], 1))),
+    );
+  });
+
+  it("the sentence and the pill are different notches for the same counts", () => {
+    expect(notchKey("full", Option.some(shown))).not.toBe(notchKey("compact", Option.some(shown)));
+  });
+});
+
+describe("notch form", () => {
+  it.each([
+    ["list", { status: false, reading: false, query: "", searching: false }, "full"],
+    ["search opened", { status: false, reading: false, query: "", searching: true }, "search"],
+    [
+      "search from the URL",
+      { status: false, reading: false, query: "a", searching: false },
+      "search",
+    ],
+    ["reading", { status: false, reading: true, query: "", searching: false }, "compact"],
+    ["reading a result", { status: false, reading: true, query: "a", searching: false }, "result"],
+    ["Status", { status: true, reading: true, query: "a", searching: true }, "compact"],
+  ] as const)("%s", (_, shown, form) => {
+    expect(formOf(shown)).toBe(form);
   });
 });
 

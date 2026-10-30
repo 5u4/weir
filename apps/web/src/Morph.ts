@@ -6,13 +6,15 @@ import type { ConversationId } from "./Route.ts";
 export type Scene = {
   readonly status: boolean;
   readonly conversation: Option.Option<ConversationId>;
+  readonly notch: string;
 };
 
 export type Motion =
   | { readonly _tag: "None" }
   | { readonly _tag: "Mode"; readonly open: boolean }
   | { readonly _tag: "Switch" }
-  | { readonly _tag: "StatusRise" };
+  | { readonly _tag: "StatusRise" }
+  | { readonly _tag: "Tick" };
 
 const sheet = (scene: Scene) => scene.status || Option.isSome(scene.conversation);
 
@@ -32,6 +34,10 @@ const motions: ReadonlyArray<{
     when: (before, after) =>
       !after.status && !Equal.equals(before.conversation, after.conversation),
     motion: () => ({ _tag: "Switch" }),
+  },
+  {
+    when: (before, after) => before.notch !== after.notch,
+    motion: () => ({ _tag: "Tick" }),
   },
 ];
 
@@ -72,9 +78,12 @@ type Gate =
       readonly apply: () => void;
       readonly queued: Queue;
     }
-  | { readonly _tag: "Arriving"; readonly queued: Queue };
+  | { readonly _tag: "Arriving"; readonly queued: Queue }
+  | { readonly _tag: "Playing" };
 
-let gate: Gate = { _tag: "Idle" };
+const idle: Gate = { _tag: "Idle" };
+
+let gate: Gate = idle;
 
 const inputs = ["keydown", "pointerdown", "beforeinput", "popstate"] as const;
 
@@ -89,8 +98,8 @@ const enter = (next: Gate) => {
   gate = next;
 };
 
-const release = (queued: Queue) => {
-  enter({ _tag: "Idle" });
+const release = (next: Gate, queued: Queue) => {
+  enter(next);
   for (const plan of queued) commit(plan);
 };
 
@@ -99,10 +108,10 @@ const settle = () => {
   const { transition, apply, queued } = gate;
   flushSync(apply);
   transition.skipTransition();
-  release(queued);
+  release(idle, queued);
 };
 
-const morph = (open: boolean, after: Scene, apply: () => void) => {
+const play = (types: Array<string>, arriving: Option.Option<ConversationId>, apply: () => void) => {
   if (
     typeof document.startViewTransition !== "function" ||
     document.hidden ||
@@ -112,26 +121,31 @@ const morph = (open: boolean, after: Scene, apply: () => void) => {
   }
   try {
     const queued: Queue = [];
-    const arriving: Gate = { _tag: "Arriving", queued };
+    const updating: Gate = { _tag: "Arriving", queued };
+    const playing: Gate = { _tag: "Playing" };
     const transition = document.startViewTransition({
       update: async () => {
         if (gate !== capturing) return;
-        enter(arriving);
+        enter(updating);
         flushSync(apply);
-        if (!after.status && Option.isSome(after.conversation)) {
-          await arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs));
+        if (Option.isSome(arriving)) {
+          await arrival(arriving.value, AbortSignal.timeout(arrivalLimitMs));
         }
         // The arrival only schedules React's store update; the new snapshot must include it.
         flushSync(() => undefined);
       },
-      types: ["mode", open ? "open" : "close"],
+      types,
     });
     const capturing: Gate = { _tag: "Capturing", transition, apply, queued };
     enter(capturing);
     const done = () => {
-      if (gate === arriving) release(queued);
+      if (gate === updating) release(playing, queued);
     };
     transition.updateCallbackDone.then(done, done);
+    const over = () => {
+      if (gate === playing) enter(idle);
+    };
+    transition.finished.then(over, over);
     transition.ready.catch(() => undefined);
   } catch {
     apply();
@@ -160,7 +174,16 @@ export const commit = (plan: () => Commit) => {
     return;
   }
   commits += 1;
-  if (motion._tag === "Mode") return morph(motion.open, after, apply);
+  if (motion._tag === "Mode") {
+    return play(
+      ["mode", motion.open ? "open" : "close"],
+      after.status ? Option.none() : after.conversation,
+      apply,
+    );
+  }
+  if (motion._tag === "Tick") {
+    return gate._tag === "Idle" ? play(["tick"], Option.none(), apply) : apply();
+  }
   if (motion._tag === "None" || matchMedia(reducedMotion).matches) return apply();
   flushSync(apply);
   if (motion._tag === "StatusRise") {
@@ -169,7 +192,7 @@ export const commit = (plan: () => Commit) => {
   if (Option.isNone(after.conversation)) return;
   const landed = commits;
   void arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs)).then(() => {
-    if (landed !== commits || gate._tag !== "Idle") return;
+    if (landed !== commits || gate._tag === "Capturing" || gate._tag === "Arriving") return;
     flushSync(() => undefined);
     lift(document.querySelector(".r-scroll:not([hidden]) > article"), "switch");
   });

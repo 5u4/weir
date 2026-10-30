@@ -2,9 +2,9 @@ import * as Option from "effect/Option";
 import * as Atom from "effect/reactivity/Atom";
 import { shortcut } from "./Dock.ts";
 import { dock } from "./Reading.ts";
-import { ConversationId, route, statusOpen } from "./Route.ts";
+import { ConversationId, route, searchOpen, statusOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
-import { dismiss, leaveSearch, listedRows, searchOpen } from "./Weir.ts";
+import { dismiss, leaveSearch, listedRows } from "./Weir.ts";
 
 export const keys = Atom.make((get) => {
   const onKey = (event: KeyboardEvent) => {

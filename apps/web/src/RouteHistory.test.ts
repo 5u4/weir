@@ -1,9 +1,18 @@
+import type { Counts } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { keys } from "./Keys.ts";
 import { awaitArrivals } from "./Morph.ts";
-import { ConversationId, href, type Navigation, route, statusOpen } from "./Route.ts";
+import {
+  ConversationId,
+  capCounts,
+  href,
+  type Navigation,
+  route,
+  searchOpen,
+  statusOpen,
+} from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://127.0.0.1:9347" }));
 
@@ -171,9 +180,18 @@ describe("navigating closes Status", () => {
   });
 });
 
+type Running = {
+  readonly types: ReadonlyArray<string>;
+  readonly finished: Promise<void>;
+  readonly end: () => void;
+  skipped: boolean;
+};
+
 const deferredTransitions = () => {
   const types: Array<ReadonlyArray<string>> = [];
   const updates: Array<() => Promise<void>> = [];
+  const started: Array<Running> = [];
+  const running: Array<Running> = [];
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
   vi.stubGlobal("document", {
     hidden: false,
@@ -181,23 +199,57 @@ const deferredTransitions = () => {
       readonly update: () => Promise<void>;
       readonly types: ReadonlyArray<string>;
     }) => {
+      for (const live of running.splice(0)) {
+        live.skipped = true;
+        live.end();
+      }
       types.push(options.types);
       const updated = Promise.withResolvers<void>();
-      updates.push(() => options.update().then(updated.resolve));
+      const finished = Promise.withResolvers<void>();
+      const entry: Running = {
+        types: options.types,
+        finished: finished.promise,
+        end: finished.resolve,
+        skipped: false,
+      };
+      started.push(entry);
+      running.push(entry);
+      updates.push(() =>
+        options
+          .update()
+          .then(updated.resolve)
+          .then(() => updated.promise),
+      );
       return {
         ready: Promise.resolve(),
         updateCallbackDone: updated.promise,
-        finished: updated.promise,
-        skipTransition: () => {},
+        finished: finished.promise,
+        skipTransition: () => {
+          entry.skipped = true;
+          entry.end();
+        },
       };
     },
   });
+  const runUpdates = async () => {
+    for (let update = updates.shift(); update !== undefined; update = updates.shift()) {
+      await update();
+    }
+  };
+  const finishAll = async () => {
+    for (const live of running.splice(0)) {
+      live.end();
+      await live.finished;
+    }
+  };
   return {
     types,
+    started,
+    runUpdates,
+    finishAll,
     runAll: async () => {
-      for (let update = updates.shift(); update !== undefined; update = updates.shift()) {
-        await update();
-      }
+      await runUpdates();
+      await finishAll();
     },
   };
 };
@@ -313,5 +365,110 @@ describe("writes while a view transition is pending", () => {
     expect(browser.url()).toBe("/");
     expect(shown()).toBe("/");
     expect(browser.canGoForwardTo()).toEqual(["/?c=7"]);
+  });
+});
+
+const counts = (me: number, cleared = 0): Counts => ({
+  unread: me,
+  tags: [{ name: "Me", unread: me, open: me, senders: [] }],
+  untagged: { unread: 0, open: 0, senders: [] },
+  cleared,
+});
+
+const notch = (start: string) => {
+  const opened = session(start);
+  opened.registry.mount(capCounts);
+  opened.registry.mount(searchOpen);
+  opened.registry.set(capCounts, counts(2));
+  return { ...opened, transitions: deferredTransitions() };
+};
+
+const shownCount = (registry: ReturnType<typeof session>["registry"]) =>
+  Option.map(registry.get(capCounts), ({ unread }) => unread);
+
+describe("notch ticks", () => {
+  it("a count change ticks, and the cap keeps the old count until the new snapshot", async () => {
+    const { registry, transitions } = notch("/");
+    registry.set(capCounts, counts(1, 1));
+    expect(shownCount(registry)).toEqual(Option.some(2));
+    await transitions.runAll();
+    expect(shownCount(registry)).toEqual(Option.some(1));
+    expect(transitions.types).toEqual([["tick"]]);
+  });
+
+  it("a refetch with the same numbers does not tick", async () => {
+    const { registry, transitions } = notch("/");
+    registry.set(capCounts, counts(2));
+    await transitions.runAll();
+    expect(transitions.types).toEqual([]);
+  });
+
+  it("picking another view does not tick", async () => {
+    const { navigate, shown, transitions } = notch("/");
+    navigate({ _tag: "Go", to: { view: "cleared", query: "", conversation: Option.none() } });
+    await transitions.runAll();
+    expect(shown()).toBe("/?v=cleared");
+    expect(transitions.types).toEqual([]);
+  });
+
+  it("typing never ticks, even when it changes the notch's form", async () => {
+    const { navigate, shown, transitions } = notch("/?q=a");
+    navigate({ _tag: "Type", query: "" });
+    await transitions.runAll();
+    expect(shown()).toBe("/");
+    expect(transitions.types).toEqual([]);
+  });
+
+  it("does not tick under reduced motion", async () => {
+    const { registry, transitions } = notch("/");
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    registry.set(capCounts, counts(1));
+    expect(shownCount(registry)).toEqual(Option.some(1));
+    expect(transitions.types).toEqual([]);
+  });
+
+  it("opening and leaving search tick", async () => {
+    const { browser, registry, navigate, shown, transitions } = notch("/");
+    registry.set(searchOpen, true);
+    await transitions.runAll();
+    navigate({ _tag: "Type", query: "abc" });
+    registry.set(route, { _tag: "Leave" });
+    await transitions.runAll();
+    browser.deliverHistoryMoves();
+    expect(registry.get(searchOpen)).toBe(false);
+    expect(shown()).toBe("/");
+    expect(browser.url()).toBe("/");
+    expect(transitions.types).toEqual([["tick"], ["tick"]]);
+  });
+
+  it("a tick applies directly while a view transition is still playing", async () => {
+    const { registry, transitions } = notch("/");
+    registry.set(route, open("", 7));
+    await transitions.runUpdates();
+    registry.set(capCounts, counts(1));
+    expect(shownCount(registry)).toEqual(Option.some(1));
+    await transitions.finishAll();
+    expect(transitions.types).toEqual([["mode", "open"]]);
+  });
+
+  it("a tick waits for a view transition's update, then applies without its own", async () => {
+    const { registry, transitions } = notch("/");
+    registry.set(route, open("", 7));
+    registry.set(capCounts, counts(1));
+    expect(shownCount(registry)).toEqual(Option.some(2));
+    await transitions.runAll();
+    expect(shownCount(registry)).toEqual(Option.some(1));
+    expect(transitions.types).toEqual([["mode", "open"]]);
+  });
+
+  it("opening a conversation skips a running tick", async () => {
+    const { registry, transitions } = notch("/");
+    registry.set(capCounts, counts(1));
+    await transitions.runUpdates();
+    registry.set(route, open("", 7));
+    await transitions.runAll();
+    expect(transitions.types).toEqual([["tick"], ["mode", "open"]]);
+    expect(transitions.started[0]?.skipped).toBe(true);
+    expect(registry.get(route).conversation).toEqual(Option.some(ConversationId.make(7)));
   });
 });

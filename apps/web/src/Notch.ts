@@ -1,4 +1,5 @@
 import type { Counts } from "@weir/daemon/Api";
+import * as Option from "effect/Option";
 import type { View } from "./Route.ts";
 
 export type Sender = Counts["untagged"]["senders"][number];
@@ -108,6 +109,39 @@ export const sentence = (counts: Counts): Sentence => {
     ],
   };
 };
+
+export type CapForm = "full" | "compact" | "search" | "result";
+
+export const formOf = ({
+  status,
+  reading,
+  query,
+  searching,
+}: {
+  readonly status: boolean;
+  readonly reading: boolean;
+  readonly query: string;
+  readonly searching: boolean;
+}): CapForm =>
+  status
+    ? "compact"
+    : reading
+      ? query === ""
+        ? "compact"
+        : "result"
+      : searching || query !== ""
+        ? "search"
+        : "full";
+
+const notchShape: Record<CapForm, (counts: Counts) => unknown> = {
+  full: sentence,
+  compact: (counts) => [chips(counts), clearedWidget(counts)],
+  search: () => null,
+  result: () => null,
+};
+
+export const notchKey = (form: CapForm, counts: Option.Option<Counts>) =>
+  JSON.stringify([form, Option.getOrNull(Option.map(counts, notchShape[form]))]);
 
 export const widgetDescription = ({ kind }: Widget) => {
   switch (kind) {
