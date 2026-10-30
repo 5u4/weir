@@ -1,0 +1,33 @@
+language js
+
+or {
+  `$target.animate($...)` as $hit where {
+    $filename <: r".*/apps/web/.*\.tsx?",
+    register_diagnostic(span=$hit, message="Motion timing lives in CSS: set a data attribute or a measured custom property and let a token keyframe in styles/motion.css run.", severity="error")
+  },
+  `$style.$prop = $value` as $hit where {
+    $filename <: r".*/apps/web/.*\.tsx?",
+    $prop <: r"(?i)(?:transition|animation)\w*",
+    register_diagnostic(span=$hit, message="Motion timing lives in CSS: no inline transition or animation.", severity="error")
+  },
+  `$style.setProperty($name, $...)` as $hit where {
+    $filename <: r".*/apps/web/.*\.tsx?",
+    $name <: r"[\"'`](?:transition|animation)[\w-]*[\"'`]",
+    register_diagnostic(span=$hit, message="Motion timing lives in CSS: no inline transition or animation.", severity="error")
+  },
+  `$timer($fn, $delay)` as $hit where {
+    $filename <: r".*/apps/web/.*\.tsx?",
+    $timer <: or {
+      `setTimeout`,
+      `window.setTimeout`,
+      `globalThis.setTimeout`
+    },
+    $delay <: r"\d[\d_.]*",
+    register_diagnostic(span=$hit, message="Literal timer delay: name it, and never sequence motion with a timer; await getAnimations() instead.", severity="error")
+  },
+  JsObjectExpression() as $hit where {
+    $filename <: r".*/apps/web/.*\.tsx?",
+    $hit <: contains `duration: $n` where { $n <: r"\d[\d_.]*" },
+    register_diagnostic(span=$hit, message="Literal motion duration in TS: timing lives in CSS tokens.", severity="error")
+  }
+}

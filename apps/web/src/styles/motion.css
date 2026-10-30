@@ -158,7 +158,7 @@
   to {
     opacity: 0;
     filter: blur(var(--blur-morph));
-    transform: scale(0.94);
+    transform: scale(var(--scale-press-firm));
   }
 }
 
@@ -166,7 +166,7 @@
   from {
     opacity: 0;
     filter: blur(var(--blur-morph));
-    transform: scale(0.96);
+    transform: scale(var(--scale-press));
   }
 }
 
@@ -217,14 +217,14 @@
 @keyframes dock-in {
   from {
     opacity: 0;
-    transform: translateY(var(--spacing-7)) scale(0.96);
+    transform: translateY(var(--spacing-7)) scale(var(--scale-press));
   }
 }
 
 @keyframes dock-out {
   to {
     opacity: 0;
-    transform: translateY(var(--spacing-5)) scale(0.96);
+    transform: translateY(var(--spacing-5)) scale(var(--scale-press));
   }
 }
 
