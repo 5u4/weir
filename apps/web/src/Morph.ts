@@ -98,9 +98,17 @@ const enter = (next: Gate) => {
   gate = next;
 };
 
+const updating = () => gate._tag === "Capturing" || gate._tag === "Arriving";
+
+let afterUpdate: Array<() => void> = [];
+
 const release = (next: Gate, queued: Queue) => {
   enter(next);
   for (const plan of queued) commit(plan);
+  if (updating()) return;
+  const waiting = afterUpdate;
+  afterUpdate = [];
+  for (const run of waiting) run();
 };
 
 const settle = () => {
@@ -193,9 +201,14 @@ export const commit = (plan: () => Commit) => {
   }
   if (Option.isNone(after.conversation)) return;
   const departed = departures;
-  void arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs)).then(() => {
-    if (departed !== departures || gate._tag === "Capturing" || gate._tag === "Arriving") return;
+  const rise = () => {
+    if (departed !== departures) return;
+    if (updating()) {
+      afterUpdate.push(rise);
+      return;
+    }
     flushSync(() => undefined);
     lift(document.querySelector(".r-scroll:not([hidden]) > article"), "switch");
-  });
+  };
+  void arrival(after.conversation.value, AbortSignal.timeout(arrivalLimitMs)).then(rise);
 };
