@@ -510,6 +510,18 @@ describe("the switch rise", () => {
     expect(transitions.rises).toEqual(["switch"]);
   });
 
+  it("plays after a tick's update when the conversation loads while the tick is pending", async () => {
+    const { navigate, registry, transitions } = notch("/?c=7");
+    const arrive = heldArrivals();
+    navigate(open("", 9));
+    registry.set(capCounts, counts(1));
+    await arrive(9);
+    expect(transitions.rises).toEqual([]);
+    await transitions.runAll();
+    expect(transitions.types).toEqual([["tick"]]);
+    expect(transitions.rises).toEqual(["switch"]);
+  });
+
   it("is dropped when the reader moves on before the conversation loads", async () => {
     const { navigate, transitions } = notch("/?c=7");
     const arrive = heldArrivals();
