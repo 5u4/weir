@@ -7,6 +7,7 @@ import {
   counts,
   dismiss,
   found,
+  listMotion,
   searchGroup,
   searchResult,
   viewList,
@@ -15,7 +16,8 @@ import {
 
 const daemon = vi.hoisted(() => {
   const origin = "http://weir.test";
-  const page = { search: "" };
+  const page = { search: "", rows: [] as Array<object> };
+  const frames: Array<() => void> = [];
   const searches: Array<URLSearchParams> = [];
   const held: Array<{ q: string; reply: (ids: ReadonlyArray<number>) => void }> = [];
   const mode = { hold: false };
@@ -75,7 +77,9 @@ const daemon = vi.hoisted(() => {
   const moveTo = (_: unknown, __: string, url: string) => {
     page.search = new URL(url, origin).search;
   };
-  vi.stubGlobal("document", { hidden: false });
+  vi.stubGlobal("document", { hidden: false, querySelectorAll: () => page.rows });
+  vi.stubGlobal("requestAnimationFrame", (frame: () => void) => frames.push(frame));
+  vi.stubGlobal("innerHeight", 800);
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
   vi.stubGlobal("location", {
     origin,
@@ -90,7 +94,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("addEventListener", () => {});
   vi.stubGlobal("removeEventListener", () => {});
   vi.stubGlobal("fetch", fetch);
-  return { page, searches, held, mode, results, listed, tagged };
+  return { page, frames, searches, held, mode, results, listed, tagged };
 });
 
 const session = async () => {
@@ -114,6 +118,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   daemon.page.search = "";
+  daemon.page.rows = [];
+  daemon.frames.length = 0;
   daemon.searches.length = 0;
   daemon.held.length = 0;
   daemon.mode.hold = false;
@@ -202,4 +208,48 @@ it.each<[string, Option.Option<"untagged">, number]>([
     expect(registry.get(route).conversation).toEqual(Option.some(ConversationId.make(next))),
   );
   expect(registry.get(route).query).toBe("north");
+});
+
+const risen = () => {
+  const parent = {};
+  const rows = [1, 2].map((id, index) => {
+    const flags = new Set<string>();
+    return {
+      flags,
+      dataset: { k: String(id) },
+      parentElement: parent,
+      getBoundingClientRect: () => ({ left: 0, top: index * 50, bottom: index * 50 + 50 }),
+      setAttribute: (name: string) => flags.add(name),
+      removeAttribute: (name: string) => flags.delete(name),
+      style: { setProperty: () => {}, removeProperty: () => "" },
+      getAnimations: () => [],
+    };
+  });
+  daemon.page.rows = rows;
+  for (const frame of daemon.frames.splice(0)) frame();
+  return rows.filter(({ flags }) => flags.has("data-enter")).map(({ dataset }) => dataset.k);
+};
+
+it("switching to a view with the same rows, or leaving a search that found them, still makes the rows rise", async () => {
+  daemon.listed.push(1, 2);
+  daemon.results.splice(0, Infinity, 1, 2);
+  const { registry, type } = await session();
+  registry.mount(listMotion);
+  registry.mount(viewList("tag:Me"));
+  for (const view of ["untagged", "tag:Me"] as const) {
+    await Effect.runPromise(
+      AtomRegistry.getResult(registry, viewList(view), { suspendOnWaiting: true }),
+    );
+  }
+  risen();
+
+  registry.set(route, { _tag: "Go", to: { ...registry.get(route), view: "tag:Me" } });
+  expect(risen()).toEqual(["1", "2"]);
+
+  type("north");
+  await vi.advanceTimersByTimeAsync(150);
+  await vi.waitFor(() => expect(Option.isSome(registry.get(found))).toBe(true));
+  risen();
+  type("");
+  expect(risen()).toEqual(["1", "2"]);
 });

@@ -359,22 +359,27 @@ export const listedRows = Atom.make(
     get(searching) ? get(searchRows) : get(visibleRows(get(route).view)),
 );
 
-const listing = Atom.make((get) => ({
-  ids: get(listedRows)
-    .map(({ id }) => id)
-    .join(),
-  loaded: get(searching)
-    ? Option.isSome(get(found))
-    : !AsyncResult.isInitial(get(viewList(get(route).view))),
-}));
+const listing = Atom.make((get) => {
+  const searched = get(searching);
+  const { view } = get(route);
+  return {
+    list: searched ? ("search" as const) : view,
+    ids: get(listedRows)
+      .map(({ id }) => id)
+      .join(),
+    loaded: searched ? Option.isSome(get(found)) : !AsyncResult.isInitial(get(viewList(view))),
+  };
+});
 
 export const listMotion = Atom.make((get) => {
   let painted = false;
-  let last: { readonly ids: string } | undefined;
+  let last: { readonly list: View | "search"; readonly ids: string } | undefined;
   get.subscribe(
     listing,
     (next) => {
-      if (last !== undefined && next.ids !== last.ids) capture(painted);
+      if (last !== undefined && (next.list !== last.list || next.ids !== last.ids)) {
+        capture(painted);
+      }
       painted ||= next.loaded;
       last = next;
     },
