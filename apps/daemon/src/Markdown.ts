@@ -191,7 +191,7 @@ const clean = (node: ElementContent): Array<ElementContent> => {
   if (typeof dataTask === "string") {
     const [first, ...rest] = children;
     next.children =
-      first?.type === "element" && first.tagName === "p"
+      first?.type === "element" && first.tagName === "p" && first.properties.className === undefined
         ? [{ ...first, children: [text(dataTask), ...first.children] }, ...rest]
         : [element("p", [text(dataTask)]), ...children];
   }
