@@ -2,6 +2,7 @@ import * as Option from "effect/Option";
 import * as Atom from "effect/reactivity/Atom";
 import * as Schema from "effect/Schema";
 import * as SchemaGetter from "effect/SchemaGetter";
+import { commit } from "./Morph.ts";
 
 export const View = Schema.Union([
   Schema.Literals(["untagged", "cleared"]),
@@ -102,44 +103,90 @@ const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
   });
 };
 
-export const statusOpen = Atom.make(false);
+const statusShown = Atom.make(false);
+
+export const statusOpen = Atom.writable(
+  (get) => get(statusShown),
+  (ctx, open: boolean) =>
+    commit(() => {
+      const { conversation } = ctx.get(route);
+      return {
+        before: { status: ctx.get(statusShown), conversation },
+        after: { status: open, conversation },
+        apply: () => ctx.set(statusShown, open),
+        animate: true,
+      };
+    }),
+);
 
 export const listTops = Atom.make<ReadonlyMap<string, number>>(new Map()).pipe(Atom.keepAlive);
 
-export const route = Atom.writable(
+const historyWrite = (
+  previous: Route,
+  navigation: Navigation,
+): { readonly target: Route; readonly write: Option.Option<() => void> } => {
+  const next = destination(previous, navigation);
+  switch (writeKind(previous, navigation)) {
+    case "none":
+      return { target: previous, write: Option.none() };
+    case "push":
+      return {
+        target: next,
+        write: Option.some(() => history.pushState(pushedEntry(previous, next), "", href(next))),
+      };
+    case "replace":
+      return {
+        target: next,
+        write: Option.some(() => history.replaceState(history.state, "", href(next))),
+      };
+    case "leave":
+      return Option.match(searchEntry(history.state), {
+        onNone: () => {
+          const target = { ...next, conversation: Option.none() };
+          return {
+            target,
+            write: Option.some(() => history.replaceState(null, "", href(target))),
+          };
+        },
+        onSome: ({ preSearch, depth }) => ({
+          target: parse(new URL(preSearch, location.href).search),
+          write: Option.some(() => history.go(-depth)),
+        }),
+      });
+  }
+};
+
+export const route: Atom.Writable<Route, Navigation> = Atom.writable(
   (get) => {
-    const sync = () => get.setSelf(parse(location.search));
+    const sync = (event: PopStateEvent) =>
+      commit(() => {
+        const status = get.registry.get(statusShown);
+        const next = parse(location.search);
+        return {
+          before: { status, conversation: get.registry.get(route).conversation },
+          after: { status, conversation: next.conversation },
+          apply: () => get.setSelf(next),
+          animate: !event.hasUAVisualTransition,
+        };
+      });
     addEventListener("popstate", sync);
     get.addFinalizer(() => removeEventListener("popstate", sync));
     return parse(location.search);
   },
-  (ctx, navigation: Navigation) => {
-    const previous = ctx.get(route);
-    ctx.set(statusOpen, false);
-    const next = destination(previous, navigation);
-    switch (writeKind(previous, navigation)) {
-      case "none":
-        return;
-      case "push":
-        history.pushState(pushedEntry(previous, next), "", href(next));
-        ctx.setSelf(next);
-        return;
-      case "replace":
-        history.replaceState(history.state, "", href(next));
-        ctx.setSelf(next);
-        return;
-      case "leave":
-        Option.match(searchEntry(history.state), {
-          onNone: () => {
-            const target = { ...next, conversation: Option.none() };
-            history.replaceState(null, "", href(target));
-            ctx.setSelf(target);
-          },
-          onSome: ({ preSearch, depth }) => {
-            history.go(-depth);
-            ctx.setSelf(parse(new URL(preSearch, location.href).search));
-          },
-        });
-    }
-  },
+  (ctx, navigation: Navigation) =>
+    commit(() => {
+      const previous = ctx.get(route);
+      const { target, write } = historyWrite(previous, navigation);
+      return {
+        before: { status: ctx.get(statusShown), conversation: previous.conversation },
+        after: { status: false, conversation: target.conversation },
+        apply: () => {
+          ctx.set(statusShown, false);
+          if (Option.isNone(write)) return;
+          write.value();
+          ctx.setSelf(target);
+        },
+        animate: navigation._tag !== "Type",
+      };
+    }),
 );

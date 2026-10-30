@@ -5,12 +5,15 @@ import { ConversationId, href, type Navigation, route, statusOpen } from "./Rout
 
 const origin = "http://127.0.0.1:9347";
 
+type PopstateListener = (event: { readonly hasUAVisualTransition: boolean }) => void;
+
 const fakeBrowser = (start: string) => {
   const entries: Array<{ url: string; state: unknown }> = [{ url: start, state: null }];
   let index = 0;
   const pendingMoves: Array<number> = [];
-  const popstate = new Set<() => void>();
+  const popstate = new Set<PopstateListener>();
   const at = () => entries[index] ?? { url: "/", state: null };
+  vi.stubGlobal("document", { hidden: false });
   vi.stubGlobal("location", {
     get search() {
       return new URL(at().url, origin).search;
@@ -33,10 +36,10 @@ const fakeBrowser = (start: string) => {
     go: (delta: number) => pendingMoves.push(delta),
     back: () => pendingMoves.push(-1),
   });
-  vi.stubGlobal("addEventListener", (type: string, listener: () => void) => {
+  vi.stubGlobal("addEventListener", (type: string, listener: PopstateListener) => {
     if (type === "popstate") popstate.add(listener);
   });
-  vi.stubGlobal("removeEventListener", (_: string, listener: () => void) =>
+  vi.stubGlobal("removeEventListener", (_: string, listener: PopstateListener) =>
     popstate.delete(listener),
   );
   return {
@@ -46,7 +49,7 @@ const fakeBrowser = (start: string) => {
     deliverHistoryMoves: () => {
       for (const delta of pendingMoves.splice(0)) {
         index = Math.min(Math.max(index + delta, 0), entries.length - 1);
-        for (const listener of popstate) listener();
+        for (const listener of popstate) listener({ hasUAVisualTransition: false });
       }
     },
   };

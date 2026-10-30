@@ -10,12 +10,22 @@ import { Reader } from "./Reader.tsx";
 import { route, statusOpen } from "./Route.ts";
 import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
 import { theme } from "./Theme.ts";
-import { found, live, searching, searchOpen, searchQuery, status, tabTitle } from "./Weir.ts";
+import {
+  arrivals,
+  found,
+  live,
+  searching,
+  searchOpen,
+  searchQuery,
+  status,
+  tabTitle,
+} from "./Weir.ts";
 
 export function App() {
   useAtomMount(theme);
   useAtomMount(tabTitle);
   useAtomMount(live);
+  useAtomMount(arrivals);
   useAtomMount(keys);
   const [current, navigate] = useAtom(route);
   const reading = Option.isSome(current.conversation);
