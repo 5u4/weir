@@ -18,6 +18,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
 import { refetches } from "./Live.ts";
+import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
 import { ConversationId, route, statusOpen, type View } from "./Route.ts";
@@ -80,6 +81,27 @@ export const conversation = Atom.family((id: ConversationId) =>
     reactivityKeys: { conversation: [id] },
   }),
 );
+
+export const arrivals = Atom.make((get) => {
+  get.addFinalizer(
+    awaitArrivals((id, signal) => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      const atom = conversation(id);
+      if (!AsyncResult.isInitial(get.registry.get(atom))) resolve();
+      else {
+        const done = () => {
+          cancel();
+          resolve();
+        };
+        const cancel = get.registry.subscribe(atom, (result) => {
+          if (!AsyncResult.isInitial(result)) done();
+        });
+        signal.addEventListener("abort", done, { once: true });
+      }
+      return promise;
+    }),
+  );
+});
 
 class Disconnected extends Data.TaggedError("Disconnected") {}
 

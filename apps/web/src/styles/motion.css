@@ -1,0 +1,255 @@
+@layer components {
+  :root {
+    view-transition-name: none;
+  }
+
+  :root:active-view-transition .cap {
+    view-transition-name: cap;
+  }
+
+  :root:active-view-transition .r-scroll {
+    view-transition-name: rc;
+  }
+
+  :root:active-view-transition .r-x {
+    view-transition-name: rx;
+  }
+
+  :root:active-view-transition .r-dock {
+    view-transition-name: dock;
+  }
+
+  [data-rise="switch"] {
+    animation: switch-rise var(--duration-base) var(--ease-standard);
+  }
+
+  [data-rise="status"] {
+    animation: status-rise var(--duration-spring) var(--ease-standard);
+  }
+
+  ::view-transition {
+    pointer-events: none;
+  }
+
+  ::view-transition-group(cap) {
+    z-index: var(--z-index-pin);
+    animation-duration: var(--duration-morph);
+    animation-timing-function: var(--ease-spring);
+    border-radius: var(--radius-notch);
+    background: var(--color-capbg);
+    box-shadow: var(--elevation-notch);
+    overflow: clip;
+  }
+
+  ::view-transition-image-pair(cap) {
+    overflow: clip;
+    border-radius: var(--radius-notch);
+  }
+
+  ::view-transition-old(cap),
+  ::view-transition-new(cap) {
+    width: 100%;
+    height: 100%;
+    object-fit: none;
+    object-position: 50% 0;
+    transform-origin: 50% 0;
+  }
+
+  ::view-transition-old(cap) {
+    animation: vt-out var(--duration-base) ease-in both;
+  }
+
+  ::view-transition-new(cap) {
+    animation: vt-in var(--duration-spring) var(--duration-fast) var(--ease-standard) both;
+  }
+
+  :root:active-view-transition-type(close)::view-transition-group(cap) {
+    animation-timing-function: var(--ease-glide);
+  }
+
+  ::view-transition-group(rc) {
+    animation-duration: var(--duration-morph);
+    animation-timing-function: var(--ease-glide);
+    overflow: clip;
+    border-radius: 0 0 var(--radius-reader) var(--radius-reader);
+  }
+
+  ::view-transition-old(rc),
+  ::view-transition-new(rc) {
+    width: 100%;
+    height: 100%;
+    object-fit: none;
+    object-position: 50% 0;
+  }
+
+  ::view-transition-old(rc) {
+    animation: vt-fade-out var(--duration-base) linear both;
+  }
+
+  ::view-transition-new(rc) {
+    animation: vt-fade-in var(--duration-base) linear both;
+  }
+
+  :root:active-view-transition-type(open)::view-transition-old(rc) {
+    animation: digest-out var(--duration-fast) ease-in both;
+  }
+
+  :root:active-view-transition-type(open)::view-transition-new(rc) {
+    animation: rise-in var(--duration-enter) var(--duration-fast) var(--ease-glide) both;
+  }
+
+  :root:active-view-transition-type(close)::view-transition-old(rc) {
+    animation: conv-out var(--duration-fast) ease-in both;
+  }
+
+  :root:active-view-transition-type(close)::view-transition-new(rc) {
+    animation: settle-in var(--duration-spring) var(--duration-fast) var(--ease-standard) both;
+  }
+
+  ::view-transition-group(dock),
+  ::view-transition-group(rx) {
+    z-index: var(--z-index-raised);
+    animation-duration: var(--duration-spring);
+    animation-timing-function: var(--ease-standard);
+  }
+
+  ::view-transition-new(dock):only-child {
+    animation: dock-in var(--duration-enter) var(--duration-base) var(--ease-glide) both;
+  }
+
+  ::view-transition-old(dock):only-child {
+    animation: dock-out var(--duration-base) ease-in both;
+  }
+
+  ::view-transition-new(rx):only-child {
+    animation: vt-fade-in var(--duration-base) var(--duration-spring) linear both;
+  }
+
+  ::view-transition-old(rx):only-child {
+    animation: vt-fade-out var(--duration-fast) linear both;
+  }
+
+  @variant max-wide {
+    :root:active-view-transition .r-scroll,
+    :root:active-view-transition .r-dock,
+    :root:active-view-transition .r-x {
+      view-transition-name: none;
+    }
+
+    :root:active-view-transition-type(mode) .reader {
+      view-transition-name: reader;
+    }
+
+    ::view-transition-group(reader) {
+      z-index: var(--z-index-raised);
+    }
+
+    ::view-transition-new(reader):only-child {
+      animation: sheet-in var(--duration-enter) var(--ease-glide) both;
+    }
+
+    ::view-transition-old(reader):only-child {
+      animation: sheet-out var(--duration-spring) var(--ease-standard) both;
+    }
+  }
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    filter: blur(var(--blur-morph));
+    transform: scale(0.94);
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    filter: blur(var(--blur-morph));
+    transform: scale(0.96);
+  }
+}
+
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-11));
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes digest-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--spacing-1\.5));
+  }
+}
+
+@keyframes conv-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--spacing-6));
+  }
+}
+
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing-3) * -1));
+  }
+}
+
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-7)) scale(0.96);
+  }
+}
+
+@keyframes dock-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--spacing-5)) scale(0.96);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes switch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-2\.5));
+  }
+}
+
+@keyframes status-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-3));
+  }
+}
