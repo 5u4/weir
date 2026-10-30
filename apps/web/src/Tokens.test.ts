@@ -1,7 +1,18 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
-const runtime = ["--bh", "--cap-h", "--flip-x", "--flip-y", "--h", "--i", "--p", "--w"];
+const runtime = [
+  "--bh",
+  "--cap-h",
+  "--flip-x",
+  "--flip-y",
+  "--h",
+  "--i",
+  "--leave-opacity",
+  "--leave-translate",
+  "--p",
+  "--w",
+];
 
 const sheets = [
   "theme.css",

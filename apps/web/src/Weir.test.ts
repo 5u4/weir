@@ -132,11 +132,12 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("EventSource", Source);
   vi.stubGlobal("requestAnimationFrame", (frame: () => void) => queueMicrotask(frame));
-  const page = { row: null as object | null };
+  vi.stubGlobal("getComputedStyle", () => ({ translate: "none", opacity: "1" }));
+  const page = { row: null as object | null, hit: null as object | null };
   vi.stubGlobal("document", {
     hidden: false,
     querySelector: () => page.row,
-    elementFromPoint: () => page.row,
+    elementFromPoint: () => page.hit ?? page.row,
   });
   return { rows, requests, digests, replies, details, running, queued, Source, location, page };
 });
@@ -166,6 +167,21 @@ const settled = <A, E>(
   atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) => Effect.runPromise(AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true }));
 
+const leaving = (flags: Set<string>, finished: Promise<void>) => {
+  const neighbour = {};
+  const fake = {
+    neighbour,
+    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 50 }),
+    parentElement: { contains: (node: unknown) => node === fake || node === neighbour },
+    hasAttribute: (name: string) => flags.has(name),
+    setAttribute: (name: string) => flags.add(name),
+    removeAttribute: (name: string) => flags.delete(name),
+    style: { setProperty: () => {}, removeProperty: () => "" },
+    getAnimations: () => [{ finished }],
+  };
+  return fake;
+};
+
 afterEach(() => {
   daemon.rows.clear();
   daemon.requests.length = 0;
@@ -177,6 +193,7 @@ afterEach(() => {
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
   daemon.page.row = null;
+  daemon.page.hit = null;
 });
 
 const refetched = async (event: Event, expected: ReadonlyArray<string>) => {
@@ -306,15 +323,7 @@ it("Done on a visible row waits for its exit before the row leaves, and drops a 
 
   const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
   const flags = new Set<string>();
-  const fake = {
-    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 50 }),
-    contains: (node: unknown) => node === fake,
-    setAttribute: (name: string) => flags.add(name),
-    removeAttribute: (name: string) => flags.delete(name),
-    style: { removeProperty: () => "" },
-    getAnimations: () => [{ finished: exited }],
-  };
-  daemon.page.row = fake;
+  daemon.page.row = leaving(flags, exited);
   const target = daemon.rows.get(1);
   if (target === undefined) throw new Error("fixture row 1 missing");
   const done = () => daemon.requests.filter((request) => request === "POST /conversations/1/done");
@@ -329,6 +338,33 @@ it("Done on a visible row waits for its exit before the row leaves, and drops a 
   await vi.waitFor(() => expect(done()).toHaveLength(1));
   await vi.waitFor(() => expect(registry.get(intents).size).toBe(0));
   expect(done()).toHaveLength(1);
+  registry.dispose();
+});
+
+it("Done slides out a row a sliding neighbour overlaps, but not a row the reader sheet covers", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  await settled(registry, list);
+  const [first, second] = [daemon.rows.get(1), daemon.rows.get(2)];
+  if (first === undefined || second === undefined) throw new Error("fixture rows missing");
+
+  const overlapped = new Set<string>();
+  const fake = leaving(overlapped, Promise.resolve());
+  daemon.page.row = fake;
+  daemon.page.hit = fake.neighbour;
+  registry.set(dismiss, { act: "Done", target: first });
+  expect(overlapped.has("data-leave")).toBe(true);
+  await settled(registry, dismiss);
+
+  const covered = new Set<string>();
+  daemon.page.row = leaving(covered, Promise.resolve());
+  daemon.page.hit = {};
+  registry.set(dismiss, { act: "Done", target: second });
+  expect(covered.has("data-leave")).toBe(false);
+  await settled(registry, dismiss);
   registry.dispose();
 });
 

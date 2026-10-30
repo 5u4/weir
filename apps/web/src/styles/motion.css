@@ -50,7 +50,7 @@
     }
 
     [data-k][data-leave] {
-      animation: vt-fade-out var(--duration-base) var(--ease-standard) forwards;
+      animation: row-fade-out var(--duration-base) var(--ease-standard) forwards;
     }
   }
 
@@ -295,8 +295,23 @@
 }
 
 @keyframes row-leave {
+  from {
+    opacity: var(--leave-opacity, 1);
+    translate: var(--leave-translate, none);
+  }
+
   to {
     opacity: 0;
     translate: var(--spacing-10) 0;
+  }
+}
+
+@keyframes row-fade-out {
+  from {
+    opacity: var(--leave-opacity, 1);
+  }
+
+  to {
+    opacity: 0;
   }
 }

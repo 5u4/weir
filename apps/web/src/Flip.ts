@@ -111,8 +111,12 @@ export const leave = (key: Key): Promise<void> | null => {
   const row = document.querySelector<HTMLElement>(`.list [data-k="${key}"]`);
   if (row === null || document.hidden) return null;
   const { left, right, top, bottom } = row.getBoundingClientRect();
-  if (!row.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2))) return null;
+  const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+  if (!row.parentElement?.contains(hit)) return null;
+  const { translate, opacity } = getComputedStyle(row);
   clear(row);
+  row.style.setProperty("--leave-translate", translate);
+  row.style.setProperty("--leave-opacity", opacity);
   row.setAttribute("data-leave", "");
   return Promise.allSettled(row.getAnimations().map(({ finished }) => finished)).then(
     () => undefined,
