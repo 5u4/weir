@@ -305,6 +305,7 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
   const inside = open && anchor.getBoundingClientRect().top < ceiling;
   const paint = () => {
     unfolding = false;
+    if (!topic.isConnected) return apply();
     const was = measure(article, false);
     const top = anchor.getBoundingClientRect().top;
     reset(article);
