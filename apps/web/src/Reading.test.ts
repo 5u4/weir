@@ -1,13 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as AtomRegistry from "effect/reactivity/AtomRegistry";
-import { afterEach, expect, it, vi } from "vitest";
-import { dock, reading } from "./Reading.ts";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
+import { scrolled } from "./HeaderFold.ts";
+import { dock, following, reading } from "./Reading.ts";
 import { ConversationId } from "./Route.ts";
 import { conversation, dismiss } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
-  const state = { seen: 9, last: 25, cleared: 25, muted: false };
+  const state = { seen: 9, last: 25, cleared: 25, muted: false, body: "hello" };
   const requests: Array<string> = [];
   const held: Array<() => void> = [];
   const failing = new Set<string>();
@@ -107,8 +108,8 @@ const daemon = vi.hoisted(() => {
             from: party,
             from_me: false,
             link: null,
-            body: "hello",
-            body_new: "hello",
+            body: state.body,
+            body_new: state.body,
             stream: "robin.ellis@example.com",
             raw: null,
             deleted_at: null,
@@ -128,6 +129,7 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("location", { origin: "http://weir.test", search: "" });
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("IntersectionObserver", Observer);
+  vi.stubGlobal("HTMLElement", class {});
   vi.stubGlobal("addEventListener", () => {});
   vi.stubGlobal("removeEventListener", () => {});
   vi.stubGlobal("document", {
@@ -141,7 +143,7 @@ const daemon = vi.hoisted(() => {
 });
 
 afterEach(() => {
-  Object.assign(daemon.state, { seen: 9, last: 25, cleared: 25, muted: false });
+  Object.assign(daemon.state, { seen: 9, last: 25, cleared: 25, muted: false, body: "hello" });
   daemon.requests.length = 0;
   daemon.held.length = 0;
   daemon.failing.clear();
@@ -290,5 +292,40 @@ it("Restore reads the open conversation, so Mark unread is offered and Last read
   expect(Option.map(registry.get(dock(id)), ({ actions }) => actions)).toEqual(
     Option.some(["Done", "MarkUnread", "Mute"]),
   );
+  registry.dispose();
+});
+
+it("a sync that replaces an item or edits its body keeps its scroll from folding the header", async () => {
+  let clock = 0;
+  const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+  onTestFinished(() => now.mockRestore());
+  const registry = await loaded();
+  registry.mount(following(id));
+  const jumpFolds = () => {
+    scrolled(false, 0);
+    return scrolled(false, 400);
+  };
+  const synced = async (change: () => void) => {
+    change();
+    registry.refresh(conversation(id));
+    await Effect.runPromise(
+      AtomRegistry.getResult(registry, conversation(id), { suspendOnWaiting: true }),
+    );
+  };
+
+  clock = 10_000;
+  await synced(() => undefined);
+  expect(jumpFolds()).toBe(true);
+  await synced(() => {
+    daemon.state.last = 26;
+  });
+  expect(jumpFolds()).toBe(false);
+
+  clock = 20_000;
+  expect(jumpFolds()).toBe(true);
+  await synced(() => {
+    daemon.state.body = "hello, with a longer edited body";
+  });
+  expect(jumpFolds()).toBe(false);
   registry.dispose();
 });

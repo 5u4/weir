@@ -1,4 +1,5 @@
 import { flushSync } from "react-dom";
+import { covered, quiet } from "./HeaderFold.ts";
 
 export type Key = string;
 
@@ -265,23 +266,46 @@ const measure = (scope: ParentNode, seqs: boolean): Layout => {
   return { els, units, widths };
 };
 
-const opacities = (scope: Element) => {
-  const seen = new Map<Element, number>();
+type Pose = { readonly opacity: string; readonly translate: string };
+
+const posed = (el: Element): Pose => {
+  const { opacity, translate } = getComputedStyle(el);
+  return { opacity, translate };
+};
+
+const poses = (scope: Element) => {
+  const seen = new Map<Element, Pose>();
   for (const animation of scope.getAnimations({ subtree: true })) {
     const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
     if (animation instanceof CSSAnimation && target instanceof HTMLElement && target !== scope)
-      seen.set(target, Number(getComputedStyle(target).opacity));
+      seen.set(target, posed(target));
   }
   return seen;
 };
 
+const pin = (el: HTMLElement, { opacity, translate }: Pose, moved: boolean) => {
+  el.style.setProperty("--was-opacity", opacity);
+  if (moved) el.style.setProperty("--was-translate", translate);
+  el.setAttribute("data-held", "");
+};
+
+const entering = (part: Element) =>
+  part.getAnimations({ subtree: true }).flatMap((animation) => {
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+    return animation instanceof CSSAnimation &&
+      animation.animationName === "unfold-in" &&
+      target instanceof HTMLElement
+      ? [target]
+      : [];
+  });
+
 const reset = (scope: Element) => {
-  const was = opacities(scope);
+  const was = poses(scope);
   for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]"))
     if (!folding(el)) clear(el);
-  for (const [el, opacity] of was) {
+  for (const [el, { opacity }] of was) {
     if (!(el instanceof HTMLElement) || el.getAnimations().length > 0) continue;
-    if (opacity < Number(getComputedStyle(el).opacity))
+    if (Number(opacity) < Number(getComputedStyle(el).opacity))
       flag(el, "data-resume", { "--was-opacity": opacity });
   }
 };
@@ -300,15 +324,18 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
     ? (topic.closest<HTMLElement>(".dc") ?? topic)
     : topic;
   const view = scroller.getBoundingClientRect();
-  const inside = open && anchor.getBoundingClientRect().top < view.top;
+  const ceiling = view.top + covered(article);
+  const inside = open && anchor.getBoundingClientRect().top < ceiling;
   const paint = () => {
     unfolding = false;
+    if (!topic.isConnected) return apply();
     const was = measure(article, false);
     const top = anchor.getBoundingClientRect().top;
     reset(article);
     flushSync(apply);
     if (!anchor.isConnected) return;
-    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? view.top : top);
+    quiet();
+    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? ceiling : top);
     if (inside) return flag(anchor, "data-land");
     const now = measure(article, false);
     for (const [key, by] of flipPlan(was.units, now.units, everywhere).move) {
@@ -339,6 +366,9 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
     parts.map((part) => part.getBoundingClientRect().top),
     view.bottom,
   );
+  const held = parts.flatMap(entering).map((el) => [el, posed(el)] as const);
+  for (const part of parts) part.removeAttribute("data-unfold");
+  for (const [el, pose] of held) pin(el, pose, true);
   parts.forEach((part, k) => {
     const i = order[k];
     if (i === null || i === undefined) return;
@@ -353,12 +383,12 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
 export type Before = {
   readonly article: HTMLElement;
   readonly layout: Layout;
-  readonly opacity: ReadonlyMap<Element, number>;
+  readonly poses: ReadonlyMap<Element, Pose>;
 };
 
 const look = (article: Element | null): Before | null =>
   article instanceof HTMLElement
-    ? { article, layout: measure(article, true), opacity: opacities(article) }
+    ? { article, layout: measure(article, true), poses: poses(article) }
     : null;
 
 const copied = [
@@ -371,29 +401,28 @@ const copied = [
   "data-gap",
 ] as const;
 
-const ghostOf = (source: HTMLElement, opacity: ReadonlyMap<Element, number>) => {
+const ghostOf = (source: HTMLElement, seen: ReadonlyMap<Element, Pose>) => {
   const copy = source.cloneNode(true);
   if (!(copy instanceof HTMLElement)) return null;
   const sources = [source, ...source.querySelectorAll("*")];
   [copy, ...copy.querySelectorAll("*")].forEach((el, index) => {
     for (const name of copied) el.removeAttribute(name);
     const from = sources[index];
-    const seen = from === undefined ? undefined : opacity.get(from);
-    if (seen === undefined || !(el instanceof HTMLElement)) return;
-    el.style.setProperty("--was-opacity", String(seen));
-    el.setAttribute("data-faded", "");
+    const pose = from === undefined ? undefined : seen.get(from);
+    if (pose !== undefined && el instanceof HTMLElement) pin(el, pose, el !== copy);
   });
   const ghost = document.createElement("div");
   ghost.append(copy);
   return ghost;
 };
 
-const land = ({ article, layout: was, opacity }: Before, restore: () => void) => {
+const land = ({ article, layout: was, poses: seen }: Before, restore: () => void) => {
   if (!article.isConnected) return;
   const scroller = article.closest(".r-scroll");
   const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
   if (scroller === null || layer === null) return;
   flushSync(() => undefined);
+  quiet();
   restore();
   reset(article);
   layer.replaceChildren();
@@ -415,7 +444,7 @@ const land = ({ article, layout: was, opacity }: Before, restore: () => void) =>
   for (const [key, to] of plan.ghost) {
     const source = was.els.get(key);
     const unit = was.units.get(key);
-    const ghost = source === undefined ? null : ghostOf(source, opacity);
+    const ghost = source === undefined ? null : ghostOf(source, seen);
     if (ghost === null || unit === undefined) continue;
     ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
     ghost.style.setProperty("--y", `${unit.top - view.top}px`);
@@ -428,39 +457,62 @@ const land = ({ article, layout: was, opacity }: Before, restore: () => void) =>
   }
 };
 
-let armed: Before | null = null;
+const unchanged = ({ article, layout }: Before) => {
+  const keys = [...article.querySelectorAll<HTMLElement>("[data-k]")].map(
+    ({ dataset }) => dataset.k ?? "",
+  );
+  const kept = [...layout.units.keys()];
+  return keys.length === kept.length && keys.every((key, index) => key === kept[index]);
+};
 
-export const before = (article: Element | null) => {
-  armed = look(article);
+type Armed = { readonly keep: () => () => void; was: Before; restore: () => void };
+
+let armed: Armed | null = null;
+
+const retake = () => {
+  if (armed === null || !unchanged(armed.was)) return;
+  const was = look(armed.was.article);
+  if (was === null) return;
+  armed.was = was;
+  armed.restore = armed.keep();
+};
+
+const scrollerOf = (handle: Armed | null) => handle?.was.article.closest(".r-scroll");
+
+export const before = (article: Element | null, keep: Armed["keep"] = () => () => undefined) => {
+  quiet();
+  scrollerOf(armed)?.removeEventListener("scroll", retake);
+  const was = look(article);
+  armed = was === null ? null : { keep, was, restore: keep() };
+  scrollerOf(armed)?.addEventListener("scroll", retake, { passive: true });
   return armed;
 };
 
-export const after = (was: Before | null, restore: () => void = () => undefined) => {
-  if (armed === was) armed = null;
-  if (was !== null) land(was, restore);
+export const after = (handle: Armed | null) => {
+  if (handle === null) return;
+  if (armed === handle) {
+    scrollerOf(armed)?.removeEventListener("scroll", retake);
+    armed = null;
+  }
+  land(handle.was, handle.restore);
 };
 
 export const reshape = (target: Element, apply: () => void) => {
-  const was = before(target.closest("article"));
+  const handle = before(target.closest("article"));
   flushSync(apply);
-  after(was);
+  after(handle);
 };
 
 let following: Before | null = null;
 
 export const follow = (article: Element | null) => {
-  if (following !== null || armed?.article.isConnected === true) return;
+  if (following !== null || armed?.was.article.isConnected === true) return;
   following = look(article);
   if (following === null) return;
   requestAnimationFrame(() => {
     const was = following;
     following = null;
-    if (was === null || armed?.article.isConnected === true) return;
-    const keys = [...was.article.querySelectorAll<HTMLElement>("[data-k]")].map(
-      ({ dataset }) => dataset.k ?? "",
-    );
-    const kept = [...was.layout.units.keys()];
-    if (keys.length === kept.length && keys.every((key, index) => key === kept[index])) return;
+    if (was === null || armed?.was.article.isConnected === true || unchanged(was)) return;
     land(was, () => undefined);
   });
 };
