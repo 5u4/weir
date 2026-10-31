@@ -335,8 +335,6 @@ const newsletter = detail([
 describe("newsletter body", () => {
   it.each([
     ["link text", "Lamport"],
-    ["alt of a linked image", "Quiltwork"],
-    ["alt of an image", "thousand"],
     ["heading", "months"],
     ["inline code", "mergeClocks"],
     ["HTML shown as text", "<b>raw"],
@@ -346,18 +344,34 @@ describe("newsletter body", () => {
     expect(landedOn(newsletter, query)).toEqual(["i:1 marked"]);
   });
 
+  it("a query on the alt of an image that is not loaded is a body hit marked in the rendered body", () => {
+    const withHttpImage = detail([
+      item(
+        1,
+        newsletter.items[0]?.from ?? daniel,
+        `${newsletterBody}\n\n![Zeppelin route map](http://cdn.trailhead-weekly.example/i/48/map.png)`,
+      ),
+    ]);
+    expect(hits(withHttpImage, termPattern("Zeppelin"))).toEqual([
+      { _tag: "Item", seq: 1, field: "body" },
+    ]);
+    expect(landedOn(withHttpImage, "Zeppelin")).toEqual(["i:1 marked"]);
+  });
+
   it.each([
     ["a link target", "lamport-primer"],
     ["the hidden part of a long URL", "utm_campaign"],
     ["an image source", "banner.png"],
     ["an empty-alt image source", "robin.gif"],
     ["an image host", "cdn.trailhead"],
+    ["the alt of a loaded linked image", "Quiltwork"],
+    ["the alt of a loaded image", "thousand"],
   ])("a query only on %s is no hit", (_, query) => {
     expect(newsletterBody).toContain(query);
     expect(hits(newsletter, termPattern(query))).toEqual([]);
   });
 
-  it("renders without images, unsafe links, empty links or live HTML", () => {
+  it("renders https images without a referrer, but no unsafe links, empty links or live HTML", () => {
     const unsafe = detail([
       item(
         1,
@@ -367,18 +381,28 @@ describe("newsletter body", () => {
     ]);
     const markup = rendered(unsafe, closedUi, { pattern: null, hits: new Map(), current: null });
     expect(markup).toContain("data-clip");
-    expect(markup).not.toContain("<img");
-    expect(markup).not.toContain("src=");
     expect(markup).not.toContain("javascript:");
     expect(markup).toMatch(/<p class="[^"]*">run<\/p>/);
     const links = [...markup.matchAll(/<a\b[^>]*>(.*?)<\/a>/g)];
     expect(links.length).toBeGreaterThan(0);
-    for (const [, text] of links) expect(text?.replace(/<[^>]+>/g, "").trim()).not.toBe("");
+    for (const [, inner] of links) {
+      expect(inner?.includes("<img ") || inner?.replace(/<[^>]+>/g, "").trim() !== "").toBe(true);
+    }
     expect(markup).toContain("&lt;b&gt;raw tags&lt;/b&gt;");
     expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
-    expect(markup).toMatch(
-      /<span class="[^"]*">Chart: merge conflicts per thousand edits, falling from 41 to 6<\/span>/,
+    const images = [...markup.matchAll(/<img\b[^>]*>/g)].map(([tag]) => tag);
+    expect(images).toHaveLength(4);
+    for (const tag of images) {
+      expect(tag).toMatch(/ src="https:\/\/cdn\.trailhead-weekly\.example\//);
+      expect(tag).toContain('referrerPolicy="no-referrer"');
+      expect(tag).toContain('loading="lazy"');
+    }
+    expect(images).toContainEqual(
+      expect.stringContaining(
+        'alt="Chart: merge conflicts per thousand edits, falling from 41 to 6"',
+      ),
     );
+    expect(images).toContainEqual(expect.stringContaining('alt=""'));
   });
 
   it("a long body starts clipped and opens when a search lands on it", () => {

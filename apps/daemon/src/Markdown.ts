@@ -29,9 +29,35 @@ const blockParents: Record<string, true> = {
   footnoteDefinition: true,
 };
 
+const linkProtocols: Record<string, true> = { "http:": true, "https:": true, "mailto:": true };
+const imageProtocols: Record<string, true> = { "https:": true };
+
+const parsedUrl = (url: string, protocols: Record<string, true>) => {
+  try {
+    const parsed = new URL(url);
+    return protocols[parsed.protocol] === true ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const link = (state: State, url: string | undefined, node: Mdast.Link | Mdast.LinkReference) => {
   const children = state.all(node);
   return url === undefined ? children : element("a", children, { dataUrl: url });
+};
+
+const image = (url: string | undefined, node: Mdast.Image | Mdast.ImageReference) => {
+  const alt = node.alt?.trim() ?? "";
+  const src = url === undefined ? null : parsedUrl(url, imageProtocols);
+  if (src !== null) {
+    return element("img", [], {
+      src: src.href,
+      alt,
+      referrerPolicy: "no-referrer",
+      loading: "lazy",
+    });
+  }
+  return alt === "" ? undefined : element("span", [text(alt)], { className: ["b-img"] });
 };
 
 const handlers: Handlers = {
@@ -44,12 +70,9 @@ const handlers: Handlers = {
     parent !== undefined && blockParents[parent.type] === true
       ? element("p", [text(node.value)], { className: ["b-html"] })
       : text(node.value),
-  image: (_, node: Mdast.Image | Mdast.ImageReference) => {
-    const alt = node.alt?.trim() ?? "";
-    return alt === "" ? undefined : element("span", [text(alt)], { className: ["b-img"] });
-  },
-  imageReference: (state, node: Mdast.ImageReference, parent) =>
-    handlers.image?.(state, node, parent),
+  image: (_, node: Mdast.Image) => image(node.url, node),
+  imageReference: (state, node: Mdast.ImageReference) =>
+    image(state.definitionById.get(node.identifier.toUpperCase())?.url, node),
   link: (state, node: Mdast.Link) => link(state, node.url, node),
   linkReference: (state, node: Mdast.LinkReference) =>
     link(state, state.definitionById.get(node.identifier.toUpperCase())?.url, node),
@@ -87,23 +110,16 @@ const handlers: Handlers = {
   },
 };
 
-const textOf = (node: ElementContent | RootContent): string =>
+const visible = (node: ElementContent | RootContent): boolean =>
   node.type === "text"
-    ? node.value
-    : node.type === "element"
-      ? node.children.map(textOf).join("")
-      : "";
+    ? node.value.trim() !== ""
+    : node.type === "element" && (node.tagName === "img" || node.children.some(visible));
 
-const blank = (node: Element) => textOf(node).trim() === "";
-
-const safeUrl = (url: string) => {
-  try {
-    const parsed = new URL(url);
-    return ["http:", "https:", "mailto:"].includes(parsed.protocol) ? parsed : null;
-  } catch {
-    return null;
-  }
-};
+const named = (node: ElementContent): boolean =>
+  node.type === "text"
+    ? node.value.trim() !== ""
+    : node.type === "element" &&
+      (node.tagName === "img" ? node.properties.alt !== "" : node.children.some(named));
 
 const shortUrl = (url: URL) =>
   url.pathname.length > 24 || url.search !== "" || url.hash !== ""
@@ -153,8 +169,8 @@ const merge = (nodes: Array<ElementContent>, inContainer: boolean): Array<Elemen
   }, []);
 
 const anchor = (node: Element, url: string): Array<ElementContent> => {
-  const safe = safeUrl(url);
-  if (blank(node) || safe === null) return node.children;
+  const safe = parsedUrl(url, linkProtocols);
+  if (!visible(node) || safe === null) return node.children;
   const [only] = node.children;
   const shortened =
     node.children.length === 1 &&
@@ -175,6 +191,7 @@ const anchor = (node: Element, url: string): Array<ElementContent> => {
           href: safe.href,
           target: "_blank",
           rel: ["noreferrer", "noopener"],
+          ...(node.children.some(named) ? {} : { ariaLabel: shortUrl(safe) }),
         }),
   ];
 };
@@ -195,7 +212,7 @@ const clean = (node: ElementContent): Array<ElementContent> => {
         ? [{ ...first, children: [text(dataTask), ...first.children] }, ...rest]
         : [element("p", [text(dataTask)]), ...children];
   }
-  if ((node.tagName === "p" || headings[node.tagName]) && blank(next)) return [];
+  if ((node.tagName === "p" || headings[node.tagName]) && !visible(next)) return [];
   if (prunedWhenEmpty[node.tagName] && next.children.length === 0) return [];
   return [next];
 };

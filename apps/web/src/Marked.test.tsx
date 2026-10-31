@@ -12,23 +12,68 @@ const render = (markdown: string, pattern: RegExp | null = null) =>
 const a = (href: string, text: string) =>
   `<a href="${href}" target="_blank" rel="noreferrer noopener">${text}</a>`;
 
+const img = (src: string, alt: string) =>
+  `<img src="${src}" alt="${alt}" referrerPolicy="no-referrer" loading="lazy"/>`;
+
 describe("Prose", () => {
   it.each([
     [
-      "an image with alt becomes its alt",
+      "an https image renders without a referrer and loads lazily",
       "See ![Sales chart](https://cdn.example/chart.png) below",
+      `<p>See ${img("https://cdn.example/chart.png", "Sales chart")} below</p>`,
+    ],
+    [
+      "an empty-alt https image keeps an empty alt and its paragraph",
+      "![](https://cdn.example/pixel.gif)",
+      `<p>${img("https://cdn.example/pixel.gif", "")}</p>`,
+    ],
+    [
+      "an http image becomes its alt",
+      "See ![Sales chart](http://cdn.example/chart.png) below",
       "<p>See <span>Sales chart</span> below</p>",
     ],
-    ["an empty-alt image is dropped with its paragraph", "![](https://cdn.example/pixel.gif)", ""],
+    ["a cid: image becomes its alt", "![Logo](cid:logo@mail.example)", "<p><span>Logo</span></p>"],
+    ["a relative image becomes its alt", "![Logo](/logo.png)", "<p><span>Logo</span></p>"],
     [
-      "a linked empty-alt image leaves no link",
-      "[![](https://cdn.example/banner.png)](https://news.example/48)\n\nHello",
+      "a protocol-relative image becomes its alt",
+      "![Logo](//cdn.example/logo.png)",
+      "<p><span>Logo</span></p>",
+    ],
+    ["an empty-alt http image is dropped with its paragraph", "![](http://cdn.example/p.gif)", ""],
+    [
+      "a linked empty-alt http image leaves no link",
+      "[![](http://cdn.example/banner.png)](https://news.example/48)\n\nHello",
       "<p>Hello</p>",
     ],
     [
-      "a linked image with alt links its alt",
+      "an unnamed image-only link is labelled by its destination",
+      "[![](https://cdn.example/banner.png)](https://news.example/48)",
+      `<p><a href="https://news.example/48" target="_blank" rel="noreferrer noopener" aria-label="news.example/48">${img("https://cdn.example/banner.png", "")}</a></p>`,
+    ],
+    [
+      "an image-only link takes its name from the image alt",
       "[![Sponsor](https://cdn.example/s.png)](https://news.example/s)",
+      `<p>${a("https://news.example/s", img("https://cdn.example/s.png", "Sponsor"))}</p>`,
+    ],
+    [
+      "a link with text beside an empty-alt image keeps its text name",
+      "[![](https://cdn.example/i.png) Read more](https://news.example/r)",
+      `<p>${a("https://news.example/r", `${img("https://cdn.example/i.png", "")} Read more`)}</p>`,
+    ],
+    [
+      "a linked http image with alt links its alt",
+      "[![Sponsor](http://cdn.example/s.png)](https://news.example/s)",
       `<p>${a("https://news.example/s", "<span>Sponsor</span>")}</p>`,
+    ],
+    [
+      "a reference image resolves through its definition",
+      "![Chart][c]\n\n[c]: https://cdn.example/c.png",
+      `<p>${img("https://cdn.example/c.png", "Chart")}</p>`,
+    ],
+    [
+      "a literal img tag stays text",
+      'see <img src="https://cdn.example/x.png">',
+      "<p>see &lt;img src=&quot;https://cdn.example/x.png&quot;&gt;</p>",
     ],
     ["a javascript: link keeps only its text", "[click](javascript:alert(1))", "<p>click</p>"],
     [
@@ -101,9 +146,14 @@ describe("Prose", () => {
     );
   });
 
-  it("marks matches inside text, code and image alts", () => {
-    expect(render("Sales `sale()` ![sale](https://cdn.example/s.png)", /sale/giu)).toBe(
-      "<p><mark>Sale</mark>s <code><mark>sale</mark>()</code> <span><mark>sale</mark></span></p>",
+  it("marks matches inside text, code and fallback image alts, but not loaded image alts", () => {
+    expect(
+      render(
+        "Sales `sale()` ![sale](http://cdn.example/s.png) ![sale](https://cdn.example/s.png)",
+        /sale/giu,
+      ),
+    ).toBe(
+      `<p><mark>Sale</mark>s <code><mark>sale</mark>()</code> <span><mark>sale</mark></span> ${img("https://cdn.example/s.png", "sale")}</p>`,
     );
   });
 });

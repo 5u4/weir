@@ -28,6 +28,7 @@ const tagClass: Partial<Record<string, string>> = {
   pre: "overflow-x-auto rounded-lg bg-code px-3 py-2.5 font-mono text-xs leading-normal whitespace-pre",
   blockquote: "mx-0 my-em-0.6 border-l-thick border-l-quote-rule pl-3.5 text-quote",
   hr: "mx-0 my-em-1 h-px border-none bg-line-2",
+  img: "inline-block h-auto max-w-full",
 };
 
 const hinted = (node: Element, hint: "b-img" | "b-html" | "url") => {

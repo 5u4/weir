@@ -660,15 +660,7 @@ describe("reads", () => {
               conversations.flatMap(({ hits }) => hits.filter(({ field }) => field === "body")),
             ),
           );
-      for (const q of [
-        "Lamport",
-        "Quiltwork",
-        "thousand",
-        "months",
-        "mergeClocks",
-        "<b>raw",
-        "tombstones",
-      ]) {
+      for (const q of ["Lamport", "months", "mergeClocks", "<b>raw", "tombstones"]) {
         const [line, ...rest] = yield* bodyLines(q);
         expect(rest, q).toEqual([]);
         expect(
@@ -683,6 +675,8 @@ describe("reads", () => {
         "banner.png",
         "robin.gif",
         "cdn.trailhead",
+        "Quiltwork",
+        "thousand",
       ]) {
         expect(newsletter, q).toContain(q);
         expect(yield* bodyLines(q), q).toEqual([]);
