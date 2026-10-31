@@ -191,6 +191,7 @@ it.each<[string, Option.Option<"untagged">, number]>([
   registry.set(route, {
     _tag: "Go",
     to: { ...registry.get(route), conversation: Option.some(ConversationId.make(1)) },
+    origin: "passive",
   });
 
   registry.set(dismiss, { act: "Done", target: { id: 1, last_seq: 1, cleared_seq: 0 } });
@@ -235,7 +236,11 @@ it("switching to a view with the same rows, or leaving a search that found them,
   }
   risen();
 
-  registry.set(route, { _tag: "Go", to: { ...registry.get(route), view: "tag:Me" } });
+  registry.set(route, {
+    _tag: "Go",
+    to: { ...registry.get(route), view: "tag:Me" },
+    origin: "passive",
+  });
   expect(risen()).toEqual(["1", "2"]);
 
   type("north");

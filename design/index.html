@@ -182,7 +182,7 @@ sequenceDiagram
 <li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>work</code> 视图，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时阅读区里，上一份 digest 之后的三封邮件还是原文气泡。</li>
 <li><strong>算待 digest 的字数。</strong>conversation 带 <code>ai = true</code> 的 tag，所以走自动 digest。起点是上一份 digest 之后、<code>occurred_at</code> 不早于 <code>ai_since</code> 的第一条 item。从起点到最后一条，<code>body_new</code> 一共 1500 字符，过了 1000 的阈值。没有安静期，也没有定时器，条件一成立就排进 digest 队列。</li>
 <li><strong>AI 写一份 digest。</strong>输入是这三封邮件，加上它们前面约 6000 字符的上下文。上下文里已经被 digest 覆盖的部分用 digest 代替。AI 输出一句 headline 和几个 topic，每个 topic 列出它涉及的 seq。core 校验后插入一行 <code>digest</code>，范围从 9154 到 9311。</li>
-<li><strong>你打开它。</strong>上次读过的 digest 各收成一行。这份新 digest 是一张卡片，有 headline 和 topic。topic 下的「N originals」能把原文展开在原处。阅读区只有这一种视图，原文要么在 topic 下展开，要么是还没 digest 的原文气泡。打开本身不算已读。一条消息或一张 digest 卡片的底边滚进视口才算读过，<code>seen_seq</code> 前进到看过的最大 seq，读到底时等于 <code>last_seq</code>。规则见<a href="#visibility">第 08 节</a>。</li>
+<li><strong>你打开它。</strong>上次读过的 digest 各收成一行。这份新 digest 是一张卡片，有 headline 和 topic。topic 下的「N originals」能把原文展开在原处。阅读区只有这一种视图，原文要么在 topic 下展开，要么是还没 digest 的原文气泡。你从列表点开它，这一下就算开始阅读。一条消息或一张 digest 卡片的底边在视口里才算读过，所以一屏放得下的 conversation 打开就是已读，长的要往下滚。<code>seen_seq</code> 前进到看过的最大 seq，读到底时等于 <code>last_seq</code>。按 URL 打开或从搜索打开不算。规则见<a href="#visibility">第 08 节</a>。</li>
 <li><strong>你点「完成」。</strong><code>cleared_seq</code> 前进到 <code>last_seq</code>，conversation 离开列表，下一条自动打开。灵动岛里的计数跟着变，没有别的提示，也没有撤销。点错了就去「已清理」里点「恢复」。</li>
 </ol>
 
@@ -616,15 +616,15 @@ flowchart TD
 <h3 id="visibility">已读、完成、静音由三个字段推算</h3>
 <p>已读记在 conversation 上，<code>seen_seq</code> 是一个高水位，表示读到哪一条。阅读只让它前进，只有「标为未读」让它后退。已读跟着视口走，做法和 Element、Telegram、Mattermost、Teams、Discord 一致。「离开视线」用的是原型里的 D1 方案，也就是手动完成。</p>
 <ol>
-<li>一条 item 的块底边进入过阅读区视口，而且当时标签页可见、窗口有焦点，<code>seen_seq</code> 就前进到满足条件的最大 seq。界面自己发起的滚动不算，比如落在 Last read、跳到搜索命中。之后用户滚一下或窗口重新获得焦点时再判断。</li>
+<li>一条 item 的块底边进入过阅读区视口，而且当时标签页可见、窗口有焦点，<code>seen_seq</code> 就前进到满足条件的最大 seq。只有用户的输入才开始计算：在阅读区滚动或点按、窗口重新获得焦点，或者主动打开这个 conversation（见第 7 条）。界面自己发起的滚动不算，比如落在 Last read、跳到搜索命中。</li>
 <li>digest 卡片或收起的那一行，底边看到了就算读到它的 <code>to_seq</code>。topic 不单独计。</li>
 <li>不要求每条停留多久。</li>
 <li>界面立刻更新。daemon 在最后一次变化后 250 到 500 ms 收到一次 <code>POST /conversations/:id/read {seq}</code>。读完整个 conversation、切换 conversation、标签页隐藏时立即发送。daemon 取 <code>max</code>，迟到的小 seq 不会让已读倒退。</li>
 <li>Last read 标记在打开时按 <code>seen_seq</code> 定下，这次打开期间不随阅读移动。</li>
 <li>「标为未读」之后，这个 conversation 暂停自动已读，直到你离开它。「从这里标为未读」发送那条 item 的 seq。它在已读的原文气泡上悬停或聚焦时显示，包括这次打开后才读到的，触屏上点一下气泡显示，包括 topic 下展开的原文。</li>
-<li>打开 conversation 本身不标记任何消息，按 URL 打开（刷新、前进后退、粘贴链接）或从搜索打开都一样。后台标签页在获得焦点前什么都不标。</li>
+<li>主动打开算用户的第一次输入：在列表里点开一行（包括在聚焦的行上按 Enter），或在列表里按 j/k 切换。打开后视口里的块按第 1 条计，一屏放得下的 conversation 打开就变成已读，长的只读到落点那一屏。再点一下已经打开的那一行也算，但不会结束「标为未读」后的暂停。其余都是被动打开：按 URL 打开（刷新、前进后退、粘贴链接）、完成后自动跳到下一个、从搜索结果打开、在搜索结果里按 j/k。被动打开本身不标记任何消息，要等第 1 条里的其他输入才开始计算。后台标签页在获得焦点前什么都不标。</li>
 </ol>
-<p>否决过的做法：每条消息要求最短停留时间（Outlook 的做法）、打开即已读、部分可见就算、按 topic 前进、每条消息单独存已读标记。</p>
+<p>否决过的做法：每条消息要求最短停留时间（Outlook 的做法）、打开就把整个 conversation 标为已读、部分可见就算、按 topic 前进、每条消息单独存已读标记。</p>
 <div class="diagram"><pre class="mermaid">
 stateDiagram-v2
   [*] --> Unread
@@ -876,7 +876,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li><strong>进入。</strong>点灵动岛上的搜索按钮，或者按 <code>/</code>，灵动岛变成输入框。两栏的位置和大小都不变。</li>
 <li><strong>结果那句话。</strong>边输入边更新。灵动岛那句话变成结果句，按视图分组计数，比如 <code>“freeze” appears in 1 Work and 2 Untagged.</code>。分组只有 tag 和 Untagged。有已完成或静音的结果时，句子里多一个「已清理」小部件。点一个小部件，结果只剩那一组。没有结果时显示 <code>Nothing matches “q”.</code>。</li>
 <li><strong>结果列表。</strong>左栏变成结果列表。一条结果是一个 conversation，最多 3 行命中，命中的词都有标记。先列命中的消息，每条消息一行，按 digest topic、原文正文、发件人、来源的顺序取第一个命中的字段。topic 命中显示 topic 标题和正文。正文命中显示一段约 120 字符的原文摘录。发件人和来源命中显示完整的发件人或来源名。不满 3 行时再补 conversation 自己的命中，目前只有 digest headline，显示一段较短的摘录。标题命中不单独成行。每行标出命中的是哪个字段。结果按最新一条命中消息的时间排序。</li>
-<li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开的 conversation 照常按视口记已读。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
+<li><strong>范围。</strong>所有 conversation 都在搜索范围内，包括已完成和静音的。它们带一个安静的状态标签，「已完成」或「已静音」。从搜索打开是被动打开，要等你在阅读区滚动或点按，或者窗口重新获得焦点，才按视口记已读，见<a href="#visibility">第 08 节</a>。已完成的仍然是已完成，dock 上显示「恢复」。静音的仍然静音。</li>
 <li><strong>阅读区。</strong>搜索时没打开 conversation，阅读岛只显示一句空状态 <code>Pick a result to read it.</code>，不再列一遍结果。第 10 轮的灵动岛方案在这里放过一份结果简报，和左栏重复，所以删掉了。</li>
 <li><strong>打开结果。</strong>阅读区落在第一处命中。命中在 digest 里时落在那张卡片上。命中在被 digest 覆盖的原文里时，那个 topic 的原文自动展开。气泡里命中的词有标记。一条消息只在发件人或来源上命中时，气泡上带一个小标签 <code>Sender</code> 或 <code>Source</code>。阅读区标题里命中的词也有标记，但标题命中不算进计数。灵动岛收成药丸，显示查询、计数 <code>1/4</code>，以及上一处、下一处、关闭三个按钮。没有消息命中时不显示计数，药丸写明命中在哪：标题命中写 <code>Matched in Title</code>；查询只有 chip、没有文字时写 <code>Matched in filters</code>；都不是时写 <code>Matched the conversation</code>。</li>
 <li><strong>离开搜索。</strong>按 Esc、清空输入框或点关闭，都回到搜索前的视图、搜索前打开的 conversation，以及左栏原来的滚动位置。</li>

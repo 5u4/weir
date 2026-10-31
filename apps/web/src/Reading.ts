@@ -12,7 +12,7 @@ import { follow } from "./Flip.ts";
 import { covered, quiet } from "./HeaderFold.ts";
 import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import * as ReadRule from "./ReadRule.ts";
-import type { ConversationId } from "./Route.ts";
+import { activeOpen, type ConversationId } from "./Route.ts";
 import type { Target } from "./Rows.ts";
 import { conversation, digestRun, inTurn, intents, searchPattern, Weir } from "./Weir.ts";
 
@@ -123,6 +123,7 @@ export const reading = Atom.family((id: ConversationId) =>
       };
     };
 
+    let armOnOpen = false;
     const open = (detail: Detail) => {
       const seen = detail.state.seen_seq;
       opened = Option.some({
@@ -137,6 +138,10 @@ export const reading = Atom.family((id: ConversationId) =>
           inView: highest(),
         },
       });
+      if (armOnOpen) {
+        armOnOpen = false;
+        dispatch({ _tag: "Input" });
+      }
       return seen;
     };
     const initial = get.once(conversation(id));
@@ -156,6 +161,16 @@ export const reading = Atom.family((id: ConversationId) =>
       const seen = open(result.value);
       publish({ frozen: Option.some(seen), seen });
     });
+
+    get.subscribe(
+      activeOpen,
+      (record) => {
+        if (Option.isNone(record) || record.value.conversation !== id) return;
+        if (Option.isSome(opened)) dispatch({ _tag: "Input" });
+        else armOnOpen = true;
+      },
+      { immediate: true },
+    );
 
     const onFocus = () => dispatch({ _tag: "Focus", focused: true });
     const onBlur = () => dispatch({ _tag: "Focus", focused: false });

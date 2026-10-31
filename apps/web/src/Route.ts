@@ -65,9 +65,11 @@ export const href = (route: Route) => {
   return search === "" ? "/" : `/?${search}`;
 };
 
+export type Origin = "active" | "passive";
+
 export type Navigation =
-  | { readonly _tag: "Go"; readonly to: Route }
-  | { readonly _tag: "Replace"; readonly to: Route }
+  | { readonly _tag: "Go"; readonly to: Route; readonly origin: Origin }
+  | { readonly _tag: "Replace"; readonly to: Route; readonly origin: Origin }
   | { readonly _tag: "Type"; readonly query: string }
   | { readonly _tag: "Leave" };
 
@@ -110,6 +112,13 @@ const searchShown = Atom.make(false);
 export const searchGroup = Atom.make(Option.none<View>());
 
 const countsShown = Atom.make(Option.none<Counts>());
+
+const activeOpenShown = Atom.make(Option.none<{ readonly conversation: ConversationId }>()).pipe(
+  Atom.keepAlive,
+);
+
+export const activeOpen: Atom.Atom<Option.Option<{ readonly conversation: ConversationId }>> =
+  activeOpenShown;
 
 type Shown = {
   readonly status: boolean;
@@ -241,7 +250,10 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
           (atom) => get.registry.get(atom),
           (before) => ({
             after: { ...before, route: next },
-            apply: () => get.setSelf(next),
+            apply: () => {
+              get.registry.set(activeOpenShown, Option.none());
+              get.setSelf(next);
+            },
             animate: !event.hasUAVisualTransition,
           }),
         ),
@@ -273,6 +285,13 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
               ctx.set(statusShown, false);
               if (leaving) ctx.set(searchShown, false);
               if (target.query === "") ctx.set(searchGroup, Option.none());
+              ctx.set(
+                activeOpenShown,
+                (navigation._tag === "Go" || navigation._tag === "Replace") &&
+                  navigation.origin === "active"
+                  ? Option.map(target.conversation, (conversation) => ({ conversation }))
+                  : Option.none(),
+              );
               if (Option.isNone(write)) return;
               write.value();
               ctx.setSelf(target);

@@ -110,6 +110,7 @@ const session = (start: string) => {
 const open = (query: string, conversation: number): Navigation => ({
   _tag: "Go",
   to: { view: "untagged", query, conversation: Option.some(ConversationId.make(conversation)) },
+  origin: "passive",
 });
 
 afterEach(() => {
@@ -174,11 +175,19 @@ describe("navigating closes Status", () => {
   it.each<[string, Navigation]>([
     [
       "a view link",
-      { _tag: "Go", to: { view: "cleared", query: "", conversation: Option.none() } },
+      {
+        _tag: "Go",
+        to: { view: "cleared", query: "", conversation: Option.none() },
+        origin: "passive",
+      },
     ],
     [
       "the current view link",
-      { _tag: "Go", to: { view: "untagged", query: "", conversation: Option.none() } },
+      {
+        _tag: "Go",
+        to: { view: "untagged", query: "", conversation: Option.none() },
+        origin: "passive",
+      },
     ],
     ["typing a search", { _tag: "Type", query: "a" }],
     ["typing the same search", { _tag: "Type", query: "" }],
@@ -281,6 +290,7 @@ describe("writes while a view transition is pending", () => {
     registry.set(route, {
       _tag: "Go",
       to: { view: "untagged", query: "", conversation: Option.none() },
+      origin: "passive",
     });
     await transitions.runAll();
     expect(shown()).toBe("/");
@@ -347,11 +357,16 @@ describe("writes while a view transition is pending", () => {
 
   it("Back before the opening frame is captured wins over the open", async () => {
     const { browser, registry, navigate, shown } = session("/");
-    navigate({ _tag: "Go", to: { view: "cleared", query: "", conversation: Option.none() } });
+    navigate({
+      _tag: "Go",
+      to: { view: "cleared", query: "", conversation: Option.none() },
+      origin: "passive",
+    });
     const transitions = deferredTransitions();
     registry.set(route, {
       _tag: "Go",
       to: { view: "cleared", query: "", conversation: Option.some(ConversationId.make(7)) },
+      origin: "passive",
     });
     browser.back();
     browser.deliverHistoryMoves();
@@ -424,7 +439,11 @@ describe("notch ticks", () => {
 
   it("picking another view does not tick", async () => {
     const { navigate, shown, transitions } = notch("/");
-    navigate({ _tag: "Go", to: { view: "cleared", query: "", conversation: Option.none() } });
+    navigate({
+      _tag: "Go",
+      to: { view: "cleared", query: "", conversation: Option.none() },
+      origin: "passive",
+    });
     await transitions.runAll();
     expect(shown()).toBe("/?v=cleared");
     expect(transitions.types).toEqual([]);

@@ -70,6 +70,7 @@ function ResultRow({ result, selected }: { result: Result; selected: boolean }) 
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
       <Link
+        origin="passive"
         to={{ ...current, conversation: Option.some(ConversationId.make(result.id)) }}
         current={selected}
         className={rowLinkClass}

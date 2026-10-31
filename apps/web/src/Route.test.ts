@@ -56,9 +56,9 @@ describe("route URL", () => {
   });
 });
 
-const go = (to: Route): Navigation => ({ _tag: "Go", to });
+const go = (to: Route): Navigation => ({ _tag: "Go", to, origin: "passive" });
 const type = (query: string): Navigation => ({ _tag: "Type", query });
-const replace = (to: Route): Navigation => ({ _tag: "Replace", to });
+const replace = (to: Route): Navigation => ({ _tag: "Replace", to, origin: "passive" });
 
 describe("history write kind", () => {
   it.each([

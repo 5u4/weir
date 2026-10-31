@@ -419,6 +419,7 @@ export const dismiss = Weir.runtime
                 ConversationId.make(next.id),
               ),
             },
+            origin: "passive",
           });
         }
         const before = get.registry.get(intents).get(target.id);

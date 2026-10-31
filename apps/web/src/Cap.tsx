@@ -285,6 +285,7 @@ export function SentenceWidget({
   const pop = useChange(on, popOf) === true;
   return (
     <Link
+      origin="passive"
       to={viewRoute(widget.view)}
       current={on}
       pop={pop}
@@ -366,6 +367,7 @@ export function Chip({
   const name = <span className={`${kind.name} ${tone}`}>{widget.name}</span>;
   return (
     <Link
+      origin="passive"
       to={viewRoute(widget.view)}
       current={on}
       pop={pop}
