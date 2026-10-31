@@ -97,7 +97,11 @@ export function App() {
               onClick={() =>
                 open
                   ? setOpen(false)
-                  : navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })
+                  : navigate({
+                      _tag: "Go",
+                      to: { ...current, conversation: Option.none() },
+                      origin: "passive",
+                    })
               }
             >
               <CloseIcon />

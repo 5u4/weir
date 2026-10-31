@@ -59,6 +59,7 @@ function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { see
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
     >
       <Link
+        origin="active"
         to={{ ...current, conversation: Option.some(ConversationId.make(row.id)) }}
         current={selected}
         className={rowLinkClass}
@@ -163,7 +164,11 @@ function ViewList() {
               onClick={() => {
                 const ids = rows.value.map((row) => row.id);
                 if (open !== null && ids.includes(open)) {
-                  navigate({ _tag: "Replace", to: { ...current, conversation: Option.none() } });
+                  navigate({
+                    _tag: "Replace",
+                    to: { ...current, conversation: Option.none() },
+                    origin: "passive",
+                  });
                 }
                 runClear({ view, seq: loaded.value.seq, ids });
               }}

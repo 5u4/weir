@@ -1357,7 +1357,13 @@ function Dock({ id }: { id: ConversationId }) {
         type="button"
         className={`${dockItemClass} hidden px-4 font-semibold text-ink hover:bg-hover active:scale-press max-wide:inline-flex max-wide:px-2.5`}
         aria-label="Back"
-        onClick={() => navigate({ _tag: "Go", to: { ...current, conversation: Option.none() } })}
+        onClick={() =>
+          navigate({
+            _tag: "Go",
+            to: { ...current, conversation: Option.none() },
+            origin: "passive",
+          })
+        }
       >
         <svg className={`size-4.5 stroke-1.8 ${iconClass}`} viewBox="0 0 16 16" aria-hidden="true">
           <path d="M10 3.5L5.5 8l4.5 4.5" />

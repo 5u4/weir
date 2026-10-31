@@ -38,7 +38,7 @@ describe("read rule", () => {
     commands: ReadonlyArray<Command["_tag"] | number>;
   }>([
     {
-      name: "opening marks nothing while blocks are in view",
+      name: "a passive open marks nothing while blocks are in view",
       events: [viewport(25), viewport(18)],
       commands: ["Idle", "Idle"],
     },

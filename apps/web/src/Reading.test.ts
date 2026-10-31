@@ -4,7 +4,7 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { scrolled } from "./HeaderFold.ts";
 import { dock, following, reading } from "./Reading.ts";
-import { ConversationId } from "./Route.ts";
+import { ConversationId, type Origin, route } from "./Route.ts";
 import { conversation, dismiss } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
@@ -126,11 +126,28 @@ const daemon = vi.hoisted(() => {
     unobserve() {}
     disconnect() {}
   }
-  vi.stubGlobal("location", { origin: "http://weir.test", search: "" });
+  const page = { search: "" };
+  const listeners = new Map<string, (event: unknown) => void>();
+  const moveTo = (_: unknown, __: string, url: string) => {
+    page.search = new URL(url, "http://weir.test").search;
+  };
+  vi.stubGlobal("location", {
+    origin: "http://weir.test",
+    get search() {
+      return page.search;
+    },
+    get href() {
+      return `http://weir.test/${page.search}`;
+    },
+  });
+  vi.stubGlobal("history", { state: null, pushState: moveTo, replaceState: moveTo, go: () => {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("IntersectionObserver", Observer);
   vi.stubGlobal("HTMLElement", class {});
-  vi.stubGlobal("addEventListener", () => {});
+  vi.stubGlobal("addEventListener", (type: string, listener: (event: unknown) => void) =>
+    listeners.set(type, listener),
+  );
   vi.stubGlobal("removeEventListener", () => {});
   vi.stubGlobal("document", {
     visibilityState: "visible",
@@ -139,7 +156,7 @@ const daemon = vi.hoisted(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   });
-  return { state, requests, held, failing };
+  return { state, requests, held, failing, page, listeners };
 });
 
 afterEach(() => {
@@ -147,6 +164,7 @@ afterEach(() => {
   daemon.requests.length = 0;
   daemon.held.length = 0;
   daemon.failing.clear();
+  daemon.page.search = "";
 });
 
 const id = ConversationId.make(1);
@@ -327,5 +345,106 @@ it("a sync that replaces an item or edits its body keeps its scroll from folding
     daemon.state.body = "hello, with a longer edited body";
   });
   expect(jumpFolds()).toBe(false);
+  registry.dispose();
+});
+
+const openConversation = { view: "untagged", query: "", conversation: Option.some(id) } as const;
+const listShown = { view: "untagged", query: "", conversation: Option.none() } as const;
+
+const navigated = async () => {
+  const registry = await loaded();
+  registry.mount(route);
+  return registry;
+};
+
+const go = (registry: AtomRegistry.AtomRegistry, origin: Origin) =>
+  registry.set(route, { _tag: "Go", to: openConversation, origin });
+
+const blockInView = (registry: AtomRegistry.AtomRegistry) => {
+  registry.mount(reading(id));
+  registry.get(reading(id)).dispatch({ _tag: "Viewport", inView: 25 });
+};
+
+const longerThanTheSendDebounce = 500;
+const pastDebounce = () => new Promise((resolve) => setTimeout(resolve, longerThanTheSendDebounce));
+
+it("an active open of a loaded conversation reads the blocks in view", async () => {
+  const registry = await navigated();
+
+  go(registry, "active");
+  blockInView(registry);
+
+  await vi.waitFor(() => expect(daemon.requests).toEqual(["read 25"]));
+  registry.dispose();
+});
+
+it("an active open before the conversation loads reads the blocks in view once it loads", async () => {
+  const registry = AtomRegistry.make();
+  registry.mount(route);
+
+  go(registry, "active");
+  registry.mount(reading(id));
+  await Effect.runPromise(
+    AtomRegistry.getResult(registry, conversation(id), { suspendOnWaiting: true }),
+  );
+  registry.get(reading(id)).dispatch({ _tag: "Viewport", inView: 25 });
+
+  await vi.waitFor(() => expect(daemon.requests).toEqual(["read 25"]));
+  registry.dispose();
+});
+
+it.each([
+  ["a passive Go", { _tag: "Go", to: openConversation, origin: "passive" }],
+  ["a passive Replace", { _tag: "Replace", to: openConversation, origin: "passive" }],
+] as const)("%s opening the conversation marks nothing", async (_, navigation) => {
+  const registry = await navigated();
+
+  registry.set(route, navigation);
+  blockInView(registry);
+
+  await pastDebounce();
+  expect(daemon.requests).toEqual([]);
+  registry.dispose();
+});
+
+it("going back to a conversation opened actively earlier marks nothing", async () => {
+  const registry = await navigated();
+
+  go(registry, "active");
+  registry.set(route, { _tag: "Go", to: listShown, origin: "passive" });
+  daemon.page.search = "?c=1";
+  daemon.listeners.get("popstate")?.({ hasUAVisualTransition: false });
+  blockInView(registry);
+
+  await pastDebounce();
+  expect(Option.isSome(registry.get(route).conversation)).toBe(true);
+  expect(daemon.requests).toEqual([]);
+  registry.dispose();
+});
+
+it("clicking the row of the conversation already open reads the blocks in view", async () => {
+  const registry = await navigated();
+  go(registry, "passive");
+  blockInView(registry);
+  await pastDebounce();
+  expect(daemon.requests).toEqual([]);
+
+  go(registry, "active");
+
+  await vi.waitFor(() => expect(daemon.requests).toEqual(["read 25"]));
+  registry.dispose();
+});
+
+it("clicking the open row after Mark unread keeps reading paused", async () => {
+  const registry = await navigated();
+  go(registry, "passive");
+  blockInView(registry);
+  registry.get(reading(id)).unread(null);
+
+  go(registry, "active");
+  registry.get(reading(id)).dispatch({ _tag: "Viewport", inView: 25 });
+
+  await pastDebounce();
+  expect(daemon.requests).toEqual(["unread 25"]);
   registry.dispose();
 });
