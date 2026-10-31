@@ -1,6 +1,13 @@
+import { flushSync } from "react-dom";
+
 export type Key = string;
 
 export type Rect = { readonly left: number; readonly top: number; readonly bottom: number };
+
+export type Unit = Rect & {
+  readonly seqs?: ReadonlyArray<number> | undefined;
+  readonly parent?: Key | undefined;
+};
 
 export type Band = { readonly top: number; readonly bottom: number };
 
@@ -9,6 +16,8 @@ export type Move = { readonly dx: number; readonly dy: number };
 export type Plan = {
   readonly enter: ReadonlyMap<Key, number>;
   readonly move: ReadonlyMap<Key, Move>;
+  readonly merge: ReadonlyMap<Key, Move & { readonly i: number }>;
+  readonly ghost: ReadonlyMap<Key, Move | null>;
 };
 
 const still = 0.5;
@@ -16,33 +25,155 @@ const still = 0.5;
 const within = (band: Band) => (rect: Rect) =>
   rect.bottom > rect.top && rect.bottom > band.top && rect.top < band.bottom;
 
+const offset = (from: Rect, to: Rect): Move => ({ dx: from.left - to.left, dy: from.top - to.top });
+
+const corner = (rects: ReadonlyArray<Rect>): Rect => ({
+  left: Math.min(...rects.map(({ left }) => left)),
+  top: Math.min(...rects.map(({ top }) => top)),
+  bottom: Math.max(...rects.map(({ bottom }) => bottom)),
+});
+
+const sharing = (seqs: ReadonlySet<number>) => (unit: Unit) =>
+  unit.seqs?.some((seq) => seqs.has(seq)) === true;
+
+const carried = (units: ReadonlyMap<Key, Unit>) => {
+  const bags = new Map<Key, Set<number>>();
+  for (const [key, unit] of units) {
+    for (let at: Key | undefined = key; at !== undefined; at = units.get(at)?.parent) {
+      const bag = bags.get(at) ?? new Set<number>();
+      for (const seq of unit.seqs ?? []) bag.add(seq);
+      bags.set(at, bag);
+    }
+  }
+  return bags;
+};
+
 export const flipPlan = (
-  before: ReadonlyMap<Key, Rect>,
-  after: ReadonlyMap<Key, Rect>,
+  before: ReadonlyMap<Key, Unit>,
+  after: ReadonlyMap<Key, Unit>,
   band: Band,
 ): Plan => {
   const seen = within(band);
-  const enter = new Map<Key, number>();
-  const move = new Map<Key, Move>();
-  const shown = [...after].filter(([, rect]) => seen(rect));
+  const was = new Map([...before].filter(([, unit]) => seen(unit)));
+  const shown = [...after].filter(([, unit]) => seen(unit));
   shown.sort(([, a], [, b]) => a.top - b.top || a.left - b.left);
-  for (const [key, rect] of shown) {
-    const was = before.get(key);
-    if (was === undefined || !seen(was)) {
-      enter.set(key, enter.size);
+  const holders = new Set([...after.values()].map(({ parent }) => parent));
+  const from = new Map<Key, Move>();
+  const order = new Map<Key, number>();
+  for (const [key, unit] of shown) {
+    const same = was.get(key);
+    if (same !== undefined) {
+      from.set(key, offset(same, unit));
       continue;
     }
-    const dx = was.left - rect.left;
-    const dy = was.top - rect.top;
-    if (Math.abs(dx) > still || Math.abs(dy) > still) move.set(key, { dx, dy });
+    const sources =
+      unit.seqs === undefined ? [] : [...was.values()].filter(sharing(new Set(unit.seqs)));
+    if (sources.length > 0) from.set(key, offset(corner(sources), unit));
+    else if (holders.has(key)) continue;
+    order.set(key, order.size);
   }
-  return { enter, move };
+  const enter = new Map<Key, number>();
+  const move = new Map<Key, Move>();
+  const merge = new Map<Key, Move & { readonly i: number }>();
+  for (const [key, unit] of shown) {
+    const by = from.get(key);
+    const index = order.get(key);
+    if (by === undefined) {
+      if (index !== undefined) enter.set(key, index);
+      continue;
+    }
+    const base = unit.parent === undefined ? undefined : from.get(unit.parent);
+    const rel = base === undefined ? by : { dx: by.dx - base.dx, dy: by.dy - base.dy };
+    if (index !== undefined) merge.set(key, { ...rel, i: index });
+    else if (Math.abs(rel.dx) > still || Math.abs(rel.dy) > still) move.set(key, rel);
+  }
+  const bags = carried(before);
+  const landed = shown.map(([, unit]) => unit);
+  const ghost = new Map<Key, Move | null>();
+  for (const [key, unit] of was) {
+    if (after.has(key)) continue;
+    if (unit.parent !== undefined && was.has(unit.parent) && !after.has(unit.parent)) continue;
+    const bag = bags.get(key);
+    const to = bag === undefined || bag.size === 0 ? [] : landed.filter(sharing(bag));
+    ghost.set(key, to.length === 0 ? null : offset(corner(to), unit));
+  }
+  return { enter, move, merge, ghost };
+};
+
+export type Part = { readonly top: number; readonly bubbles: number };
+
+export const unfoldOrder = (parts: ReadonlyArray<Part>, bottom: number) => {
+  const end = parts.findIndex(({ top }) => top >= bottom);
+  return parts.slice(0, end < 0 ? parts.length : end).map(({ bubbles }, k) => ({
+    g: Math.min(k, 10) + 1,
+    b: Array.from({ length: bubbles }, (_, index) => index + 2),
+  }));
+};
+
+export const foldOrder = (tops: ReadonlyArray<number>, bottom: number) => {
+  let k = tops.filter((top) => top < bottom).length;
+  return tops.map((top) => (top < bottom ? Math.min(--k, 8) : null));
 };
 
 const margin = 60;
 
-const flags = ["data-enter", "data-flip"] as const;
-const vars = ["--i", "--flip-x", "--flip-y"] as const;
+const flags = [
+  "data-enter",
+  "data-flip",
+  "data-born",
+  "data-merge",
+  "data-unfold",
+  "data-fold",
+  "data-land",
+  "data-resume",
+] as const;
+const vars = ["--i", "--dx", "--dy", "--g", "--was-opacity"] as const;
+
+const clear = (el: HTMLElement) => {
+  for (const flag of flags) el.removeAttribute(flag);
+  for (const name of vars) el.style.removeProperty(name);
+};
+
+const finished = (el: Element, subtree = false) =>
+  Promise.allSettled(
+    el
+      .getAnimations({ subtree })
+      .filter(({ effect }) => Number.isFinite(effect?.getComputedTiming().endTime))
+      .map(({ finished }) => finished),
+  );
+
+const plays = new WeakMap<HTMLElement, object>();
+
+const settle = (el: HTMLElement, subtree = false) => {
+  const play = {};
+  plays.set(el, play);
+  void finished(el, subtree).then(() => {
+    if (plays.get(el) !== play) return;
+    clear(el);
+    if (subtree)
+      for (const inner of el.querySelectorAll<HTMLElement>("[data-k]"))
+        inner.style.removeProperty("--b");
+  });
+};
+
+let unfolding = false;
+
+const folding = (el: Element) => unfolding && el.closest("[data-fold]") !== null;
+
+const flag = (el: HTMLElement | undefined, name: (typeof flags)[number], values: object = {}) => {
+  if (el === undefined || folding(el)) return;
+  for (const [prop, value] of Object.entries(values)) el.style.setProperty(prop, String(value));
+  el.setAttribute(name, "");
+  settle(el, name === "data-unfold");
+};
+
+const px = ({ dx, dy }: Move) => ({ "--dx": `${dx}px`, "--dy": `${dy}px` });
+
+type Snapshot = {
+  readonly root: Element | null;
+  readonly rects: ReadonlyMap<Key, Rect>;
+  readonly enters: boolean;
+};
 
 const listed = ".list [data-k]:not([data-leave])";
 
@@ -51,33 +182,11 @@ const layout = (rows: ReadonlyArray<HTMLElement>) => ({
   rects: new Map(rows.map((row) => [row.dataset.k ?? "", row.getBoundingClientRect()])),
 });
 
-const clear = (row: HTMLElement) => {
-  for (const flag of flags) row.removeAttribute(flag);
-  for (const name of vars) row.style.removeProperty(name);
-};
-
 const unslide = (row: HTMLElement) => {
   row.removeAttribute("data-flip");
-  row.style.removeProperty("--flip-x");
-  row.style.removeProperty("--flip-y");
+  row.style.removeProperty("--dx");
+  row.style.removeProperty("--dy");
 };
-
-const plays = new WeakMap<HTMLElement, object>();
-
-const settle = (row: HTMLElement) => {
-  const play = {};
-  plays.set(row, play);
-  void Promise.allSettled(row.getAnimations().map(({ finished }) => finished)).then(() => {
-    if (plays.get(row) === play) clear(row);
-  });
-};
-
-type Snapshot = {
-  readonly root: Element | null;
-  readonly rects: ReadonlyMap<Key, Rect>;
-  readonly enters: boolean;
-};
-
 let pending: Snapshot | null = null;
 
 const play = () => {
@@ -96,15 +205,8 @@ const play = () => {
     const key = row.dataset.k ?? "";
     const index = was.enters && !rising.has(row) ? enter.get(key) : undefined;
     const by = move.get(key);
-    if (index !== undefined) {
-      row.style.setProperty("--i", String(index));
-      row.setAttribute("data-enter", "");
-    } else if (by !== undefined) {
-      row.style.setProperty("--flip-x", `${by.dx}px`);
-      row.style.setProperty("--flip-y", `${by.dy}px`);
-      row.setAttribute("data-flip", "");
-    } else continue;
-    settle(row);
+    if (index !== undefined) flag(row, "data-enter", { "--i": index });
+    else if (by !== undefined) flag(row, "data-flip", px(by));
   }
 };
 
@@ -125,9 +227,7 @@ export const leave = (key: Key): Promise<void> | null => {
   row.style.setProperty("--leave-translate", translate);
   row.style.setProperty("--leave-opacity", opacity);
   row.setAttribute("data-leave", "");
-  return Promise.allSettled(row.getAnimations().map(({ finished }) => finished)).then(
-    () => undefined,
-  );
+  return finished(row).then(() => undefined);
 };
 
 export const stay = (key: Key) => {
@@ -136,7 +236,231 @@ export const stay = (key: Key) => {
   row.removeAttribute("data-leave");
   row.style.removeProperty("--leave-translate");
   row.style.removeProperty("--leave-opacity");
-  row.style.setProperty("--i", "0");
-  row.setAttribute("data-enter", "");
-  settle(row);
+  flag(row, "data-enter", { "--i": 0 });
+};
+
+type Layout = {
+  readonly els: ReadonlyMap<Key, HTMLElement>;
+  readonly units: ReadonlyMap<Key, Unit>;
+  readonly widths: ReadonlyMap<Key, number>;
+};
+
+const measure = (scope: ParentNode, seqs: boolean): Layout => {
+  const els = new Map<Key, HTMLElement>();
+  const units = new Map<Key, Unit>();
+  const widths = new Map<Key, number>();
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k]")) {
+    const key = el.dataset.k ?? "";
+    const { left, top, bottom, width } = el.getBoundingClientRect();
+    els.set(key, el);
+    widths.set(key, width);
+    units.set(key, {
+      left,
+      top,
+      bottom,
+      seqs: seqs ? el.dataset.seqs?.split(" ").map(Number) : undefined,
+      parent: el.parentElement?.closest<HTMLElement>("[data-k]")?.dataset.k,
+    });
+  }
+  return { els, units, widths };
+};
+
+const opacities = (scope: Element) => {
+  const seen = new Map<Element, number>();
+  for (const animation of scope.getAnimations({ subtree: true })) {
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+    if (animation instanceof CSSAnimation && target instanceof HTMLElement && target !== scope)
+      seen.set(target, Number(getComputedStyle(target).opacity));
+  }
+  return seen;
+};
+
+const reset = (scope: Element) => {
+  const was = opacities(scope);
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]"))
+    if (!folding(el)) clear(el);
+  for (const [el, opacity] of was) {
+    if (!(el instanceof HTMLElement) || el.getAnimations().length > 0) continue;
+    if (opacity < Number(getComputedStyle(el).opacity))
+      flag(el, "data-resume", { "--was-opacity": opacity });
+  }
+};
+
+const everywhere: Band = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
+
+export const unfold = (target: Element, open: boolean, apply: () => void) => {
+  if (unfolding) return;
+  const topic =
+    target.closest<HTMLElement>(".tp") ??
+    target.closest(".dc")?.querySelector<HTMLElement>(".tp:not(.uncited)");
+  const scroller = target.closest<HTMLElement>(".r-scroll");
+  const article = target.closest("article");
+  if (topic == null || scroller === null || article === null) return apply();
+  const anchor = topic.matches(".solo:not(.uncited)")
+    ? (topic.closest<HTMLElement>(".dc") ?? topic)
+    : topic;
+  const view = scroller.getBoundingClientRect();
+  const inside = open && anchor.getBoundingClientRect().top < view.top;
+  const paint = () => {
+    unfolding = false;
+    const was = measure(article, false);
+    const top = anchor.getBoundingClientRect().top;
+    reset(article);
+    flushSync(apply);
+    if (!anchor.isConnected) return;
+    scroller.scrollTop += anchor.getBoundingClientRect().top - (inside ? view.top : top);
+    if (inside) return flag(anchor, "data-land");
+    const now = measure(article, false);
+    for (const [key, by] of flipPlan(was.units, now.units, everywhere).move) {
+      flag(now.els.get(key), "data-flip", px(by));
+    }
+    if (open) return;
+    const parts = [...topic.querySelectorAll<HTMLElement>(":scope > .unf > *")];
+    const order = unfoldOrder(
+      parts.map((part) => ({
+        top: part.getBoundingClientRect().top,
+        bubbles: part.querySelectorAll(".bl").length,
+      })),
+      view.bottom,
+    );
+    order.forEach(({ g, b }, k) => {
+      const part = parts[k];
+      if (part === undefined) return;
+      part.querySelectorAll<HTMLElement>(".bl").forEach((bubble, index) => {
+        bubble.style.setProperty("--b", String(b[index]));
+      });
+      flag(part, "data-unfold", { "--g": g });
+    });
+  };
+  const parts =
+    open && !inside ? [...topic.querySelectorAll<HTMLElement>(":scope > .unf > *")] : [];
+  if (parts.length === 0) return paint();
+  const order = foldOrder(
+    parts.map((part) => part.getBoundingClientRect().top),
+    view.bottom,
+  );
+  parts.forEach((part, k) => {
+    const i = order[k];
+    if (i === null || i === undefined) return;
+    plays.delete(part);
+    part.style.setProperty("--i", String(i));
+    part.setAttribute("data-fold", "");
+  });
+  unfolding = true;
+  void Promise.all(parts.map((part) => finished(part))).then(paint);
+};
+
+export type Before = {
+  readonly article: HTMLElement;
+  readonly layout: Layout;
+  readonly opacity: ReadonlyMap<Element, number>;
+};
+
+const look = (article: Element | null): Before | null =>
+  article instanceof HTMLElement
+    ? { article, layout: measure(article, true), opacity: opacities(article) }
+    : null;
+
+const copied = [
+  ...flags,
+  "data-k",
+  "data-seqs",
+  "data-key",
+  "data-hit",
+  "data-current",
+  "data-gap",
+] as const;
+
+const ghostOf = (source: HTMLElement, opacity: ReadonlyMap<Element, number>) => {
+  const copy = source.cloneNode(true);
+  if (!(copy instanceof HTMLElement)) return null;
+  const sources = [source, ...source.querySelectorAll("*")];
+  [copy, ...copy.querySelectorAll("*")].forEach((el, index) => {
+    for (const name of copied) el.removeAttribute(name);
+    const from = sources[index];
+    const seen = from === undefined ? undefined : opacity.get(from);
+    if (seen === undefined || !(el instanceof HTMLElement)) return;
+    el.style.setProperty("--was-opacity", String(seen));
+    el.setAttribute("data-faded", "");
+  });
+  const ghost = document.createElement("div");
+  ghost.append(copy);
+  return ghost;
+};
+
+const land = ({ article, layout: was, opacity }: Before, restore: () => void) => {
+  if (!article.isConnected) return;
+  const scroller = article.closest(".r-scroll");
+  const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
+  if (scroller === null || layer === null) return;
+  flushSync(() => undefined);
+  restore();
+  reset(article);
+  layer.replaceChildren();
+  const now = measure(article, true);
+  const view = scroller.getBoundingClientRect();
+  const plan = flipPlan(was.units, now.units, {
+    top: view.top - margin,
+    bottom: view.bottom + margin,
+  });
+  for (const [key, by] of plan.move) flag(now.els.get(key), "data-flip", px(by));
+  for (const [key, i] of plan.enter)
+    flag(now.els.get(key), "data-born", { "--i": Math.min(i, 10) });
+  for (const [key, { i, ...by }] of plan.merge) {
+    flag(now.els.get(key), "data-merge", { ...px(by), "--i": Math.min(i, 10) });
+  }
+  const origin = article.getBoundingClientRect();
+  layer.style.setProperty("--view-top", `${view.top - origin.top}px`);
+  layer.style.setProperty("--view-h", `${view.height}px`);
+  for (const [key, to] of plan.ghost) {
+    const source = was.els.get(key);
+    const unit = was.units.get(key);
+    const ghost = source === undefined ? null : ghostOf(source, opacity);
+    if (ghost === null || unit === undefined) continue;
+    ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
+    ghost.style.setProperty("--y", `${unit.top - view.top}px`);
+    ghost.style.setProperty("--w", `${was.widths.get(key) ?? 0}px`);
+    if (to !== null)
+      for (const [prop, value] of Object.entries(px(to))) ghost.style.setProperty(prop, value);
+    ghost.setAttribute("data-ghost", to === null ? "fade" : "travel");
+    layer.append(ghost);
+    void finished(ghost).then(() => ghost.remove());
+  }
+};
+
+let armed: Before | null = null;
+
+export const before = (article: Element | null) => {
+  armed = look(article);
+  return armed;
+};
+
+export const after = (was: Before | null, restore: () => void = () => undefined) => {
+  if (armed === was) armed = null;
+  if (was !== null) land(was, restore);
+};
+
+export const reshape = (target: Element, apply: () => void) => {
+  const was = before(target.closest("article"));
+  flushSync(apply);
+  after(was);
+};
+
+let following: Before | null = null;
+
+export const follow = (article: Element | null) => {
+  if (following !== null || armed?.article.isConnected === true) return;
+  following = look(article);
+  if (following === null) return;
+  requestAnimationFrame(() => {
+    const was = following;
+    following = null;
+    if (was === null || armed?.article.isConnected === true) return;
+    const keys = [...was.article.querySelectorAll<HTMLElement>("[data-k]")].map(
+      ({ dataset }) => dataset.k ?? "",
+    );
+    const kept = [...was.layout.units.keys()];
+    if (keys.length === kept.length && keys.every((key, index) => key === kept[index])) return;
+    land(was, () => undefined);
+  });
 };

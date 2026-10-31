@@ -27,42 +27,145 @@
     animation: status-rise var(--duration-spring) var(--ease-standard);
   }
 
-  [data-k][data-enter] {
+  .list [data-k][data-enter] {
     animation: row-enter var(--duration-spring) var(--ease-standard)
       calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards;
   }
 
-  [data-k][data-flip] {
-    animation: row-move var(--duration-spring) var(--ease-standard);
+  .list [data-k][data-flip] {
+    animation: flip var(--duration-spring) var(--ease-standard);
   }
 
-  [data-k][data-enter][data-flip] {
+  .list [data-k][data-enter][data-flip] {
     animation:
       row-enter var(--duration-spring) var(--ease-standard)
       calc((min(var(--i), 12) + 1) * var(--duration-stagger)) backwards,
-      row-move var(--duration-spring) var(--ease-standard);
+      flip var(--duration-spring) var(--ease-standard);
     animation-composition: replace, add;
   }
 
-  [data-k][data-leave] {
+  .list [data-k][data-leave] {
     animation: row-leave var(--duration-base) var(--ease-standard) forwards;
   }
 
+  .r-scroll [data-k][data-flip] {
+    animation: flip var(--duration-enter) var(--ease-glide);
+  }
+
+  .r-scroll [data-resume] {
+    animation: resume var(--duration-base) var(--ease-standard);
+  }
+
+  .r-scroll [data-k][data-flip][data-resume] {
+    animation:
+      flip var(--duration-enter) var(--ease-glide),
+      resume var(--duration-base) var(--ease-standard);
+  }
+
+  .r-scroll [data-k][data-born] {
+    animation: born var(--duration-spring) var(--ease-standard)
+      calc(var(--duration-fast) + var(--i) * var(--duration-stagger)) backwards;
+  }
+
+  .r-scroll [data-k][data-merge] {
+    animation: merge var(--duration-enter) var(--ease-glide)
+      calc(var(--i) * var(--duration-stagger)) backwards;
+  }
+
+  .r-scroll [data-k][data-unfold] {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group)) backwards;
+  }
+
+  .r-scroll .sg[data-unfold] {
+    animation: none;
+  }
+
+  .r-scroll .sg[data-unfold] > span,
+  .r-scroll .sg[data-unfold] .g-head {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group)) backwards;
+  }
+
+  .r-scroll .sg[data-unfold] .bl {
+    animation: unfold-in var(--duration-spring) var(--ease-standard)
+      calc(var(--g) * var(--duration-stagger-group) + var(--b) * var(--duration-stagger)) backwards;
+  }
+
+  .r-scroll [data-k][data-fold] {
+    animation: fold-out var(--duration-base) var(--ease-in) calc(var(--i) * var(--duration-stagger))
+      forwards;
+  }
+
+  .r-scroll [data-land] {
+    animation: vt-fade-in var(--duration-base) var(--ease-standard);
+  }
+
+  [data-ghosts] {
+    position: absolute;
+    inset-inline: 0;
+    top: var(--view-top);
+    height: var(--view-h);
+    overflow: clip;
+    pointer-events: none;
+  }
+
+  [data-ghosts]:empty {
+    display: none;
+  }
+
+  [data-ghost] {
+    position: absolute;
+    top: var(--y);
+    left: var(--x);
+    width: var(--w);
+  }
+
+  [data-ghost="travel"] {
+    animation: ghost-travel var(--duration-spring) var(--ease-glide) forwards;
+  }
+
+  [data-ghost="fade"] {
+    animation: vt-fade-out var(--duration-base) linear forwards;
+  }
+
   @variant motion-reduce {
-    [data-k][data-enter] {
+    .list [data-k][data-enter] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
-    [data-k][data-flip] {
+    .list [data-k][data-flip],
+    .r-scroll [data-k][data-flip],
+    .r-scroll [data-k][data-unfold],
+    .r-scroll .sg[data-unfold] > span,
+    .r-scroll .sg[data-unfold] .g-head,
+    .r-scroll .sg[data-unfold] .bl,
+    .r-scroll [data-k][data-fold],
+    .r-scroll [data-land] {
       animation: none;
     }
 
-    [data-k][data-enter][data-flip] {
+    .list [data-k][data-enter][data-flip] {
       animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
     }
 
-    [data-k][data-leave] {
+    .list [data-k][data-leave] {
       animation: row-fade-out var(--duration-base) var(--ease-standard) forwards;
+    }
+
+    .r-scroll [data-k][data-born],
+    .r-scroll [data-k][data-merge] {
+      animation: vt-fade-in var(--duration-fast) linear backwards;
+    }
+
+    .r-scroll [data-resume],
+    .r-scroll [data-k][data-flip][data-resume] {
+      animation: resume var(--duration-fast) linear;
+    }
+
+    [data-ghost="travel"],
+    [data-ghost="fade"] {
+      animation: vt-fade-out var(--duration-fast) linear forwards;
     }
   }
 
@@ -250,6 +353,15 @@
   }
 }
 
+/* Unlayered so these beat the clone's Tailwind margin and opacity utilities. */
+[data-ghost] > * {
+  margin: 0;
+}
+
+[data-ghost] [data-faded] {
+  opacity: var(--was-opacity);
+}
+
 @keyframes vt-out {
   to {
     opacity: 0;
@@ -357,9 +469,9 @@
   }
 }
 
-@keyframes row-move {
+@keyframes flip {
   from {
-    translate: var(--flip-x) var(--flip-y);
+    translate: var(--dx) var(--dy);
   }
 }
 
@@ -416,5 +528,51 @@
   from {
     opacity: 0;
     transform: scale(var(--scale-enter));
+  }
+}
+
+@keyframes born {
+  from {
+    opacity: 0;
+    translate: 0 var(--spacing-2);
+  }
+}
+
+@keyframes resume {
+  from {
+    opacity: var(--was-opacity);
+  }
+}
+
+@keyframes merge {
+  from {
+    opacity: 0;
+    translate: var(--dx) var(--dy);
+  }
+
+  55% {
+    opacity: 1;
+  }
+}
+
+@keyframes ghost-travel {
+  to {
+    opacity: 0;
+    translate: var(--dx) var(--dy);
+    scale: var(--scale-press);
+  }
+}
+
+@keyframes unfold-in {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--spacing-2) * -1);
+  }
+}
+
+@keyframes fold-out {
+  to {
+    opacity: 0;
+    translate: 0 calc(var(--spacing-2\.5) * -1);
   }
 }

@@ -7,11 +7,12 @@ import * as Reactivity from "effect/reactivity/Reactivity";
 import { closedUi, type Detail, lastSeq, type ReaderUi, type TopicKey } from "./Blocks.ts";
 import type { Range } from "./Digest.ts";
 import { type DockAction, dockActions } from "./Dock.ts";
+import { follow } from "./Flip.ts";
 import { type Hit, hitKey, hits, matchedIn, reveal } from "./Hits.ts";
 import * as ReadRule from "./ReadRule.ts";
 import type { ConversationId } from "./Route.ts";
 import type { Target } from "./Rows.ts";
-import { conversation, inTurn, intents, searchPattern, Weir } from "./Weir.ts";
+import { conversation, digestRun, inTurn, intents, searchPattern, Weir } from "./Weir.ts";
 
 const debounce = 300;
 
@@ -207,6 +208,19 @@ export const readerUi = Atom.family((_: ConversationId) =>
 
 export const pins = Atom.family((_: ConversationId) =>
   Atom.make<ReadonlyMap<TopicKey, number>>(new Map()).pipe(Atom.setIdleTTL(0)),
+);
+
+const openArticle = ".reader .r-scroll:not([hidden]) > article";
+
+export const following = Atom.family((id: ConversationId) =>
+  Atom.make((get) => {
+    get.subscribe(conversation(id), (result) => {
+      if (AsyncResult.isSuccess(result) && !result.waiting) {
+        follow(document.querySelector(openArticle));
+      }
+    });
+    get.subscribe(digestRun(id), () => follow(document.querySelector(openArticle)));
+  }).pipe(Atom.setIdleTTL(0)),
 );
 
 export type Preview =

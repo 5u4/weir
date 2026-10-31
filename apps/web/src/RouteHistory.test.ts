@@ -10,6 +10,7 @@ import {
   href,
   type Navigation,
   route,
+  searchGroup,
   searchOpen,
   statusOpen,
 } from "./Route.ts";
@@ -156,6 +157,16 @@ describe("leaving search through browser history", () => {
     expect(browser.url()).toBe("/?v=cleared");
     expect(shown()).toBe("/?v=cleared");
     expect(browser.canGoBackTo()).toEqual([]);
+  });
+
+  it("the result group survives typing and is dropped once the query is cleared", () => {
+    const { registry, navigate } = session("/?q=abc");
+    registry.mount(searchGroup);
+    registry.set(searchGroup, Option.some("untagged"));
+    navigate({ _tag: "Type", query: "ab" });
+    expect(registry.get(searchGroup)).toEqual(Option.some("untagged"));
+    navigate({ _tag: "Type", query: "" });
+    expect(registry.get(searchGroup)).toEqual(Option.none());
   });
 });
 
@@ -446,6 +457,32 @@ describe("notch ticks", () => {
     expect(registry.get(searchOpen)).toBe(false);
     expect(shown()).toBe("/");
     expect(browser.url()).toBe("/");
+    expect(transitions.types).toEqual([["tick"], ["tick"]]);
+  });
+
+  it("Escape out of a grouped search keeps the group on screen until the new snapshot", async () => {
+    const { browser, registry, navigate, shown, transitions } = notch("/");
+    vi.stubGlobal("HTMLElement", class {});
+    registry.mount(keys);
+    registry.mount(searchGroup);
+    registry.set(searchOpen, true);
+    await transitions.runAll();
+    navigate({ _tag: "Type", query: "abc" });
+    registry.set(searchGroup, Option.some("untagged"));
+    browser.dispatch("keydown", {
+      key: "Escape",
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      target: {},
+      preventDefault: () => {},
+    });
+    const held = { group: registry.get(searchGroup), shown: shown() };
+    await transitions.runUpdates();
+    const updated = { group: registry.get(searchGroup), shown: shown() };
+    await transitions.finishAll();
+    expect(held).toEqual({ group: Option.some("untagged"), shown: "/?q=abc" });
+    expect(updated).toEqual({ group: Option.none(), shown: "/" });
     expect(transitions.types).toEqual([["tick"], ["tick"]]);
   });
 

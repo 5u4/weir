@@ -2,16 +2,23 @@ import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
 const runtime = [
+  "--b",
   "--bh",
   "--cap-h",
-  "--flip-x",
-  "--flip-y",
+  "--dx",
+  "--dy",
+  "--g",
   "--h",
   "--i",
   "--leave-opacity",
   "--leave-translate",
   "--p",
+  "--view-h",
+  "--view-top",
   "--w",
+  "--was-opacity",
+  "--x",
+  "--y",
 ];
 
 const sheets = [
