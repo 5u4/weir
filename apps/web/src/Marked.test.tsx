@@ -46,9 +46,19 @@ describe("Prose", () => {
       "<p>Hello</p>",
     ],
     [
-      "a linked https image-only link wraps the image",
+      "an unnamed image-only link is labelled by its destination",
       "[![](https://cdn.example/banner.png)](https://news.example/48)",
-      `<p>${a("https://news.example/48", img("https://cdn.example/banner.png", ""))}</p>`,
+      `<p><a href="https://news.example/48" target="_blank" rel="noreferrer noopener" aria-label="news.example/48">${img("https://cdn.example/banner.png", "")}</a></p>`,
+    ],
+    [
+      "an image-only link takes its name from the image alt",
+      "[![Sponsor](https://cdn.example/s.png)](https://news.example/s)",
+      `<p>${a("https://news.example/s", img("https://cdn.example/s.png", "Sponsor"))}</p>`,
+    ],
+    [
+      "a link with text beside an empty-alt image keeps its text name",
+      "[![](https://cdn.example/i.png) Read more](https://news.example/r)",
+      `<p>${a("https://news.example/r", `${img("https://cdn.example/i.png", "")} Read more`)}</p>`,
     ],
     [
       "a linked http image with alt links its alt",

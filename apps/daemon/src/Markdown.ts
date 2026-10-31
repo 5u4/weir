@@ -115,6 +115,12 @@ const visible = (node: ElementContent | RootContent): boolean =>
     ? node.value.trim() !== ""
     : node.type === "element" && (node.tagName === "img" || node.children.some(visible));
 
+const named = (node: ElementContent): boolean =>
+  node.type === "text"
+    ? node.value.trim() !== ""
+    : node.type === "element" &&
+      (node.tagName === "img" ? node.properties.alt !== "" : node.children.some(named));
+
 const shortUrl = (url: URL) =>
   url.pathname.length > 24 || url.search !== "" || url.hash !== ""
     ? `${url.host}${url.pathname.slice(0, 24)}…`
@@ -185,6 +191,7 @@ const anchor = (node: Element, url: string): Array<ElementContent> => {
           href: safe.href,
           target: "_blank",
           rel: ["noreferrer", "noopener"],
+          ...(node.children.some(named) ? {} : { ariaLabel: shortUrl(safe) }),
         }),
   ];
 };
