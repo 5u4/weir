@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { fold, quieted, type Track } from "./HeaderFold.ts";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { fold, quiet, quieted, scrolled, type Track } from "./HeaderFold.ts";
 
 const start: Track = { y: 0, down: 0, quietUntil: 0 };
 
@@ -71,8 +71,8 @@ describe("header fold", () => {
   });
 
   it("ignores scrolls inside the quiet window and tracks from where they left off", () => {
-    const quiet = quieted({ y: 300, down: 0, quietUntil: 0 }, 1000);
-    const during = scroll(quiet, false, [
+    const quieting = quieted({ y: 300, down: 0, quietUntil: 0 }, 1000);
+    const during = scroll(quieting, false, [
       [900, 1200],
       [0, 1500],
       [600, 1699],
@@ -82,5 +82,16 @@ describe("header fold", () => {
     expect(scroll(during.track, false, [[620, 1700]]).folded).toBe(false);
     expect(scroll(during.track, false, [[625, 1700]]).folded).toBe(true);
     expect(scroll(quieted(start, 0), true, [[0, 699]]).folded).toBe(true);
+  });
+
+  it("folds a newly opened conversation on its first scroll down, wherever the last one was left", () => {
+    let clock = 10_000;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    onTestFinished(() => now.mockRestore());
+    scrolled(false, 0);
+    expect(scrolled(false, 1000)).toBe(true);
+    quiet(0);
+    clock += 700;
+    expect(scrolled(false, 30)).toBe(true);
   });
 });
