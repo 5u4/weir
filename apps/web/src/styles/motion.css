@@ -421,8 +421,9 @@
   margin: 0;
 }
 
-[data-ghost] [data-faded] {
+[data-held] {
   opacity: var(--was-opacity);
+  translate: var(--was-translate, none);
 }
 
 @keyframes vt-out {

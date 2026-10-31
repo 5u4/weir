@@ -266,23 +266,46 @@ const measure = (scope: ParentNode, seqs: boolean): Layout => {
   return { els, units, widths };
 };
 
-const opacities = (scope: Element) => {
-  const seen = new Map<Element, number>();
+type Pose = { readonly opacity: string; readonly translate: string };
+
+const posed = (el: Element): Pose => {
+  const { opacity, translate } = getComputedStyle(el);
+  return { opacity, translate };
+};
+
+const poses = (scope: Element) => {
+  const seen = new Map<Element, Pose>();
   for (const animation of scope.getAnimations({ subtree: true })) {
     const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
     if (animation instanceof CSSAnimation && target instanceof HTMLElement && target !== scope)
-      seen.set(target, Number(getComputedStyle(target).opacity));
+      seen.set(target, posed(target));
   }
   return seen;
 };
 
+const pin = (el: HTMLElement, { opacity, translate }: Pose, moved: boolean) => {
+  el.style.setProperty("--was-opacity", opacity);
+  if (moved) el.style.setProperty("--was-translate", translate);
+  el.setAttribute("data-held", "");
+};
+
+const entering = (part: Element) =>
+  part.getAnimations({ subtree: true }).flatMap((animation) => {
+    const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+    return animation instanceof CSSAnimation &&
+      animation.animationName === "unfold-in" &&
+      target instanceof HTMLElement
+      ? [target]
+      : [];
+  });
+
 const reset = (scope: Element) => {
-  const was = opacities(scope);
+  const was = poses(scope);
   for (const el of scope.querySelectorAll<HTMLElement>("[data-k], [data-resume]"))
     if (!folding(el)) clear(el);
-  for (const [el, opacity] of was) {
+  for (const [el, { opacity }] of was) {
     if (!(el instanceof HTMLElement) || el.getAnimations().length > 0) continue;
-    if (opacity < Number(getComputedStyle(el).opacity))
+    if (Number(opacity) < Number(getComputedStyle(el).opacity))
       flag(el, "data-resume", { "--was-opacity": opacity });
   }
 };
@@ -343,6 +366,9 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
     parts.map((part) => part.getBoundingClientRect().top),
     view.bottom,
   );
+  const held = parts.flatMap(entering).map((el) => [el, posed(el)] as const);
+  for (const part of parts) part.removeAttribute("data-unfold");
+  for (const [el, pose] of held) pin(el, pose, true);
   parts.forEach((part, k) => {
     const i = order[k];
     if (i === null || i === undefined) return;
@@ -357,12 +383,12 @@ export const unfold = (target: Element, open: boolean, apply: () => void) => {
 export type Before = {
   readonly article: HTMLElement;
   readonly layout: Layout;
-  readonly opacity: ReadonlyMap<Element, number>;
+  readonly poses: ReadonlyMap<Element, Pose>;
 };
 
 const look = (article: Element | null): Before | null =>
   article instanceof HTMLElement
-    ? { article, layout: measure(article, true), opacity: opacities(article) }
+    ? { article, layout: measure(article, true), poses: poses(article) }
     : null;
 
 const copied = [
@@ -375,24 +401,22 @@ const copied = [
   "data-gap",
 ] as const;
 
-const ghostOf = (source: HTMLElement, opacity: ReadonlyMap<Element, number>) => {
+const ghostOf = (source: HTMLElement, seen: ReadonlyMap<Element, Pose>) => {
   const copy = source.cloneNode(true);
   if (!(copy instanceof HTMLElement)) return null;
   const sources = [source, ...source.querySelectorAll("*")];
   [copy, ...copy.querySelectorAll("*")].forEach((el, index) => {
     for (const name of copied) el.removeAttribute(name);
     const from = sources[index];
-    const seen = from === undefined ? undefined : opacity.get(from);
-    if (seen === undefined || !(el instanceof HTMLElement)) return;
-    el.style.setProperty("--was-opacity", String(seen));
-    el.setAttribute("data-faded", "");
+    const pose = from === undefined ? undefined : seen.get(from);
+    if (pose !== undefined && el instanceof HTMLElement) pin(el, pose, false);
   });
   const ghost = document.createElement("div");
   ghost.append(copy);
   return ghost;
 };
 
-const land = ({ article, layout: was, opacity }: Before, restore: () => void) => {
+const land = ({ article, layout: was, poses: seen }: Before, restore: () => void) => {
   if (!article.isConnected) return;
   const scroller = article.closest(".r-scroll");
   const layer = article.querySelector<HTMLElement>(":scope > [data-ghosts]");
@@ -420,7 +444,7 @@ const land = ({ article, layout: was, opacity }: Before, restore: () => void) =>
   for (const [key, to] of plan.ghost) {
     const source = was.els.get(key);
     const unit = was.units.get(key);
-    const ghost = source === undefined ? null : ghostOf(source, opacity);
+    const ghost = source === undefined ? null : ghostOf(source, seen);
     if (ghost === null || unit === undefined) continue;
     ghost.style.setProperty("--x", `${unit.left - origin.left}px`);
     ghost.style.setProperty("--y", `${unit.top - view.top}px`);
