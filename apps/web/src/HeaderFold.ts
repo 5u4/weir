@@ -13,15 +13,16 @@ export const fold = (track: Track, folded: boolean, y: number, at: number) => {
   return { track: { ...track, y, down: next ? 0 : down }, folded: next };
 };
 
-export const quieted = (track: Track, at: number): Track => ({
-  ...track,
+export const quieted = (track: Track, at: number, y = track.y): Track => ({
+  y,
+  down: 0,
   quietUntil: at + quietFor,
 });
 
 let current: Track = { y: 0, down: 0, quietUntil: 0 };
 
-export const quiet = () => {
-  current = quieted(current, performance.now());
+export const quiet = (y?: number) => {
+  current = quieted(current, performance.now(), y);
 };
 
 export const scrolled = (folded: boolean, y: number) => {

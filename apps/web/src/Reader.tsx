@@ -1160,7 +1160,6 @@ const land = (root: HTMLElement | null) => {
   const scroller = root?.closest(".r-scroll");
   if (root === null || scroller == null) return;
   const marker = root.querySelector(".lr");
-  quiet();
   scroller.scrollTop =
     marker === null
       ? scroller.scrollHeight
@@ -1169,6 +1168,7 @@ const land = (root: HTMLElement | null) => {
         scroller.getBoundingClientRect().top -
         covered(root) -
         16;
+  quiet(scroller.scrollTop);
 };
 
 const hold = (anchor: Element | null | undefined, digests: ReadonlyArray<number>) => {
