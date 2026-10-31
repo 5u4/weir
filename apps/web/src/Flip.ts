@@ -409,7 +409,7 @@ const ghostOf = (source: HTMLElement, seen: ReadonlyMap<Element, Pose>) => {
     for (const name of copied) el.removeAttribute(name);
     const from = sources[index];
     const pose = from === undefined ? undefined : seen.get(from);
-    if (pose !== undefined && el instanceof HTMLElement) pin(el, pose, false);
+    if (pose !== undefined && el instanceof HTMLElement) pin(el, pose, el !== copy);
   });
   const ghost = document.createElement("div");
   ghost.append(copy);
