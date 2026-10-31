@@ -1233,7 +1233,7 @@ function Conversation({
               range,
               items,
               land: (digests) => {
-                const was = before(article.current);
+                const armed = before(article.current, () => hold(anchor, digests));
                 setUi((current) => ({
                   ...current,
                   shapes: new Map([
@@ -1241,8 +1241,7 @@ function Conversation({
                     ...digests.map((digest) => [digest, "card"] as const),
                   ]),
                 }));
-                const restore = hold(anchor, digests);
-                return () => after(was, restore);
+                return () => after(armed);
               },
             });
           },

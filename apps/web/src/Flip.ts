@@ -457,40 +457,62 @@ const land = ({ article, layout: was, poses: seen }: Before, restore: () => void
   }
 };
 
-let armed: Before | null = null;
+const unchanged = ({ article, layout }: Before) => {
+  const keys = [...article.querySelectorAll<HTMLElement>("[data-k]")].map(
+    ({ dataset }) => dataset.k ?? "",
+  );
+  const kept = [...layout.units.keys()];
+  return keys.length === kept.length && keys.every((key, index) => key === kept[index]);
+};
 
-export const before = (article: Element | null) => {
+type Armed = { readonly keep: () => () => void; was: Before; restore: () => void };
+
+let armed: Armed | null = null;
+
+const retake = () => {
+  if (armed === null || !unchanged(armed.was)) return;
+  const was = look(armed.was.article);
+  if (was === null) return;
+  armed.was = was;
+  armed.restore = armed.keep();
+};
+
+const scrollerOf = (handle: Armed | null) => handle?.was.article.closest(".r-scroll");
+
+export const before = (article: Element | null, keep: Armed["keep"] = () => () => undefined) => {
   quiet();
-  armed = look(article);
+  scrollerOf(armed)?.removeEventListener("scroll", retake);
+  const was = look(article);
+  armed = was === null ? null : { keep, was, restore: keep() };
+  scrollerOf(armed)?.addEventListener("scroll", retake, { passive: true });
   return armed;
 };
 
-export const after = (was: Before | null, restore: () => void = () => undefined) => {
-  if (armed === was) armed = null;
-  if (was !== null) land(was, restore);
+export const after = (handle: Armed | null) => {
+  if (handle === null) return;
+  if (armed === handle) {
+    scrollerOf(armed)?.removeEventListener("scroll", retake);
+    armed = null;
+  }
+  land(handle.was, handle.restore);
 };
 
 export const reshape = (target: Element, apply: () => void) => {
-  const was = before(target.closest("article"));
+  const handle = before(target.closest("article"));
   flushSync(apply);
-  after(was);
+  after(handle);
 };
 
 let following: Before | null = null;
 
 export const follow = (article: Element | null) => {
-  if (following !== null || armed?.article.isConnected === true) return;
+  if (following !== null || armed?.was.article.isConnected === true) return;
   following = look(article);
   if (following === null) return;
   requestAnimationFrame(() => {
     const was = following;
     following = null;
-    if (was === null || armed?.article.isConnected === true) return;
-    const keys = [...was.article.querySelectorAll<HTMLElement>("[data-k]")].map(
-      ({ dataset }) => dataset.k ?? "",
-    );
-    const kept = [...was.layout.units.keys()];
-    if (keys.length === kept.length && keys.every((key, index) => key === kept[index])) return;
+    if (was === null || armed?.was.article.isConnected === true || unchanged(was)) return;
     land(was, () => undefined);
   });
 };
