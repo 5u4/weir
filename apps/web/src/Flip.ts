@@ -55,6 +55,7 @@ export const flipPlan = (
   band: Band,
 ): Plan => {
   const seen = within(band);
+  const reach = band.bottom - band.top;
   const was = new Map([...before].filter(([, unit]) => seen(unit)));
   const shown = [...after].filter(([, unit]) => seen(unit));
   shown.sort(([, a], [, b]) => a.top - b.top || a.left - b.left);
@@ -62,7 +63,12 @@ export const flipPlan = (
   const from = new Map<Key, Move>();
   const order = new Map<Key, number>();
   for (const [key, unit] of shown) {
-    const same = was.get(key);
+    const prior = before.get(key);
+    const same =
+      was.get(key) ??
+      (prior !== undefined && prior.bottom > prior.top && Math.abs(prior.top - unit.top) < reach
+        ? prior
+        : undefined);
     if (same !== undefined) {
       from.set(key, offset(same, unit));
       continue;

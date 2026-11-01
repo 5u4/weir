@@ -83,8 +83,24 @@ describe("flipPlan", () => {
       move: [],
     },
     {
-      name: "a row that was out of band and slides into view enters",
-      before: rects([["1", at(-200)]]),
+      name: "rows the list scrolled back by a row slide with their neighbours instead of entering",
+      before: rects([
+        ["1", at(-160)],
+        ["2", at(-60)],
+      ]),
+      after: rects([
+        ["1", at(-110)],
+        ["2", at(-10)],
+      ]),
+      enter: [],
+      move: [
+        ["1", { dx: 0, dy: -50 }],
+        ["2", { dx: 0, dy: -50 }],
+      ],
+    },
+    {
+      name: "a row that travels more than a viewport into view enters",
+      before: rects([["1", at(-1200)]]),
       after: rects([["1", at(0)]]),
       enter: [["1", 0]],
       move: [],
