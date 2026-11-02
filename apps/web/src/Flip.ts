@@ -220,7 +220,10 @@ const play = () => {
 export const capture = (enters: boolean) => {
   if (pending !== null) return;
   pending = { ...layout([...document.querySelectorAll<HTMLElement>(listed)]), enters };
-  requestAnimationFrame(play);
+  queueMicrotask(() => {
+    flushSync(() => undefined);
+    play();
+  });
 };
 
 export const leave = (key: Key): Promise<void> | null => {
