@@ -2,6 +2,7 @@ import { groupKeyPrefix } from "@weir/contract/Config";
 import type { RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
@@ -564,6 +565,7 @@ export const writeDigest = Effect.fnUntraced(function* (
   digest: DigestInsert,
   run: DigestRunInsert,
   replaces: DigestId | null,
+  readSeqs: ReadonlySet<Seq>,
 ) {
   const sql = yield* SqlClient.SqlClient;
   const row = yield* Schema.encodeEffect(DigestInsert)(digest);
@@ -572,6 +574,11 @@ export const writeDigest = Effect.fnUntraced(function* (
   );
   return yield* sql.withTransaction(
     Effect.gen(function* () {
+      yield* recordDigestRun(run);
+      const inRange = yield* sql<{ readonly seq: Seq }>`SELECT seq FROM item
+        WHERE conversation_id = ${digest.conversationId} AND deleted_at IS NULL
+          AND seq BETWEEN ${digest.fromSeq} AND ${digest.toSeq}`;
+      if (inRange.some(({ seq }) => !readSeqs.has(seq))) return Option.none<DigestRow>();
       const [written] = yield* decodeDigest(
         yield* sql`INSERT INTO digest ${sql.insert(row)} RETURNING *`,
       );
@@ -581,8 +588,7 @@ export const writeDigest = Effect.fnUntraced(function* (
         yield* sql`DELETE FROM digest WHERE id = ${replaces}`;
         yield* sql`DELETE FROM search_fts WHERE rowid = ${-replaces}`;
       }
-      yield* recordDigestRun(run);
-      return written;
+      return Option.some(written);
     }),
   );
 });

@@ -1,7 +1,9 @@
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import type { View } from "../src/Api.ts";
 import * as Http from "../src/Http.ts";
@@ -37,47 +39,66 @@ const item = (externalId: string, thread: string, minute: number, title: string 
     bodyNew: `note ${externalId}`,
   });
 
-const start = Effect.gen(function* () {
-  const source = fakeSource([]);
-  const { home, port, writeConfig } = makeHome("");
-  const base = sourceConfig() + digestConfig({ capture: join(home.root, "capture.jsonl") });
-  writeConfig(base);
-  yield* Layer.build(Http.layer(home, { fake: fakePlugin(source) }));
-  const client = yield* apiClient(port);
-  yield* eventually(client.status(), ({ sources }) =>
-    sources.every(
-      ({ streams }) => streams.length > 0 && streams.every(({ backfill }) => backfill === "done"),
-    ),
-  );
-  const maxSeq = client
-    .conversations({ query: { view: untagged } })
-    .pipe(Effect.map(({ seq }) => seq));
-  const deliver = (items: ReadonlyArray<RawItem>) =>
-    Effect.gen(function* () {
-      const before = yield* maxSeq;
-      source.pending.push(...items);
-      yield* eventually(maxSeq, (seq) => seq >= before + items.length);
+const boot = (gated: boolean) =>
+  Effect.gen(function* () {
+    const source = fakeSource([]);
+    const { home, port, writeConfig } = makeHome("");
+    const gate = join(home.root, "gate");
+    const started = join(home.root, "started");
+    const wrap = gated
+      ? [
+          "sh",
+          "-c",
+          `touch ${started}; while [ ! -e ${gate} ]; do sleep 0.05; done; exec "$@"`,
+          "gate",
+        ]
+      : [];
+    const base = sourceConfig() + digestConfig({ capture: join(home.root, "capture.jsonl"), wrap });
+    writeConfig(base);
+    yield* Layer.build(Http.layer(home, { fake: fakePlugin(source) }));
+    const client = yield* apiClient(port);
+    const generating = eventually(
+      Effect.sync(() => existsSync(started)),
+      (seen) => seen,
+    );
+    const release = Effect.sync(() => writeFileSync(gate, ""));
+    yield* eventually(client.status(), ({ sources }) =>
+      sources.every(
+        ({ streams }) => streams.length > 0 && streams.every(({ backfill }) => backfill === "done"),
+      ),
+    );
+    const maxSeq = client
+      .conversations({ query: { view: untagged } })
+      .pipe(Effect.map(({ seq }) => seq));
+    const deliver = (items: ReadonlyArray<RawItem>) =>
+      Effect.gen(function* () {
+        const before = yield* maxSeq;
+        source.pending.push(...items);
+        yield* eventually(maxSeq, (seq) => seq >= before + items.length);
+      });
+    const rows = Effect.gen(function* () {
+      const open = yield* client.conversations({ query: { view: untagged } });
+      const done = yield* client.conversations({ query: { view: cleared } });
+      return [...open.conversations, ...done.conversations];
     });
-  const rows = Effect.gen(function* () {
-    const open = yield* client.conversations({ query: { view: untagged } });
-    const done = yield* client.conversations({ query: { view: cleared } });
-    return [...open.conversations, ...done.conversations];
+    const rowOf = (title: string) =>
+      Effect.map(rows, (all) => {
+        const found = all.find((row) => row.title === title);
+        if (found === undefined) throw new Error(`no conversation titled ${title}`);
+        return found;
+      });
+    const detail = (id: number) => client.conversation({ params: { id } });
+    const seqsOf = (id: number) =>
+      Effect.map(detail(id), ({ items }) => items.map(({ seq }) => seq));
+    const configure = (groups: string) =>
+      Effect.gen(function* () {
+        writeConfig(base + groups);
+        yield* client.reload();
+      });
+    return { source, client, deliver, rows, rowOf, detail, seqsOf, configure, generating, release };
   });
-  const rowOf = (title: string) =>
-    Effect.map(rows, (all) => {
-      const found = all.find((row) => row.title === title);
-      if (found === undefined) throw new Error(`no conversation titled ${title}`);
-      return found;
-    });
-  const detail = (id: number) => client.conversation({ params: { id } });
-  const seqsOf = (id: number) => Effect.map(detail(id), ({ items }) => items.map(({ seq }) => seq));
-  const configure = (groups: string) =>
-    Effect.gen(function* () {
-      writeConfig(base + groups);
-      yield* client.reload();
-    });
-  return { source, client, deliver, rows, rowOf, detail, seqsOf, configure };
-});
+
+const start = boot(false);
 
 const lastOf = (seqs: ReadonlyArray<number>) => {
   const last = seqs.at(-1);
@@ -303,6 +324,58 @@ match = { type = "eq", target = "/fromMe", is = true }
       );
       expect(after.map(({ title }) => title)).toContain("Re: order D");
       expect((yield* detail(g)).items).toHaveLength(4);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a digest generated while an item moves into its range does not cover it", () =>
+    Effect.gen(function* () {
+      const { client, deliver, rowOf, detail, configure, generating, release } = yield* boot(true);
+      yield* configure(receipts);
+      yield* deliver([
+        item("a1", "ta", 1, "Receipt A"),
+        item("d1", "td", 2, "Lunch"),
+        item("a2", "ta", 3),
+      ]);
+      const g = (yield* rowOf("Receipts")).id;
+      const [moved] = (yield* detail((yield* rowOf("Lunch")).id)).items.map(({ seq }) => seq);
+      if (moved === undefined) throw new Error("expected the lunch item");
+
+      const pending = yield* Effect.forkChild(client.digest({ params: { id: g }, payload: {} }));
+      yield* generating;
+      yield* deliver([item("d2", "td", 4, "Receipt D")]);
+      yield* eventually(detail(g), ({ items }) => items.some(({ seq }) => seq === moved));
+      yield* release;
+      yield* Fiber.join(pending);
+
+      const spans = Effect.map(detail(g), ({ digests }) =>
+        digests.filter(({ from_seq, to_seq }) => from_seq <= moved && moved <= to_seq),
+      );
+      expect(yield* spans).toEqual([]);
+      yield* client.digest({ params: { id: g }, payload: {} });
+      expect(yield* spans).toHaveLength(1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a digest still commits when an item in its range is deleted mid-call", () =>
+    Effect.gen(function* () {
+      const { client, source, deliver, rowOf, detail, configure, generating, release } =
+        yield* boot(true);
+      yield* configure(receipts);
+      yield* deliver([item("a1", "ta", 1, "Receipt A"), item("a2", "ta", 2), item("a3", "ta", 3)]);
+      const g = (yield* rowOf("Receipts")).id;
+      const seqs = (yield* detail(g)).items.map(({ seq }) => seq);
+
+      const pending = yield* Effect.forkChild(client.digest({ params: { id: g }, payload: {} }));
+      yield* generating;
+      source.pendingDeletions.push("a2");
+      yield* eventually(detail(g), ({ items }) => items.length === 2);
+      yield* release;
+      const { digests } = yield* Fiber.join(pending);
+
+      expect(digests.map(({ from_seq, to_seq }) => [from_seq, to_seq])).toEqual([
+        [seqs[0], seqs[2]],
+      ]);
+      expect((yield* detail(g)).digests).toEqual(digests);
     }).pipe(Effect.scoped),
   );
 
