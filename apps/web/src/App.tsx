@@ -14,6 +14,7 @@ import { theme } from "./Theme.ts";
 import {
   arrivals,
   capCountsFeed,
+  closeMissing,
   found,
   listMotion,
   live,
@@ -28,6 +29,7 @@ export function App() {
   useAtomMount(tabTitle);
   useAtomMount(live);
   useAtomMount(arrivals);
+  useAtomMount(closeMissing);
   useAtomMount(keys);
   useAtomMount(listMotion);
   useAtomMount(capCountsFeed);

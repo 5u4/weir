@@ -201,7 +201,9 @@ describe("store items", () => {
         }),
       );
 
-      const [moved] = yield* writeItems(stream, [{ ...late, threadId: "t2", title: null }]);
+      const [moved] = yield* writeItems(stream, [
+        { ...late, threadId: "t2", key: "t2", title: null },
+      ]);
       expect(yield* summary).toEqual(
         Option.some({
           title: "Re: plan",

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./Body": "./src/Body.ts",
+    "./Groups": "./src/Groups.ts",
     "./Match": "./src/Match.ts",
     "./Scheduler": "./src/Scheduler.ts",
     "./Sync": "./src/Sync.ts",

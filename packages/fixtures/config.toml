@@ -63,3 +63,7 @@ match = { type = "some", target = "/raw/payload/headers", rule = { type = "and",
 [[tag]]
 name = "Promos"
 match = { type = "some", target = "/raw/labelIds", rule = { type = "eq", target = "", is = "CATEGORY_PROMOTIONS" } }
+
+[[group]]
+name = "Northbank alerts"
+match = { type = "regex", target = "/from/address", regex = "@northbank\\.example$", flags = "i" }

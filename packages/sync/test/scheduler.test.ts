@@ -105,6 +105,7 @@ describe("run", () => {
         run(
           sources,
           parsed.tag,
+          parsed.group,
           () => Effect.void,
           (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
           () => Effect.void,
@@ -159,6 +160,7 @@ describe("run", () => {
         };
         const pass = run(
           [{ id: "a", every: Duration.minutes(5), source }],
+          [],
           [],
           () => Effect.void,
           (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
@@ -229,6 +231,7 @@ describe("run", () => {
         run(
           [{ id: "a", every: Duration.minutes(5), source }],
           [{ name: "greeting", match: { type: "eq", target: "/title", is: "hello" } }],
+          [],
           () => Effect.void,
           (id, outcome) => Effect.sync(() => reports.push([id, outcome])),
           (ids) => Effect.sync(() => written.push(ids)),

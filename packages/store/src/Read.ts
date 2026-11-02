@@ -172,19 +172,37 @@ const decodeConversationIds = Schema.decodeUnknownEffect(
 
 export type LiveItemsQuery =
   | { readonly conversationIds: ReadonlyArray<ConversationId> }
-  | { readonly seqs: ReadonlyArray<Seq> };
+  | { readonly seqs: ReadonlyArray<Seq> }
+  | { readonly sourceId: string; readonly threads: ReadonlyArray<string> };
 
 export const liveItems = Effect.fnUntraced(function* (query: LiveItemsQuery) {
   const sql = yield* SqlClient.SqlClient;
   const selected =
     "seqs" in query
       ? sql.in("item.seq", query.seqs)
-      : sql.in("item.conversation_id", query.conversationIds);
+      : "conversationIds" in query
+        ? sql.in("item.conversation_id", query.conversationIds)
+        : sql`conversation.source_id = ${query.sourceId}
+            AND coalesce(thread_id, container_id) IN ${sql.in(query.threads)}`;
   return yield* decodeSourcedItems(
     yield* sql`SELECT item.*, conversation.source_id FROM item
       JOIN conversation ON conversation.id = item.conversation_id
       WHERE item.deleted_at IS NULL AND ${selected}
       ORDER BY item.conversation_id, item.seq`,
+  );
+});
+
+const decodeThreads = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ sourceId: Schema.String, thread: Schema.String })),
+);
+
+export const threads = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeThreads(
+    yield* sql`SELECT DISTINCT conversation.source_id, coalesce(thread_id, container_id) AS thread
+      FROM item JOIN conversation ON conversation.id = item.conversation_id
+      WHERE item.deleted_at IS NULL
+      ORDER BY 1, 2`,
   );
 });
 

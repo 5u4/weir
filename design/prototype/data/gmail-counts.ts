@@ -1,6 +1,7 @@
 // cd design/prototype && bun data/gmail-counts.ts [--check] — tag counts for the Gmail fixtures, written to
 // packages/fixtures/expected-tags.json. The rules come from packages/fixtures/config.toml and run through the prototype's
 // rule.ts on the fixtures' gws messages, both as fake-gws serves them and trimmed the way the gws plugin stores raw.
+// A conversation is a thread, or every thread with an item matching the same [[group]].
 // --check also syncs the real gws plugin against fake-gws and requires its RawItems to give the same counts.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,8 +27,11 @@ const GMAIL_CONTAINERS: [string, string][] = [
   ["INBOX", "Inbox"],
 ];
 
-const config = Bun.TOML.parse(readFileSync(join(FIXTURES, "config.toml"), "utf8")) as { tag: { name: string; match: unknown }[] };
-const tags = config.tag.map((t) => ({ name: t.name, match: Schema.decodeUnknownSync(Rule)(t.match, { onExcessProperty: "error" }) }));
+type Matcher = { name: string; match: unknown };
+const config = Bun.TOML.parse(readFileSync(join(FIXTURES, "config.toml"), "utf8")) as { tag: Matcher[]; group?: Matcher[] };
+const decodeRules = (entries: Matcher[]) => entries.map((t) => ({ name: t.name, match: Schema.decodeUnknownSync(Rule)(t.match, { onExcessProperty: "error" }) }));
+const tags = decodeRules(config.tag);
+const groups = decodeRules(config.group ?? []);
 const me = scenarios.people[scenarios.me].addr.toLowerCase();
 
 const walk = (part: MessagePart, visit: (p: MessagePart) => void) => {
@@ -76,26 +80,35 @@ const itemTags = messages.map((m) => {
     console.error(`message ${m.id}: tags on the full raw [${full}] differ from the trimmed raw [${trimmed}]`);
     process.exit(1);
   }
-  return { threadId: m.threadId, tags: full };
+  return { threadId: m.threadId, tags: full, groups: groups.filter((g) => match(g.match, input(m, m))).map((g) => g.name) };
 });
 
-type ItemTags = { threadId: string; tags: string[] };
-const summarize = (itemTags: ItemTags[]) => {
+type ItemTags = { threadId: string; tags: string[]; groups: string[] };
+const summarize = (threadItems: ItemTags[]) => {
+  const keyOf = new Map<string, string>();
+  for (const { threadId } of threadItems) {
+    const matched = new Set(threadItems.filter((i) => i.threadId === threadId).flatMap((i) => i.groups));
+    const group = groups.find((g) => matched.has(g.name));
+    keyOf.set(threadId, group === undefined ? threadId : `group:${group.name}`);
+  }
+  const itemTags = threadItems.map((i) => ({ key: keyOf.get(i.threadId) ?? i.threadId, tags: i.tags }));
   const count = (hit: (tags: string[]) => boolean) => {
+    const conversationTags = new Map<string, boolean>();
+    for (const i of itemTags) conversationTags.set(i.key, (conversationTags.get(i.key) ?? false) || hit(i.tags));
     const items = itemTags.filter((i) => hit(i.tags));
-    return { conversations: new Set(items.map((i) => i.threadId)).size, items: items.length };
+    return { conversations: [...conversationTags.values()].filter(Boolean).length, items: items.length };
   };
-  const threadTags = new Map<string, Set<string>>();
-  for (const i of itemTags) threadTags.set(i.threadId, new Set([...(threadTags.get(i.threadId) ?? []), ...i.tags]));
-  const untaggedThreads = [...threadTags].filter(([, t]) => t.size === 0).map(([id]) => id);
+  const keyTags = new Map<string, Set<string>>();
+  for (const i of itemTags) keyTags.set(i.key, new Set([...(keyTags.get(i.key) ?? []), ...i.tags]));
+  const untaggedKeys = [...keyTags].filter(([, t]) => t.size === 0).map(([id]) => id);
   return {
     source: SOURCE,
-    conversations: threadTags.size,
+    conversations: keyTags.size,
     items: itemTags.length,
     tags: Object.fromEntries(tags.map((t) => [t.name, count((x) => x.includes(t.name))])),
     untagged: {
-      conversations: untaggedThreads.length,
-      items: itemTags.filter((i) => untaggedThreads.includes(i.threadId)).length,
+      conversations: untaggedKeys.length,
+      items: itemTags.filter((i) => untaggedKeys.includes(i.key)).length,
     },
   };
 };
@@ -120,7 +133,11 @@ const pluginItemTags = async (): Promise<ItemTags[]> => {
         body: i.body,
         raw: i.raw,
       };
-      result.set(i.externalId, { threadId: i.threadId ?? i.containerId, tags: tags.filter((t) => match(t.match, input)).map((t) => t.name) });
+      result.set(i.externalId, {
+        threadId: i.threadId ?? i.containerId,
+        tags: tags.filter((t) => match(t.match, input)).map((t) => t.name),
+        groups: groups.filter((g) => match(g.match, input)).map((g) => g.name),
+      });
     }
     cursor = page.cursor;
     if (!page.more) return [...result.values()];

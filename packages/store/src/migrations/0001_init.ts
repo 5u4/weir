@@ -40,6 +40,7 @@ export const migration = Effect.gen(function* () {
     UNIQUE (stream_id, external_id)
   )`;
   yield* sql`CREATE INDEX item_conversation_id ON item (conversation_id)`;
+  yield* sql`CREATE INDEX item_thread ON item (coalesce(thread_id, container_id))`;
   yield* sql`CREATE TABLE conversation (
     id INTEGER PRIMARY KEY,
     source_id TEXT,

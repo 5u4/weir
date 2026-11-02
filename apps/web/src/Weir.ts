@@ -100,6 +100,27 @@ export const conversation = Atom.family((id: ConversationId) =>
   }),
 );
 
+const openMissing = Atom.make((get) =>
+  Option.exists(get(route).conversation, (id) =>
+    Option.exists(AsyncResult.error(get(conversation(id))), (error) => error._tag === "NotFound"),
+  ),
+);
+
+export const closeMissing = Atom.make((get) => {
+  get.subscribe(
+    openMissing,
+    (missing) => {
+      if (!missing) return;
+      get.registry.set(route, {
+        _tag: "Replace",
+        to: { ...get.registry.get(route), conversation: Option.none() },
+        origin: "passive",
+      });
+    },
+    { immediate: true },
+  );
+});
+
 export const arrivals = Atom.make((get) => {
   get.addFinalizer(
     awaitArrivals((id, signal) => {

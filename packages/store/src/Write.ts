@@ -1,3 +1,4 @@
+import { groupKeyPrefix } from "@weir/contract/Config";
 import type { RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -23,7 +24,12 @@ import {
   UtcIso,
 } from "./Rows.ts";
 
-export type StoredItem = RawItem & { readonly bodyNew: string };
+export type StoredItem = RawItem & { readonly bodyNew: string; readonly key: string };
+
+export interface ItemMove {
+  readonly seq: Seq;
+  readonly key: string;
+}
 
 export interface WrittenItem {
   readonly seq: Seq;
@@ -48,6 +54,21 @@ const decodeAddresses = Schema.decodeUnknownEffect(
 );
 const decodeItemRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId })),
+);
+const decodeMoveRefs = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId, key: Schema.String })),
+);
+const decodeTarget = Schema.decodeUnknownEffect(
+  Schema.Tuple([Schema.Struct({ id: ConversationId, lastSeq: Schema.NullOr(Seq) })]),
+);
+const decodeWatermarks = Schema.decodeUnknownEffect(
+  Schema.Tuple([
+    Schema.Struct({
+      lastSeq: Seq,
+      seenSeq: Schema.NullOr(Seq),
+      clearedSeq: Schema.NullOr(Seq),
+    }),
+  ]),
 );
 const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
 const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
@@ -129,14 +150,18 @@ const recomputeConversations = Effect.fnUntraced(function* (ids: ReadonlyArray<C
   if (ids.length === 0) return;
   const sql = yield* SqlClient.SqlClient;
   yield* sql`UPDATE conversation SET
-      title = coalesce(
-        (SELECT title FROM item
-          WHERE conversation_id = conversation.id AND deleted_at IS NULL AND title IS NOT NULL
-          ORDER BY occurred_at, seq LIMIT 1),
-        (SELECT container_name FROM item
-          WHERE conversation_id = conversation.id AND deleted_at IS NULL
-          ORDER BY occurred_at, seq LIMIT 1)
-      ),
+      title = CASE
+        WHEN substr(key, 1, ${groupKeyPrefix.length}) = ${groupKeyPrefix}
+          THEN substr(key, ${groupKeyPrefix.length + 1})
+        ELSE coalesce(
+          (SELECT title FROM item
+            WHERE conversation_id = conversation.id AND deleted_at IS NULL AND title IS NOT NULL
+            ORDER BY occurred_at, seq LIMIT 1),
+          (SELECT container_name FROM item
+            WHERE conversation_id = conversation.id AND deleted_at IS NULL
+            ORDER BY occurred_at, seq LIMIT 1)
+        )
+      END,
       first_at = live.first_at,
       last_at = live.last_at,
       last_seq = live.last_seq
@@ -150,6 +175,76 @@ const recomputeConversations = Effect.fnUntraced(function* (ids: ReadonlyArray<C
       GROUP BY conversation_id
     ) AS live
     WHERE conversation.id = live.conversation_id`;
+});
+
+export const moveItems = Effect.fnUntraced(function* (
+  sourceId: string,
+  moves: ReadonlyArray<ItemMove>,
+) {
+  if (moves.length === 0) return [];
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const keyOf = new Map(moves.map(({ seq, key }) => [seq, key]));
+      const current = yield* decodeMoveRefs(
+        yield* sql`SELECT item.seq, item.conversation_id, conversation.key FROM item
+          JOIN conversation ON conversation.id = item.conversation_id
+          WHERE ${sql.in("item.seq", [...keyOf.keys()])}`,
+      );
+      const byKey = new Map<string, Array<Seq>>();
+      const from = new Set<ConversationId>();
+      for (const { seq, conversationId, key } of current) {
+        const target = keyOf.get(seq);
+        if (target === undefined || target === key) continue;
+        from.add(conversationId);
+        const seqs = byKey.get(target);
+        if (seqs === undefined) byKey.set(target, [seq]);
+        else seqs.push(seq);
+      }
+      if (byKey.size === 0) return [];
+      const targets = yield* Effect.forEach([...byKey], ([key, seqs]) =>
+        Effect.gen(function* () {
+          const [target] = yield* decodeTarget(
+            yield* sql`INSERT INTO conversation (source_id, key) VALUES (${sourceId}, ${key})
+              ON CONFLICT (source_id, key) DO UPDATE SET key = excluded.key
+              RETURNING id, last_seq`,
+          );
+          yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
+          return target;
+        }),
+      );
+      yield* indexItems(sql.in("item.seq", [...byKey.values()].flat()));
+      const to = targets.map(({ id }) => id);
+      yield* recomputeConversations([...from, ...to]);
+      yield* Effect.forEach(
+        targets,
+        ({ id, lastSeq: lastBefore }) =>
+          Effect.gen(function* () {
+            const [now] = yield* decodeWatermarks(
+              yield* sql`SELECT c.last_seq, s.seen_seq, s.cleared_seq FROM conversation c
+                LEFT JOIN conversation_state s ON s.conversation_id = c.id
+                WHERE c.id = ${id}`,
+            );
+            const caughtUp = (watermark: Seq | null) =>
+              (watermark ?? 0) >= (lastBefore ?? 0) ? now.lastSeq : (watermark ?? Seq.make(0));
+            const rows = yield* encodeStates([
+              {
+                conversationId: id,
+                seenSeq: caughtUp(now.seenSeq),
+                clearedSeq: caughtUp(now.clearedSeq),
+                muted: false,
+              },
+            ]);
+            yield* sql`INSERT INTO conversation_state ${sql.insert(rows)}
+              ON CONFLICT (conversation_id) DO UPDATE SET
+                seen_seq = excluded.seen_seq,
+                cleared_seq = excluded.cleared_seq`;
+          }),
+        { discard: true },
+      );
+      return [...new Set([...from, ...to])];
+    }),
+  );
 });
 
 export const writeItems = Effect.fnUntraced(function* (
@@ -169,7 +264,7 @@ export const writeItems = Effect.fnUntraced(function* (
             WHERE c.source_id = ${stream.sourceId}
               AND ${sql.in(
                 "c.key",
-                latest.map((item) => item.threadId ?? item.containerId),
+                latest.map(({ key }) => key),
               )}
               AND c.last_seq > coalesce(s.seen_seq, 0)
               AND EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)`,
@@ -184,7 +279,7 @@ export const writeItems = Effect.fnUntraced(function* (
           );
           const [{ id: conversationId }] = yield* decodeConversationId(
             yield* sql`INSERT INTO conversation (source_id, key)
-              VALUES (${stream.sourceId}, ${item.threadId ?? item.containerId})
+              VALUES (${stream.sourceId}, ${item.key})
               ON CONFLICT (source_id, key) DO UPDATE SET key = excluded.key
               RETURNING id`,
           );

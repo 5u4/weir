@@ -5,6 +5,7 @@ import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import type { Groups } from "./Groups.ts";
 import { errorMessage, syncSource, type Written } from "./Sync.ts";
 import type { Tags } from "./Tags.ts";
 
@@ -79,6 +80,7 @@ export type SyncOutcome =
 export const run = (
   sources: ReadonlyArray<ScheduledSource>,
   tags: Tags,
+  groups: Groups,
   onStarted: (sourceId: string) => Effect.Effect<void>,
   report: (sourceId: string, outcome: SyncOutcome) => Effect.Effect<void>,
   onWritten: Written,
@@ -87,7 +89,7 @@ export const run = (
     sources,
     ({ id, every, source }) =>
       onStarted(id).pipe(
-        Effect.andThen(syncSource(id, source, tags, onWritten)),
+        Effect.andThen(syncSource(id, source, tags, groups, onWritten)),
         Effect.matchCauseEffect({
           onFailure: (cause) =>
             Cause.hasInterruptsOnly(cause)
