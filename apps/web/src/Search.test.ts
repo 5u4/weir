@@ -202,7 +202,7 @@ it.each<[string, Option.Option<"untagged">, number]>([
   expect(registry.get(route).query).toBe("north");
 });
 
-const risen = () => {
+const risen = async () => {
   const parent = {};
   const rows = [1, 2].map((id, index) => {
     const flags = new Set<string>();
@@ -220,6 +220,7 @@ const risen = () => {
   });
   daemon.page.rows = rows;
   for (const frame of daemon.frames.splice(0)) frame();
+  await Promise.resolve();
   return rows.filter(({ flags }) => flags.has("data-enter")).map(({ dataset }) => dataset.k);
 };
 
@@ -234,19 +235,19 @@ it("switching to a view with the same rows, or leaving a search that found them,
       AtomRegistry.getResult(registry, viewList(view), { suspendOnWaiting: true }),
     );
   }
-  risen();
+  await risen();
 
   registry.set(route, {
     _tag: "Go",
     to: { ...registry.get(route), view: "tag:Me" },
     origin: "passive",
   });
-  expect(risen()).toEqual(["1", "2"]);
+  expect(await risen()).toEqual(["1", "2"]);
 
   type("north");
   await vi.advanceTimersByTimeAsync(150);
   await vi.waitFor(() => expect(Option.isSome(registry.get(found))).toBe(true));
-  risen();
+  await risen();
   type("");
-  expect(risen()).toEqual(["1", "2"]);
+  expect(await risen()).toEqual(["1", "2"]);
 });

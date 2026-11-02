@@ -263,7 +263,7 @@ class Row {
 describe("a list update while rows are still rising in", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the rise running and slides the rows to their new places", () => {
+  it("keeps the rise running and slides the rows to their new places", async () => {
     const list = {};
     const rows = new Map<string, Row>();
     let shown: Row[] = [];
@@ -275,19 +275,17 @@ describe("a list update while rows are still rising in", () => {
         return row;
       });
     };
-    const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("innerHeight", 800);
     vi.stubGlobal("document", { querySelectorAll: () => shown });
-    vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
-    const update = (keys: ReadonlyArray<string>) => {
+    const update = async (keys: ReadonlyArray<string>) => {
       capture(true);
       show(keys);
-      for (const frame of frames.splice(0)) frame(0);
+      await Promise.resolve();
     };
 
     show(["6"]);
-    update(["7", "8", "6"]);
-    update(["9", "7", "8", "6"]);
+    await update(["7", "8", "6"]);
+    await update(["9", "7", "8", "6"]);
 
     const seen = (key: string) => {
       const row = rows.get(key);
