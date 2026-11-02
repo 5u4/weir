@@ -121,16 +121,23 @@ describe("weir-axi", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("item truncates the body until --full and prints the raw object with --raw", () =>
+  it.live("item truncates the body until --full and --raw prints pointers a rule matches", () =>
     Effect.gen(function* () {
-      const { home } = yield* startDaemon;
+      const { home, writeConfig } = yield* startDaemon;
       const short = yield* axi(home.root, "item", "1");
       expect(short.output.body).not.toContain("END");
       expect(short.output.help).toContain("weir-axi item 1 --full");
       const full = yield* axi(home.root, "item", "1", "--full");
       expect(full.output.body).toBe(longBody);
       const raw = yield* axi(home.root, "item", "1", "--raw");
-      expect(raw.output).toEqual({ seq: 1, raw: { labelIds: ["INBOX"] } });
+      expect(raw.output.raw).toEqual({ labelIds: ["INBOX"] });
+      writeConfig(`${config}
+[[tag]]
+name = "Inbox"
+match = { type = "eq", target = "/raw/labelIds/0", is = "INBOX" }
+`);
+      const tested = yield* axi(home.root, "tag", "test", "Inbox");
+      expect(tested.output.tags).toEqual([{ name: "Inbox", conversations: 1, items: 1 }]);
     }).pipe(Effect.scoped),
   );
 

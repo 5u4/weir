@@ -1,11 +1,12 @@
 import { type GroupConfig, groupKeyPrefix } from "@weir/contract/Config";
+import type { RuleInput } from "@weir/contract/Rule";
 import type { RawItem } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { SourcedItemRow, StreamRow } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
-import { match, type RuleInput, ruleInput } from "./Match.ts";
+import { match, ruleInput } from "./Match.ts";
 
 export type Groups = ReadonlyArray<Pick<GroupConfig, "name" | "match">>;
 
@@ -30,8 +31,8 @@ const collect = (inputs: Map<string, Array<RuleInput>>, thread: string, input: R
   else threadInputs.push(input);
 };
 
-const movesOf = (keys: ReadonlyMap<string, string>, items: ReadonlyArray<SourcedItemRow>) =>
-  items.map((item) => ({ seq: item.seq, key: keys.get(threadOf(item)) ?? threadOf(item) }));
+const keyOf = (keys: ReadonlyMap<string, string>, item: SourcedItemRow) =>
+  keys.get(threadOf(item)) ?? threadOf(item);
 
 export const joinThreads = Effect.fnUntraced(function* (
   stream: StreamRow,
@@ -67,11 +68,14 @@ export const joinThreads = Effect.fnUntraced(function* (
     });
   }
   const keys = keysOf(groups, inputs);
-  const moved = yield* Write.moveItems(stream.sourceId, movesOf(keys, stored));
+  const moved = yield* Write.moveItems(
+    stream.sourceId,
+    stored.map((item) => ({ seq: item.seq, key: keyOf(keys, item) })),
+  );
   return { keys, moved };
 });
 
-export const regroupThreads = Effect.fnUntraced(function* (
+const planThreads = Effect.fnUntraced(function* (
   sourceId: string,
   threads: ReadonlyArray<string>,
   groups: Groups,
@@ -79,22 +83,44 @@ export const regroupThreads = Effect.fnUntraced(function* (
   const items = yield* Read.liveItems({ sourceId, threads });
   const inputs = new Map<string, Array<RuleInput>>();
   for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
-  return yield* Write.moveItems(sourceId, movesOf(keysOf(groups, inputs), items));
+  const keys = keysOf(groups, inputs);
+  return items.map((item) => ({ item, key: keyOf(keys, item) }));
 });
 
-export const regroupAll = Effect.fnUntraced(function* (groups: Groups) {
-  const bySource = Arr.groupBy(yield* Read.threads(), ({ sourceId }) => sourceId);
-  yield* Effect.forEach(
-    Object.entries(bySource),
-    ([sourceId, rows]) =>
+export const regroupThreads = Effect.fnUntraced(function* (
+  sourceId: string,
+  threads: ReadonlyArray<string>,
+  groups: Groups,
+) {
+  const planned = yield* planThreads(sourceId, threads, groups);
+  return yield* Write.moveItems(
+    sourceId,
+    planned.map(({ item, key }) => ({ seq: item.seq, key })),
+  );
+});
+
+const eachThreadBatch = <A, E, R>(
+  run: (sourceId: string, threads: ReadonlyArray<string>) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const bySource = Arr.groupBy(yield* Read.threads(), ({ sourceId }) => sourceId);
+    return yield* Effect.forEach(Object.entries(bySource), ([sourceId, rows]) =>
       Effect.forEach(
         Arr.chunksOf(
           rows.map(({ thread }) => thread),
           regroupBatch,
         ),
-        (threads) => regroupThreads(sourceId, threads, groups),
-        { discard: true },
+        (threads) => run(sourceId, threads),
       ),
-    { discard: true },
+    );
+  });
+
+export const regroupAll = (groups: Groups) =>
+  eachThreadBatch((sourceId, threads) => regroupThreads(sourceId, threads, groups)).pipe(
+    Effect.asVoid,
   );
-});
+
+export const planAll = (groups: Groups) =>
+  eachThreadBatch((sourceId, threads) => planThreads(sourceId, threads, groups)).pipe(
+    Effect.map((batches) => batches.flat(2)),
+  );

@@ -1,6 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { type Config, untagged } from "@weir/contract/Config";
+import { type Config, groupKeyPrefix, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
 import { backlog, type Gap, gaps } from "@weir/digest/Range";
@@ -16,6 +16,7 @@ import {
   Seq,
 } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
+import { planAll } from "@weir/sync/Groups";
 import { match, ruleInput } from "@weir/sync/Match";
 import type * as Scheduler from "@weir/sync/Scheduler";
 import * as Arr from "effect/Array";
@@ -40,6 +41,7 @@ import {
   type DigestGap,
   DigestInterrupted,
   type DigestRun,
+  type GroupTest,
   type Line,
   NotFound,
   type Row,
@@ -242,6 +244,38 @@ const tagTest = Effect.fnUntraced(function* (file: string, name: string | undefi
     untagged,
     total,
   } satisfies TagTest;
+});
+
+const groupTest = Effect.fnUntraced(function* (file: string, name: string | undefined) {
+  const config = yield* ConfigFile.read(file);
+  if (name !== undefined && !config.group.some((group) => group.name === name)) {
+    return yield* new NotFound({ message: `no group "${name}" in ${file}` });
+  }
+  const conversations = new Map(
+    (yield* Read.search({ query: "" })).map((conversation) => [conversation.id, conversation]),
+  );
+  const planned = yield* planAll(config.group);
+  const movesOf = (entries: typeof planned) =>
+    entries.filter(({ item, key }) => conversations.get(item.conversationId)?.key !== key).length;
+  return {
+    config: file,
+    groups: config.group
+      .filter((group) => name === undefined || group.name === name)
+      .map((group) => {
+        const merged = planned.filter(({ key }) => key === `${groupKeyPrefix}${group.name}`);
+        const sources = [...new Set(merged.map(({ item }) => item.conversationId))].flatMap(
+          (id) => conversations.get(id) ?? [],
+        );
+        return {
+          name: group.name,
+          conversations: sources.length,
+          items: merged.length,
+          moves: movesOf(merged),
+          samples: sources.slice(0, tagTestSamples).map(summary),
+        };
+      }),
+    moves: movesOf(planned),
+  } satisfies GroupTest;
 });
 
 const previewLength = 160;
@@ -630,12 +664,17 @@ const weirHandlers = HttpApiBuilder.group(
             link: item.link,
             body: item.body,
             body_new: item.bodyNew,
-            raw: item.raw,
+            input: ruleInput(item),
             deleted_at: item.deletedAt === null ? null : DateTime.formatIso(item.deletedAt),
           };
         }),
       tagTest: ({ query: { name } }) =>
         tagTest(daemon.home.config, name).pipe(
+          withSql,
+          Effect.catchTag(["SqlError", "SchemaError"], Effect.die),
+        ),
+      groupTest: ({ query: { name } }) =>
+        groupTest(daemon.home.config, name).pipe(
           withSql,
           Effect.catchTag(["SqlError", "SchemaError"], Effect.die),
         ),

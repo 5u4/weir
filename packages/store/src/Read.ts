@@ -160,12 +160,18 @@ export const openTarget = Effect.fnUntraced(function* (conversationId: Conversat
   );
 });
 
+const decodeSourcedItems = Schema.decodeUnknownEffect(Schema.Array(SourcedItemRow));
+
 export const getItem = Effect.fnUntraced(function* (seq: Seq) {
   const sql = yield* SqlClient.SqlClient;
-  return Arr.head(yield* decodeItems(yield* sql`SELECT * FROM item WHERE seq = ${seq}`));
+  return Arr.head(
+    yield* decodeSourcedItems(
+      yield* sql`SELECT item.*, conversation.source_id FROM item
+        JOIN conversation ON conversation.id = item.conversation_id
+        WHERE item.seq = ${seq}`,
+    ),
+  );
 });
-
-const decodeSourcedItems = Schema.decodeUnknownEffect(Schema.Array(SourcedItemRow));
 const decodeConversationIds = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ id: ConversationId })),
 );

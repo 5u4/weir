@@ -1,5 +1,6 @@
 import { DurationShorthand } from "@weir/contract/Config";
 import { Digest, Trigger } from "@weir/contract/Digest";
+import { RuleInput } from "@weir/contract/Rule";
 import { Party, RowParty } from "@weir/contract/Source";
 import { ConversationState } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
@@ -223,7 +224,7 @@ export const Item = Schema.Struct({
   link: Schema.NullOr(Schema.String),
   body: Schema.String,
   body_new: Schema.String,
-  raw: Schema.Unknown,
+  input: RuleInput,
   deleted_at: Schema.NullOr(Schema.String),
 });
 
@@ -243,6 +244,21 @@ export const TagTest = Schema.Struct({
   total: Hits,
 });
 export type TagTest = typeof TagTest.Type;
+
+export const GroupHits = Schema.Struct({
+  name: Schema.String,
+  conversations: Schema.Int,
+  items: Schema.Int,
+  moves: Schema.Int,
+  samples: Schema.Array(ConversationSummary),
+});
+
+export const GroupTest = Schema.Struct({
+  config: Schema.String,
+  groups: Schema.Array(GroupHits),
+  moves: Schema.Int,
+});
+export type GroupTest = typeof GroupTest.Type;
 
 export const Reloaded = Schema.Struct({
   loaded_at: Schema.String,
@@ -276,6 +292,11 @@ export class WeirGroup extends HttpApiGroup.make("weir", { topLevel: true }).add
   HttpApiEndpoint.get("tagTest", "/tags/test", {
     query: { name: Schema.optionalKey(Schema.String) },
     success: TagTest,
+    error: [ConfigInvalid, NotFound],
+  }),
+  HttpApiEndpoint.get("groupTest", "/groups/test", {
+    query: { name: Schema.optionalKey(Schema.String) },
+    success: GroupTest,
     error: [ConfigInvalid, NotFound],
   }),
   HttpApiEndpoint.post("reload", "/reload", { success: Reloaded, error: ConfigInvalid }),
