@@ -55,6 +55,12 @@ const decodeAddresses = Schema.decodeUnknownEffect(
 const decodeItemRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId })),
 );
+const decodeDeleted = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId, thread: Schema.String })),
+);
+const decodeDigestIds = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ id: Schema.Number })),
+);
 const decodeMoveRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId, key: Schema.String })),
 );
@@ -210,6 +216,20 @@ export const moveItems = Effect.fnUntraced(function* (
               RETURNING id, last_seq`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
+          if (key.startsWith(groupKeyPrefix)) {
+            const dropped = yield* decodeDigestIds(
+              yield* sql`DELETE FROM digest WHERE conversation_id = ${target.id}
+                AND EXISTS (SELECT 1 FROM item WHERE ${sql.in("item.seq", seqs)}
+                  AND item.seq BETWEEN digest.from_seq AND digest.to_seq)
+                RETURNING id`,
+            );
+            if (dropped.length > 0) {
+              yield* sql`DELETE FROM search_fts WHERE ${sql.in(
+                "rowid",
+                dropped.map(({ id }) => -id),
+              )}`;
+            }
+          }
           return target;
         }),
       );
@@ -352,24 +372,24 @@ export const softDeleteItems = Effect.fnUntraced(function* (
   streamId: StreamId,
   externalIds: ReadonlyArray<string>,
 ) {
-  if (externalIds.length === 0) return [];
+  if (externalIds.length === 0) return { conversationIds: [], threads: [] };
   const sql = yield* SqlClient.SqlClient;
   const deletedAt = yield* Schema.encodeEffect(UtcIso)(yield* DateTime.now);
   return yield* sql.withTransaction(
     Effect.gen(function* () {
-      const deleted = yield* decodeItemRefs(
+      const deleted = yield* decodeDeleted(
         yield* sql`UPDATE item SET deleted_at = ${deletedAt}
           WHERE stream_id = ${streamId} AND deleted_at IS NULL AND ${sql.in("external_id", externalIds)}
-          RETURNING seq, conversation_id`,
+          RETURNING seq, conversation_id, coalesce(thread_id, container_id) AS thread`,
       );
-      if (deleted.length === 0) return [];
+      if (deleted.length === 0) return { conversationIds: [], threads: [] };
       yield* sql`DELETE FROM search_fts WHERE ${sql.in(
         "rowid",
         deleted.map(({ seq }) => seq),
       )}`;
       const conversationIds = [...new Set(deleted.map(({ conversationId }) => conversationId))];
       yield* recomputeConversations(conversationIds);
-      return conversationIds;
+      return { conversationIds, threads: [...new Set(deleted.map(({ thread }) => thread))] };
     }),
   );
 });

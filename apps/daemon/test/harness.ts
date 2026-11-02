@@ -237,6 +237,7 @@ export interface FakeSource {
   streams: () => Promise<ReadonlyArray<StreamDescriptor>>;
   items: ReadonlyArray<RawItem>;
   pending: Array<RawItem>;
+  pendingDeletions: Array<string>;
   syncCalls: number;
   failingStreams: Set<string>;
 }
@@ -245,6 +246,7 @@ export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
   streams: async () => [mailStream],
   items,
   pending: [],
+  pendingDeletions: [],
   syncCalls: 0,
   failingStreams: new Set(),
 });
@@ -259,7 +261,7 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
       if (state.failingStreams.has(streamId)) throw new Error(`${streamId} is unreachable`);
       return {
         upserts: cursor === null ? state.items : state.pending.splice(0),
-        deletions: [],
+        deletions: cursor === null ? [] : state.pendingDeletions.splice(0),
         cursor: "done",
         more: false,
         kind: cursor === null ? "backfill" : "live",

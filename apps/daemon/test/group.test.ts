@@ -11,6 +11,7 @@ import {
   eventually,
   fakePlugin,
   fakeSource,
+  mailStream,
   makeHome,
   rawItem,
   sourceConfig,
@@ -75,7 +76,7 @@ const start = Effect.gen(function* () {
       writeConfig(base + groups);
       yield* client.reload();
     });
-  return { client, deliver, rows, rowOf, detail, seqsOf, configure };
+  return { source, client, deliver, rows, rowOf, detail, seqsOf, configure };
 });
 
 const lastOf = (seqs: ReadonlyArray<number>) => {
@@ -221,6 +222,88 @@ describe("group", () => {
         expect(row).toMatchObject({ id: g, state: "unread", seen_seq: lastD, new: 1, items: 7 });
         expect((yield* Effect.flip(detail(d)))._tag).toBe("NotFound");
       }).pipe(Effect.scoped),
+  );
+
+  it.live("widening over a group digest's range drops that digest", () =>
+    Effect.gen(function* () {
+      const { client, deliver, rowOf, detail, configure } = yield* start;
+      yield* deliver([
+        item("a1", "ta", 1, "Receipt A"),
+        item("x1", "tx", 2, "Invoice X"),
+        item("b1", "tb", 3, "Receipt B"),
+      ]);
+      const x = (yield* rowOf("Invoice X")).id;
+      yield* configure(receipts);
+      const g = (yield* rowOf("Receipts")).id;
+      const { digests } = yield* client.digest({ params: { id: g }, payload: {} });
+      expect(digests).toHaveLength(1);
+
+      yield* configure(group("Receipts", "receipt|invoice"));
+
+      const widened = yield* detail(g);
+      expect(widened.items.map(({ title }) => title)).toContain("Invoice X");
+      expect(widened.digests).toEqual([]);
+      expect((yield* Effect.flip(detail(x)))._tag).toBe("NotFound");
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("only the last version of an item in a page decides its thread's group", () =>
+    Effect.gen(function* () {
+      const { source, rows, configure } = yield* start;
+      yield* configure(receipts);
+
+      source.pending.push(item("z1", "tz", 1, "Receipt Z"), item("z1", "tz", 1, "Hello Z"));
+
+      const titles = yield* eventually(
+        Effect.map(rows, (all) => all.map(({ title }) => title)),
+        (all) => all.includes("Hello Z") || all.includes("Receipts"),
+      );
+      expect(titles).toEqual(["Hello Z"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a change to the stream's own addresses regroups fromMe matches", () =>
+    Effect.gen(function* () {
+      const { source, deliver, rows, rowOf, detail, configure } = yield* start;
+      yield* configure(`
+[[group]]
+name = "Mine"
+match = { type = "eq", target = "/fromMe", is = true }
+`);
+      yield* deliver([
+        rawItem("m1", {
+          threadId: "tm",
+          title: "Plans",
+          from: { name: "Me", address: "alias@example.com" },
+        }),
+      ]);
+      expect((yield* rows).map(({ title }) => title)).toEqual(["Plans"]);
+
+      source.streams = async () => [{ ...mailStream, me: [...mailStream.me, "alias@example.com"] }];
+
+      const after = yield* eventually(rows, (all) => all.some(({ title }) => title === "Mine"));
+      expect(after.map(({ title }) => title)).toEqual(["Mine"]);
+      const mine = (yield* rowOf("Mine")).id;
+      expect((yield* detail(mine)).items.map(({ title }) => title)).toEqual(["Plans"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("deleting a thread's only matching item takes the thread out of the group", () =>
+    Effect.gen(function* () {
+      const { source, deliver, rows, rowOf, detail, configure } = yield* twoReceipts;
+      yield* deliver([item("d1", "td", 6, "Receipt D"), item("d2", "td", 7, "Re: order D")]);
+      yield* configure(receipts);
+      const g = (yield* rowOf("Receipts")).id;
+      expect((yield* detail(g)).items).toHaveLength(6);
+
+      source.pendingDeletions.push("d1");
+
+      const after = yield* eventually(rows, (all) =>
+        all.some(({ title }) => title === "Re: order D"),
+      );
+      expect(after.map(({ title }) => title)).toContain("Re: order D");
+      expect((yield* detail(g)).items).toHaveLength(4);
+    }).pipe(Effect.scoped),
   );
 
   it.live("rejects a duplicate group name", () =>

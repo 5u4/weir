@@ -35,10 +35,12 @@ const movesOf = (keys: ReadonlyMap<string, string>, items: ReadonlyArray<Sourced
 
 export const joinThreads = Effect.fnUntraced(function* (
   stream: StreamRow,
-  items: ReadonlyArray<RawItem>,
+  upserts: ReadonlyArray<RawItem>,
+  deletedThreads: ReadonlyArray<string>,
   groups: Groups,
 ) {
-  const threads = [...new Set(items.map(threadOf))];
+  const items = [...new Map(upserts.map((item) => [item.externalId, item])).values()];
+  const threads = [...new Set([...items.map(threadOf), ...deletedThreads])];
   if (groups.length === 0 || threads.length === 0) {
     return { keys: new Map<string, string>(), moved: [] };
   }
@@ -69,6 +71,17 @@ export const joinThreads = Effect.fnUntraced(function* (
   return { keys, moved };
 });
 
+export const regroupThreads = Effect.fnUntraced(function* (
+  sourceId: string,
+  threads: ReadonlyArray<string>,
+  groups: Groups,
+) {
+  const items = yield* Read.liveItems({ sourceId, threads });
+  const inputs = new Map<string, Array<RuleInput>>();
+  for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
+  return yield* Write.moveItems(sourceId, movesOf(keysOf(groups, inputs), items));
+});
+
 export const regroupAll = Effect.fnUntraced(function* (groups: Groups) {
   const bySource = Arr.groupBy(yield* Read.threads(), ({ sourceId }) => sourceId);
   yield* Effect.forEach(
@@ -79,13 +92,7 @@ export const regroupAll = Effect.fnUntraced(function* (groups: Groups) {
           rows.map(({ thread }) => thread),
           regroupBatch,
         ),
-        (threads) =>
-          Effect.gen(function* () {
-            const items = yield* Read.liveItems({ sourceId, threads });
-            const inputs = new Map<string, Array<RuleInput>>();
-            for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
-            yield* Write.moveItems(sourceId, movesOf(keysOf(groups, inputs), items));
-          }),
+        (threads) => regroupThreads(sourceId, threads, groups),
         { discard: true },
       ),
     { discard: true },
