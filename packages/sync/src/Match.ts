@@ -1,18 +1,6 @@
-import { Rule } from "@weir/contract/Rule";
+import { Rule, type RuleInput } from "@weir/contract/Rule";
 import type { SourcedItemRow } from "@weir/store/Rows";
 import * as JsonPointer from "effect/JsonPointer";
-
-export interface RuleInput {
-  readonly source: string;
-  readonly threadId: string | null;
-  readonly containerId: string;
-  readonly containerName: string;
-  readonly title: string | null;
-  readonly from: { readonly name: string; readonly address: string };
-  readonly fromMe: boolean;
-  readonly body: string;
-  readonly raw: unknown;
-}
 
 export const ruleInput = (item: SourcedItemRow): RuleInput => ({
   source: item.sourceId,

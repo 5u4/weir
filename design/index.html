@@ -935,8 +935,9 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 <tr><td><code>weir-axi</code></td><td>各 tag 和 Untagged 的未读数和待完成数，各 source 的 sync 状态，config 错误</td></tr>
 <tr><td><code>weir-axi search &lt;query&gt;</code></td><td>和 UI 的搜索用同一套匹配。两者查同一张 <code>search_fts</code>，原文只搜 <code>body_new</code>，所有词都在同一个 conversation 里出现才算命中，见<a href="#fts">第 05 节</a>。可以用 <code>--tag</code>、<code>--source</code>、<code>--from</code>、<code>--since</code> 过滤</td></tr>
 <tr><td><code>weir-axi conv &lt;id&gt;</code></td><td>一个 conversation 的 tag、各份 digest，以及没被 digest 覆盖的原文</td></tr>
-<tr><td><code>weir-axi item &lt;seq&gt; [--full] [--raw]</code></td><td>一条 item 的原文。<code>--raw</code> 打印存下来的 <code>raw</code> 对象，写 rule 时用它找 JSON Pointer</td></tr>
+<tr><td><code>weir-axi item &lt;seq&gt; [--full] [--raw]</code></td><td>一条 item 的原文。<code>--raw</code> 打印 rule 匹配的完整输入（<code>source</code>、<code>from</code>、<code>body</code>、<code>raw</code> 等），输出里的路径就是 rule 里要写的 JSON Pointer，例如 <code>/raw/labelIds/0</code></td></tr>
 <tr><td><code>weir-axi tag test &lt;name&gt;</code></td><td>按当前 config 跑一个 tag 的 rule，输出命中的 conversation 数和几个样例。AI 帮你写 tag 时靠它验证</td></tr>
+<tr><td><code>weir-axi group test [&lt;name&gt;]</code></td><td>按磁盘上的 config 算每个 group 会合并哪些 conversation，输出 conversation 数、item 数、<code>reload</code> 时会移动的 item 数和几个样例。不移动任何 item</td></tr>
 <tr><td><code>weir-axi digest &lt;conversation&gt; [--from &lt;seq&gt; | --up-to &lt;seq&gt;]</code></td><td>手动 digest。都不带等于 Digest now。<code>--from</code> 等于从那条开始的 Digest from here。<code>--up-to</code> 等于在那条结束的 Digest earlier</td></tr>
 <tr><td><code>weir-axi reload</code></td><td>重新读取并校验 config，失败时输出错误位置</td></tr>
 </tbody></table></div>
@@ -953,7 +954,7 @@ sources[1]{id,stream,last_sync,error}:
 help[2]:
   weir-axi search &lt;query&gt; --tag work
   weir-axi conv &lt;id&gt;</code></pre>
-<p>axi 只读 weir 的数据，不改变已读和完成状态，也不能对 source 做任何操作。能写的只有两个命令。<code>digest</code> 只往 AI 层加一份 digest，<code>reload</code> 只重新加载 config。<code>tag test</code> 只读，不改 config。</p>
+<p>axi 只读 weir 的数据，不改变已读和完成状态，也不能对 source 做任何操作。能写的只有两个命令。<code>digest</code> 只往 AI 层加一份 digest，<code>reload</code> 只重新加载 config。<code>tag test</code> 和 <code>group test</code> 只读，不改 config，也不移动 item。</p>
 
 <h2 id="security"><span class="n">12</span>安全边界是「只读」和「不信任消息内容」</h2>
 <p>邮件和群聊的内容是外部人写的，属于不可信输入。如果一个 agent 同时具备三样能力，就构成一条数据外泄路径：读得到你的私人数据，会读到外部内容，还能往外发消息。weir 的设计在每一层都切断其中一样。</p>

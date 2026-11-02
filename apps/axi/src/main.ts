@@ -90,6 +90,7 @@ const home = Command.make("weir-axi", {}, () =>
       help: [
         "weir-axi search <query> [--tag <tag>] [--source <id>] [--from <who>] [--since 7d]",
         "weir-axi tag test [<name>]",
+        "weir-axi group test [<name>]",
         "weir-axi reload",
       ],
     });
@@ -196,7 +197,7 @@ const item = Command.make(
       const client = yield* daemon;
       const found = yield* client.item({ params: { seq } });
       if (raw) {
-        yield* print({ seq, raw: found.raw });
+        yield* print(found.input);
         return;
       }
       const body = truncate(found.body, full);
@@ -244,6 +245,32 @@ const tagTest = Command.make(
     }),
 );
 
+const groupTest = Command.make(
+  "test",
+  { name: Argument.String("name").pipe(Argument.optional) },
+  ({ name }) =>
+    Effect.gen(function* () {
+      const client = yield* daemon;
+      const result = yield* client.groupTest({
+        query: Option.match(name, { onNone: () => ({}), onSome: (name) => ({ name }) }),
+      });
+      yield* print({
+        config: result.config,
+        groups: result.groups.map(({ name, conversations, items, moves }) => ({
+          name,
+          conversations,
+          items,
+          moves,
+        })),
+        moves: result.moves,
+        samples: result.groups.flatMap(({ name, samples }) =>
+          samples.map(({ id, title }) => ({ group: name, id, title })),
+        ),
+        help: ["weir-axi conv <id>", "weir-axi reload"],
+      });
+    }),
+);
+
 const reload = Command.make("reload", {}, () =>
   Effect.gen(function* () {
     const client = yield* daemon;
@@ -273,6 +300,7 @@ home.pipe(
     digest,
     item,
     Command.make("tag").pipe(Command.withSubcommands([tagTest])),
+    Command.make("group").pipe(Command.withSubcommands([groupTest])),
     reload,
   ]),
   Command.run({ version: "0.1.0" }),

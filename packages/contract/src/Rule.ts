@@ -45,3 +45,16 @@ export const Rule = Schema.Union([
   Schema.Struct({ type: Schema.Literal("some"), target: Pointer, rule: RuleRef }),
   Schema.Struct({ type: Schema.Literal("every"), target: Pointer, rule: RuleRef }),
 ]).pipe(Schema.toTaggedUnion("type"));
+
+export const RuleInput = Schema.Struct({
+  source: Schema.String,
+  threadId: Schema.NullOr(Schema.String),
+  containerId: Schema.String,
+  containerName: Schema.String,
+  title: Schema.NullOr(Schema.String),
+  from: Schema.Struct({ name: Schema.String, address: Schema.String }),
+  fromMe: Schema.Boolean,
+  body: Schema.String,
+  raw: Schema.Unknown,
+});
+export type RuleInput = typeof RuleInput.Type;

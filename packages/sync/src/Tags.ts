@@ -1,11 +1,12 @@
 import type { TagConfig } from "@weir/contract/Config";
+import type { RuleInput } from "@weir/contract/Rule";
 import * as Read from "@weir/store/Read";
 import type { ConversationId, ConversationTagRow, Seq, SourcedItemRow } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import { match, type RuleInput, ruleInput } from "./Match.ts";
+import { match, ruleInput } from "./Match.ts";
 
 export type Tags = ReadonlyArray<Pick<TagConfig, "name" | "match">>;
 

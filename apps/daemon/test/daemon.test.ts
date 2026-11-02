@@ -10,6 +10,7 @@ import {
 } from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
+import { match } from "@weir/sync/Match";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -584,7 +585,10 @@ describe("reads", () => {
         if (first === undefined) throw new Error("conversation without items");
         const item = yield* client.item({ params: { seq: first.seq } });
         expect(item.body).toContain("> old quoted text");
-        expect(item.raw).toEqual({ labelIds: ["INBOX"] });
+        expect(item.input).toMatchObject({ source: "mail", raw: { labelIds: ["INBOX"] } });
+        expect(match({ type: "eq", target: "/raw/labelIds/0", is: "INBOX" }, item.input)).toBe(
+          true,
+        );
         expect((yield* Effect.flip(client.item({ params: { seq: 9999 } })))._tag).toBe("NotFound");
         expect((yield* Effect.flip(client.conversation({ params: { id: 9999 } })))._tag).toBe(
           "NotFound",
@@ -618,6 +622,37 @@ describe("reads", () => {
           "Promo",
           "Sent",
         ]);
+
+        const before = yield* client.search({ query: { q: "" } });
+        writeConfig(`${config}
+[[group]]
+name = "Mail"
+match = { type = "eq", target = "/source", is = "mail" }
+
+[[group]]
+name = "Shadowed"
+match = { type = "eq", target = "/source", is = "mail" }
+`);
+        const grouped = yield* client.groupTest({ query: {} });
+        expect(
+          grouped.groups.map(({ name, conversations, items, moves }) => [
+            name,
+            conversations,
+            items,
+            moves,
+          ]),
+        ).toEqual([
+          ["Mail", 2, 3, 3],
+          ["Shadowed", 0, 0, 0],
+        ]);
+        expect(grouped.moves).toBe(3);
+        expect(grouped.groups[0]?.samples).toHaveLength(2);
+        const shadowed = yield* client.groupTest({ query: { name: "Shadowed" } });
+        expect(shadowed.groups.map(({ name }) => name)).toEqual(["Shadowed"]);
+        expect((yield* Effect.flip(client.groupTest({ query: { name: "Nope" } })))._tag).toBe(
+          "NotFound",
+        );
+        expect(yield* client.search({ query: { q: "" } })).toEqual(before);
       }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
     }),
   );
