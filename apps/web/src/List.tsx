@@ -3,6 +3,7 @@ import type { Row } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
+import * as Atom from "effect/reactivity/Atom";
 import { type CSSProperties, useCallback } from "react";
 import { Avatar } from "./Avatar.tsx";
 import { dayAndTime, now, plural, shortTime } from "./Health.ts";
@@ -39,12 +40,12 @@ type RowProps = {
   onDismiss: () => void;
 };
 
-function OpenRow(props: RowProps) {
-  const { seen } = useAtomValue(reading(ConversationId.make(props.row.id)));
-  return <ListRow {...props} seen={seen} />;
-}
+const unopened = Atom.make({ seen: 0 });
 
-function ListRow({ row, view, selected, hue, onDismiss, seen }: RowProps & { seen: number }) {
+function ListRow({ row, view, selected, hue, onDismiss }: RowProps) {
+  const { seen } = useAtomValue<{ readonly seen: number }>(
+    selected ? reading(ConversationId.make(row.id)) : unopened,
+  );
   const [current] = useAtom(route);
   const at = useAtomValue(now);
   const last = DateTime.makeUnsafe(row.last_at);
@@ -189,21 +190,18 @@ function ViewList() {
               <Empty view={view} />
             ) : (
               <ul key={view} className={rowsClass} ref={restore}>
-                {list.map((row) => {
-                  const props: RowProps = {
-                    row,
-                    view,
-                    selected: open === row.id,
-                    hue: tagHue(tags, view, row),
-                    onDismiss: () =>
-                      runDismiss({ act: view === "cleared" ? "Restore" : "Done", target: row }),
-                  };
-                  return props.selected ? (
-                    <OpenRow key={row.id} {...props} />
-                  ) : (
-                    <ListRow key={row.id} {...props} seen={0} />
-                  );
-                })}
+                {list.map((row) => (
+                  <ListRow
+                    key={row.id}
+                    row={row}
+                    view={view}
+                    selected={open === row.id}
+                    hue={tagHue(tags, view, row)}
+                    onDismiss={() =>
+                      runDismiss({ act: view === "cleared" ? "Restore" : "Done", target: row })
+                    }
+                  />
+                ))}
               </ul>
             ),
         })
