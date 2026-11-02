@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!repos", "!**/dist", "!design"]
+    "includes": ["**", "!repos", "!**/dist", "!design", "!skills/**/SKILL.md"]
   },
   "plugins": [
     "./lint/no-react-effect.grit",

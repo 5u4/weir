@@ -13,6 +13,8 @@ and delete the old path in the same change, with no compatibility shims.
 - A package under `plugins/` has runtime dependencies on workspace packages: only
   `packages/contract`. Dev and test dependencies on other workspace packages are allowed.
 - Nothing under `packages/`, `plugins/`, or `apps/` imports from `design/`.
+- `skills/` holds agent skills for weir users. `packages/contract/test/skill-config.test.ts`
+  decodes every `toml` block in `skills/weir-config/SKILL.md`, so a schema change updates the skill.
 
 ## Reference
 
