@@ -1,6 +1,6 @@
 ---
 name: weir-config
-description: Edit weir's config.toml. Use when adding or changing a tag or rule, a group, a source or plugin config, an AI profile, or digest settings.
+description: Edit tag and group rules in weir's config.toml. Use when adding or changing a tag, its match rule, or a group.
 ---
 
 # Editing weir config
@@ -12,7 +12,7 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 1. **Locate.** Run `weir-axi` with no arguments. Done when you hold the `config:` path it prints (it follows `WEIR_HOME`).
 2. **Gather evidence.** `weir-axi search <query>` finds conversations, `weir-axi conv <id>` lists their items, and `weir-axi item <seq> --raw` prints the full rule input. Done when every pointer you plan to write appears in that output, and you also hold one item that should _not_ match.
 3. **Edit** `config.toml`.
-4. **Verify.** Run `weir-axi tag test <name>` for each changed tag and `weir-axi group test [name]` for groups. Done when both print no validation error, every sample is one you expect, the item from step 2 that should match does, and the one that should not is absent. A nonzero `moves` is the number of items `reload` will move between conversations: tell the user that number before reloading.
+4. **Verify.** Run `weir-axi tag test <name>` for each changed tag and `weir-axi group test [name]` for groups. Each prints counts and at most three samples, so a stray match can hide outside them. Done when both print no validation error, every sample is one you expect, and each count equals the number of conversations your step 2 search found that should match. A nonzero `moves` is the number of items `reload` will move between conversations: tell the user that number before reloading.
 5. **Reload.** `weir-axi reload`, only after step 4 passes. A failed reload keeps no fallback: sync and digest stop until the config is valid.
 
 ## Pitfalls the schema does not show
@@ -25,8 +25,6 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 - Setting `ai = true` on a tag starts AI work from now (`ai_since`). Renaming the tag resets it.
 - Tags have no `color`.
 - A per-source view is a tag matching `/source`.
-- Changing `port` needs a daemon restart; `reload` does not apply it.
-- The plugin validates `[source.config]`. The `gws` plugin takes `command`, `backfill` and `labels`.
 
 ## Examples
 
