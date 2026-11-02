@@ -313,6 +313,7 @@ export interface DigestOptions {
   readonly args?: ReadonlyArray<string>;
   readonly concurrency?: number;
   readonly maxInput?: number;
+  readonly threshold?: number;
   readonly guide?: string;
 }
 
@@ -321,6 +322,7 @@ export const digestConfig = ({
   wrap = [],
   args = [],
   concurrency = 1,
+  threshold = 1000,
   maxInput = 24000,
   guide,
 }: DigestOptions) => `
@@ -331,7 +333,7 @@ concurrency = ${concurrency}
 
 [digest]
 ai = "fake"
-threshold = 1000
+threshold = ${threshold}
 max_input = ${maxInput}
 context = 6000
 ${guide === undefined ? "" : `guide = ${JSON.stringify(guide)}`}

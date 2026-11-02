@@ -39,7 +39,10 @@ const item = (externalId: string, thread: string, minute: number, title: string 
     bodyNew: `note ${externalId}`,
   });
 
-const boot = (gated: boolean) =>
+const boot = (
+  gated: boolean,
+  sizes: { readonly maxInput?: number; readonly threshold?: number } = {},
+) =>
   Effect.gen(function* () {
     const source = fakeSource([]);
     const { home, port, writeConfig } = makeHome("");
@@ -53,7 +56,8 @@ const boot = (gated: boolean) =>
           "gate",
         ]
       : [];
-    const base = sourceConfig() + digestConfig({ capture: join(home.root, "capture.jsonl"), wrap });
+    const base =
+      sourceConfig() + digestConfig({ capture: join(home.root, "capture.jsonl"), wrap, ...sizes });
     writeConfig(base);
     yield* Layer.build(Http.layer(home, { fake: fakePlugin(source) }));
     const client = yield* apiClient(port);
@@ -376,6 +380,65 @@ match = { type = "eq", target = "/fromMe", is = true }
         [seqs[0], seqs[2]],
       ]);
       expect((yield* detail(g)).digests).toEqual(digests);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a stale chunk stops its plan so the next auto digest covers the moved item", () =>
+    Effect.gen(function* () {
+      const { client, deliver, rowOf, detail, configure, generating, release } = yield* boot(true, {
+        maxInput: 1000,
+        threshold: 1000,
+      });
+      const sized = (
+        externalId: string,
+        thread: string,
+        minute: number,
+        title: string | null,
+        chars: number,
+      ) =>
+        rawItem(externalId, {
+          threadId: thread,
+          title,
+          occurredAt: `2030-01-01T09:${String(minute).padStart(2, "0")}:00Z`,
+          body: "x".repeat(chars),
+          bodyNew: "x".repeat(chars),
+        });
+      yield* configure(
+        receipts +
+          `
+[[tag]]
+name = "Paid"
+ai = true
+match = { type = "regex", target = "/title", regex = "receipt", flags = "i" }
+`,
+      );
+      yield* deliver([
+        sized("a1", "ta", 1, "Receipt A", 500),
+        sized("d1", "td", 2, "Lunch", 10),
+        sized("a2", "ta", 3, null, 500),
+        sized("a3", "ta", 4, null, 500),
+      ]);
+      const paid = yield* client.conversations({ query: { view: { _tag: "Tag", name: "Paid" } } });
+      const g = paid.conversations.find(({ title }) => title === "Receipts")?.id;
+      if (g === undefined) throw new Error("expected the Receipts row under Paid");
+      const [moved] = yield* Effect.map(detail((yield* rowOf("Lunch")).id), ({ items }) =>
+        items.map(({ seq }) => seq),
+      );
+      if (moved === undefined) throw new Error("expected the lunch item");
+
+      yield* generating;
+      yield* deliver([sized("d2", "td", 5, "Receipt D", 10)]);
+      yield* eventually(detail(g), ({ items }) => items.some(({ seq }) => seq === moved));
+      yield* release;
+
+      const digested = yield* eventually(detail(g), ({ digests }) => digests.length === 3);
+      const [s1, s2, s3, s4, s5] = digested.items.map(({ seq }) => seq);
+      expect(s2).toBe(moved);
+      expect(digested.digests.map(({ from_seq, to_seq }) => [from_seq, to_seq])).toEqual([
+        [s1, s2],
+        [s3, s4],
+        [s5, s5],
+      ]);
     }).pipe(Effect.scoped),
   );
 

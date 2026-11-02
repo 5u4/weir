@@ -113,7 +113,7 @@ export const make = Effect.fnUntraced(function* (
 
   const runChunk = Effect.fnUntraced(function* (plan: Plan, chunk: Range) {
     const detail = yield* Read.getConversation(plan.conversationId);
-    if (Option.isNone(detail)) return Option.none<DigestRow>();
+    if (Option.isNone(detail)) return Option.none<Write.DigestWrite>();
     const { conversation, items } = detail.value;
     const digests = yield* Read.digests([plan.conversationId]);
     const digestInput = Prompt.input({
@@ -139,7 +139,7 @@ export const make = Effect.fnUntraced(function* (
       context: settings.digest.context,
       maxInput: settings.digest.max_input,
     });
-    if (digestInput.items.length === 0) return Option.none<DigestRow>();
+    if (digestInput.items.length === 0) return Option.none<Write.DigestWrite>();
     const startedAt = yield* DateTime.now;
     const run = {
       conversationId: plan.conversationId,
@@ -193,7 +193,7 @@ export const make = Effect.fnUntraced(function* (
       plan.replaces?.id ?? null,
       new Set(items.map(({ seq }) => seq)),
     ).pipe(Effect.uninterruptible);
-    return written;
+    return Option.some(written);
   });
 
   const runPlan = Effect.fnUntraced(function* (plan: Plan) {
@@ -213,7 +213,9 @@ export const make = Effect.fnUntraced(function* (
           const written: Array<DigestRow> = [];
           for (const chunk of plan.chunks) {
             const result = yield* runChunk(plan, chunk);
-            if (Option.isSome(result)) written.push(result.value);
+            if (Option.isNone(result)) continue;
+            if (result.value._tag === "Stale") break;
+            written.push(result.value.digest);
           }
           return written;
         }),
