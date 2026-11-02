@@ -84,7 +84,11 @@ const planThreads = Effect.fnUntraced(function* (
   const inputs = new Map<string, Array<RuleInput>>();
   for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
   const keys = keysOf(groups, inputs);
-  return items.map((item) => ({ item, key: keyOf(keys, item) }));
+  return items.map((item) => ({
+    seq: item.seq,
+    conversationId: item.conversationId,
+    key: keyOf(keys, item),
+  }));
 });
 
 export const regroupThreads = Effect.fnUntraced(function* (
@@ -95,7 +99,7 @@ export const regroupThreads = Effect.fnUntraced(function* (
   const planned = yield* planThreads(sourceId, threads, groups);
   return yield* Write.moveItems(
     sourceId,
-    planned.map(({ item, key }) => ({ seq: item.seq, key })),
+    planned.map(({ seq, key }) => ({ seq, key })),
   );
 });
 

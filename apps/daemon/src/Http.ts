@@ -251,19 +251,20 @@ const groupTest = Effect.fnUntraced(function* (file: string, name: string | unde
   if (name !== undefined && !config.group.some((group) => group.name === name)) {
     return yield* new NotFound({ message: `no group "${name}" in ${file}` });
   }
-  const conversations = new Map(
-    (yield* Read.search({ query: "" })).map((conversation) => [conversation.id, conversation]),
+  const { found, planned } = yield* (yield* SqlClient.SqlClient).withTransaction(
+    Effect.all({ found: Read.search({ query: "" }), planned: planAll(config.group) }),
   );
-  const planned = yield* planAll(config.group);
+  const conversations = new Map(found.map((conversation) => [conversation.id, conversation]));
   const movesOf = (entries: typeof planned) =>
-    entries.filter(({ item, key }) => conversations.get(item.conversationId)?.key !== key).length;
+    entries.filter(({ conversationId, key }) => conversations.get(conversationId)?.key !== key)
+      .length;
   return {
     config: file,
     groups: config.group
       .filter((group) => name === undefined || group.name === name)
       .map((group) => {
         const merged = planned.filter(({ key }) => key === `${groupKeyPrefix}${group.name}`);
-        const sources = [...new Set(merged.map(({ item }) => item.conversationId))].flatMap(
+        const sources = [...new Set(merged.map(({ conversationId }) => conversationId))].flatMap(
           (id) => conversations.get(id) ?? [],
         );
         return {
