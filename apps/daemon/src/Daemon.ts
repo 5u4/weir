@@ -6,6 +6,7 @@ import * as Digester from "@weir/digest/Digester";
 import { gws } from "@weir/plugin-gws";
 import * as Read from "@weir/store/Read";
 import * as Write from "@weir/store/Write";
+import { regroupAll } from "@weir/sync/Groups";
 import * as Scheduler from "@weir/sync/Scheduler";
 import { recomputeAllTags } from "@weir/sync/Tags";
 import * as Context from "effect/Context";
@@ -130,6 +131,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           yield* Scheduler.run(
             sources,
             config.tag,
+            config.group,
             (sourceId) => syncEvent(sourceId, "started", null),
             report,
             (ids) =>
@@ -148,6 +150,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
         const { config, sources } = loaded;
         yield* sql.withTransaction(
           Write.reconcileTagState(config.tag.filter(({ ai }) => ai).map(({ name }) => name)).pipe(
+            Effect.andThen(regroupAll(config.group)),
             Effect.andThen(recomputeAllTags(config.tag)),
           ),
         );

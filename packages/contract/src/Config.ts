@@ -63,6 +63,14 @@ export const TagConfig = Schema.Struct({
 });
 export type TagConfig = typeof TagConfig.Type;
 
+export const GroupConfig = Schema.Struct({
+  name: NonEmptyString,
+  match: Rule,
+});
+export type GroupConfig = typeof GroupConfig.Type;
+
+export const groupKeyPrefix = "group:";
+
 const duplicatesOf = (
   section: string,
   field: string,
@@ -80,6 +88,7 @@ export const Config = Schema.Struct({
   digest: Schema.optionalKey(DigestConfig),
   source: Schema.Array(SourceConfig).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   tag: Schema.Array(TagConfig).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  group: Schema.Array(GroupConfig).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 }).check(
   Schema.makeFilter((config) => [
     ...duplicatesOf(
@@ -91,6 +100,11 @@ export const Config = Schema.Struct({
       "tag",
       "name",
       config.tag.map(({ name }) => name),
+    ),
+    ...duplicatesOf(
+      "group",
+      "name",
+      config.group.map(({ name }) => name),
     ),
     ...(config.digest !== undefined && !Object.hasOwn(config.ai ?? {}, config.digest.ai)
       ? [{ path: ["digest", "ai"], issue: `unknown ai profile "${config.digest.ai}"` }]

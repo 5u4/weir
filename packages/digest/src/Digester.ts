@@ -191,8 +191,9 @@ export const make = Effect.fnUntraced(function* (
       },
       { ...run, ms: yield* elapsed, ok: true, error: null, logPath: null },
       plan.replaces?.id ?? null,
+      new Set(items.map(({ seq }) => seq)),
     ).pipe(Effect.uninterruptible);
-    return Option.some(written);
+    return written;
   });
 
   const runPlan = Effect.fnUntraced(function* (plan: Plan) {

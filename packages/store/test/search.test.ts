@@ -74,7 +74,9 @@ describe("search", () => {
       const item = rawItem("m1", { bodyNew: "migration plan" });
       const [written] = yield* writeItems(stream, [item]);
 
-      expect(yield* softDeleteItems(stream.id, ["m1"])).toEqual([written?.conversationId]);
+      expect((yield* softDeleteItems(stream.id, ["m1"])).conversationIds).toEqual([
+        written?.conversationId,
+      ]);
       expect(yield* matches({ query: "migration" })).toEqual(new Set());
       expect(yield* matches({ query: "" })).toEqual(new Set());
 

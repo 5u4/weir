@@ -64,8 +64,8 @@ describe("Config", () => {
     expect(config.ai?.luna?.timeout).toEqual(Duration.seconds(180));
   });
 
-  it("defaults to no sources and no tags", () => {
-    expect(decode({})).toEqual({ source: [], tag: [] });
+  it("defaults to no sources, tags or groups", () => {
+    expect(decode({})).toEqual({ source: [], tag: [], group: [] });
   });
 
   it("passes [source.config] through untouched for the plugin to validate", () => {

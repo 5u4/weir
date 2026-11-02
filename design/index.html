@@ -139,7 +139,7 @@ ol.trace > li > strong:first-child { display: block; }
 <tr><td><code>item</code></td><td>一条消息，比如一封邮件或一条 Teams 消息。</td></tr>
 <tr><td><code>thread_id</code></td><td>source 给出的分组，比如一个 Gmail thread。可以为空。</td></tr>
 <tr><td><code>container_id</code></td><td>消息在哪里说的。Gmail 是邮箱地址，Teams 是一个 chat 或频道。</td></tr>
-<tr><td><code>conversation</code></td><td>同一个 source 里 <code>thread_id ?? container_id</code> 相同的 item。sync 时按结构定下，不调用 AI。是 UI 和 digest 处理的基本单位。</td></tr>
+<tr><td><code>conversation</code></td><td>同一个 source 里 <code>thread_id ?? container_id</code> 相同的 item；thread 里有 item 命中某条 <code>[[group]]</code> 时，是命中同一条 group 的所有 thread。sync 时按结构和 config 定下，不调用 AI。是 UI 和 digest 处理的基本单位。</td></tr>
 <tr><td><code>tag</code></td><td>用户在 config 里定义的标签，比如 <code>work</code>。由 rule 算出，一个 conversation 可以带多个 tag。没有内置 tag。</td></tr>
 <tr><td><code>rule</code></td><td>tag 的匹配条件，对单条 item 求值。conversation 里任意一条 item 命中，conversation 就带这个 tag。</td></tr>
 <tr><td><code>Untagged</code></td><td>一个 tag 都没命中的 conversation 所在的视图。它不是 tag，config 里不写。config 里一个 tag 都没有时，所有 conversation 都在这里。</td></tr>
@@ -177,7 +177,7 @@ sequenceDiagram
 
 <ol class="trace">
 <li><strong>sync 拉到这封邮件。</strong>scheduler 每 5 分钟调用一次 plugin 的 <code>sync(stream, cursor)</code>，间隔由 <code>sync_every</code> 决定。gws plugin 从上次的 Gmail historyId 起读 history，返回一条 item，<code>thread_id</code> 是 Gmail 的 thread id，<code>body</code> 是转成 markdown 的正文，<code>bodyNew</code> 是去掉引用历史和签名后的正文，<code>raw</code> 是去掉正文和传输、签名头之后的 API 返回。core 按 <code>(stream_id, external_id)</code> upsert，重复 sync 不会产生重复 item。新 item 拿到一个 seq，同时记下 <code>synced_at</code>。core 把 <code>bodyNew</code> 写进 <code>body_new</code>，FTS index 同时更新。从这一刻起，UI 和 <code>weir-axi search</code> 都能搜到它。已有的 item 再次 upsert 时，比如 Gmail 加了或去掉一个 label，保留原来的 seq，字段、<code>raw</code>、<code>body_new</code> 和 FTS 行一起替换。<code>last_seq</code> 不变，所以 conversation 不会重新出现，也不会变成未读。tag 怎么跟着变，见<a href="#assign-tags">第 06 节</a>。</li>
-<li><strong>按结构挂进 conversation。</strong>conversation 的 key 是 source 加上 <code>thread_id ?? container_id</code>。这封邮件的 thread 已经有 conversation，它直接挂进去。这一步不调用 AI。</li>
+<li><strong>按结构挂进 conversation。</strong>conversation 的 key 是 source 加上 <code>thread_id ?? container_id</code>；这个 thread 有一条 item 命中 <code>[[group]]</code> 时，key 是 <code>group:&lt;name&gt;</code>。这封邮件的 thread 已经有 conversation，它直接挂进去。这一步不调用 AI。</li>
 <li><strong>对新 item 跑 tag rule。</strong>core 用每个 tag 的 rule 匹配这一条 item。命中的 tag 加到 conversation 上。已有的 tag 不会因为新 item 没命中而去掉，因为一条命中就够。这里 <code>work</code> 本来就在。</li>
 <li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>work</code> 视图，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时阅读区里，上一份 digest 之后的三封邮件还是原文气泡。</li>
 <li><strong>算待 digest 的字数。</strong>conversation 带 <code>ai = true</code> 的 tag，所以走自动 digest。起点是上一份 digest 之后、<code>occurred_at</code> 不早于 <code>ai_since</code> 的第一条 item。从起点到最后一条，<code>body_new</code> 一共 1500 字符，过了 1000 的阈值。没有安静期，也没有定时器，条件一成立就排进 digest 队列。</li>
@@ -339,7 +339,7 @@ flowchart TD
 <p>plugin 和 rule 都归用户自己。plugin 改了 <code>raw</code> 的形状，比如多删一个字段或换了拉取格式，依赖它的 rule 会静默失效。weir 不检测，也不报警。plugin 的文档写明它存了什么。MVP 不压缩 <code>raw</code>，也不按时间清理旧数据。</p>
 
 <div class="callout note"><span class="t">容易误解的地方</span>
-你可能以为 conversation 要由 AI 判断哪些消息在说同一件事。它不是。conversation 只看结构，key 是 source 加上 <code>thread_id ?? container_id</code>。一封邮件的 thread 就是一个 conversation。Teams 的一个 chat 或一个频道整体是一个 conversation，不按频道里的回复串拆开。频道帖子的 <code>thread_id</code> 照样存下来，只用来显示「回复了哪条」。一个群里同时聊五件事，由 digest 的 topic 分开，不由 conversation 分开。
+你可能以为 conversation 要由 AI 判断哪些消息在说同一件事。它不是。conversation 只看结构，key 是 source 加上 <code>thread_id ?? container_id</code>。一封邮件的 thread 就是一个 conversation。Teams 的一个 chat 或一个频道整体是一个 conversation，不按频道里的回复串拆开。频道帖子的 <code>thread_id</code> 照样存下来，只用来显示「回复了哪条」。一个群里同时聊五件事，由 digest 的 topic 分开，不由 conversation 分开。想把几个 thread 并成一个 conversation，比如银行的每条通知各是一个 thread，就在 config 里写一条 <code>[[group]]</code>，由规则决定，同样不调用 AI。
 </div>
 
 <p>每条 item 都带 <code>thread_id</code> 和 <code>container_id</code> 两个字段，两者含义固定。<code>thread_id</code> 可以为空，Teams 群聊里的大部分消息就没有。</p>
@@ -377,7 +377,7 @@ erDiagram
 <tbody>
 <tr><td><code>stream</code></td><td><code>id, source_id, external_id, kind, name, open_label, me, cursor, backfilled_at, last_sync_at, last_error</code></td><td><code>source_id</code> 对应 config 里的 <code>[[source]] id</code>。source 本身不建表，它的配置只在 config 里。<code>external_id</code> 是 plugin 给的 stream descriptor 的 <code>id</code>，<code>(source_id, external_id)</code> 唯一。<code>backfilled_at</code> 跟着每一页的 <code>backfill</code> 字段，和这一页同一个事务提交：<code>running</code> 把它清空，<code>done</code> 在它为空时写入当前时间。它为空时状态页显示回填中。</td></tr>
 <tr><td><code>item</code></td><td><code>seq, stream_id, external_id, kind, conversation_id, thread_id, container_id, container_name, occurred_at, synced_at, title, from_name, from_address, from_me, body, body_new, link, raw, deleted_at</code></td><td><code>seq</code> 是自增主键，也是 item 唯一的 id。<code>(stream_id, external_id)</code> 唯一。发件人直接存成列，不另建表。<code>body</code> 和 <code>body_new</code> 是 markdown。<code>raw</code> 是 plugin 交出的 JSON。删除用软删除。</td></tr>
-<tr><td><code>conversation</code></td><td><code>id, source_id, key, title, first_at, last_at, last_seq</code></td><td><code>(source_id, key)</code> 唯一，<code>key</code> 是 <code>thread_id ?? container_id</code>。</td></tr>
+<tr><td><code>conversation</code></td><td><code>id, source_id, key, title, first_at, last_at, last_seq</code></td><td><code>(source_id, key)</code> 唯一，<code>key</code> 是 <code>thread_id ?? container_id</code>，thread 命中 <code>[[group]]</code> 时是 <code>group:&lt;name&gt;</code>。group 的 <code>title</code> 是 group 名。</td></tr>
 <tr><td><code>conversation_tag</code></td><td><code>conversation_id, tag</code></td><td>tag 的缓存，给列表查询和计数用。sync 写新 item 时追加。已有 item 再次 upsert 时，重算这个 conversation 的行。启动和 reload 时按当前 config 整表重算。</td></tr>
 <tr><td><code>digest</code></td><td><code>id, conversation_id, from_seq, to_seq, headline, topics, trigger, ai_profile, created_at</code></td><td><code>topics</code> 存 JSON，每项是 <code>{ title, state, body, seqs }</code>，<code>state</code> 取 <code>open</code>、<code>resolved</code>、<code>fyi</code>。<code>trigger</code> 取 <code>auto</code>、<code>manual</code>。同一 conversation 的范围互不重叠。行写好就不改，Redo 时整行替换。索引 <code>(conversation_id, from_seq DESC, id DESC)</code> 给按 conversation 取 digest 用。</td></tr>
 <tr><td><code>tag_state</code></td><td><code>name, ai_since</code></td><td><code>name</code> 是主键。每个 <code>ai = true</code> 的 tag 一行，规则见<a href="#tag-state">第 09 节</a>。</td></tr>
@@ -467,10 +467,14 @@ flowchart TD
 <h3 id="assign-sync">conversation 的 key 只看结构</h3>
 <ul>
 <li>key 是 source 加上 <code>thread_id ?? container_id</code>。有 <code>thread_id</code> 就按 thread 分，没有就按 container 分。</li>
+<li>config 里的 <code>[[group]]</code> 有 <code>name</code> 和 <code>match</code>，<code>match</code> 是和 tag 一样的 Rule，group 名不能重复。thread 里任意一条 item 命中时，整个 thread 的 key 变成 <code>group:&lt;name&gt;</code>，几条 group 都命中时取 config 里写在前面的。匹配按整个 thread 算，和 tag 的「任意一条命中」一致，回复过的一张收据不会被拆开。sync 写一页时，先软删除这一页的 deletions，再用这一页 upsert 的 item（同一个 external id 只取最后一个版本）和这些 thread 剩下的已存 item 算出 key，被删 item 所在的 thread 也重算，把 key 变了的已存 item 整体移过去，再写这一页。stream 的 <code>me</code> 变了、改了 item 的 <code>from_me</code> 时，这些 item 所在的 thread 也重算 key。</li>
+<li>reload 时按新 config 重算每个 thread 的 key，key 变了的 item 移到新的 conversation，<code>search_fts</code> 里 item 行的 <code>conversation_id</code> 跟着改，然后重算 conversation 和 tag。原来的 thread conversation 行不删：它的 digest 和状态留在原处，里面没有 item 时列表不显示，规则去掉后 item 回来，digest 和状态也就回来了。digest 不迁移，group conversation 从没有 digest 开始；归组期间，搜索命中旧 thread digest 的词不会带出 group 行。</li>
+<li>移动时，收到 item 的 conversation 的 <code>seen_seq</code> 和 <code>cleared_seq</code> 分别判断：移动前它已经追上 <code>last_seq</code>（没有状态、<code>last_seq</code> 为空都按 0 算），就推到移动后的 <code>last_seq</code>，否则不动。所以新加的 group 是已读、已完成，只有之后来的新邮件让它重新出现；本来没追上的 conversation 继续未读。已知的局限：一个 conversation 只有一个水位，表示不了中间的空洞。thread 在归组前已完成、group 收到一封新的未读邮件后去掉规则，这封邮件会在 thread 里显示为已完成，扩大规则时同理。group conversation 的 digest 按 seq 区间记录：移进来的 item 落在它某条 digest 的 <code>[from_seq, to_seq]</code> 里时，删掉这条 digest 和它的 <code>search_fts</code> 行，之后重新生成。thread conversation 不受影响，按整个 thread 匹配，它的 item 要么都在、要么都不在，digest 区间一直准确。没有记录哪些 item 曾属于 group，所以去掉规则再加回来时，group 原来的 digest 会被删掉、重新生成，不会恢复。</li>
+<li>AI 调用期间，sync 也可能把 item 移进正在生成的区间（新邮件让一个已存的 thread 开始命中规则），这时还没有 digest 可删。reload 会先中断 AI 调用，不会遇到这种情况。所以写 digest 的事务里再读一遍区间内的 live item：有一条不在 AI 读到的 item 里，就不写这份 digest，只记下这次运行，这段区间留给下一次 digest。AI 调用期间离开区间的 item，比如被删除的，不影响写入。</li>
 <li>邮件的一个 Gmail thread 是一个 conversation。Teams 的一个 chat 或一个频道是一个 conversation。</li>
-<li>key 里带 source，所以一个 conversation 只来自一个 source。MVP 没有跨 source 的 conversation。</li>
+<li>key 里带 source，所以一个 conversation 只来自一个 source。MVP 没有跨 source 的 conversation，group 也不跨 source。</li>
 <li>AI 不参与。没有「先开一个临时 conversation，等 AI 决定要不要合并」这一步，也就没有「正在分拣」的中间状态。</li>
-<li>MVP 不能手动移动 item。digest 记的是一段连续的 seq，把 item 移走会让已写好的 digest 失真。移动和合并留到以后，见<a href="#later">第 14 节</a>。</li>
+<li>不能在 UI 里手动移动 item，也不能在 UI 里编辑 group。合并只走 config 里的 <code>[[group]]</code>。</li>
 </ul>
 
 <h3 id="assign-tags">tag 是派生数据，任意一条 item 命中就算</h3>
@@ -608,7 +612,7 @@ flowchart TD
 
 <h3 id="conv-change">conversation 只增长，没有手动操作</h3>
 <ul>
-<li>conversation 的 key 由结构决定，不拆分，不合并，也不能手动移动 item。</li>
+<li>conversation 的 key 由结构和 <code>[[group]]</code> 决定，不能手动拆分、合并或移动 item。</li>
 <li>不提供删除 conversation，用「完成」或「静音」代替。</li>
 <li>source 那边删了邮件，item 做软删除。覆盖它的 digest 不改，要更新就点 Redo。</li>
 </ul>
@@ -702,7 +706,11 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/l
 
 [[tag]]
 name = <span class="s">"lists"</span>
-match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/payload/headers"</span>, rule = { type = <span class="s">"eq"</span>, target = <span class="s">"/name"</span>, is = <span class="s">"List-Unsubscribe"</span> } }</code></pre>
+match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/payload/headers"</span>, rule = { type = <span class="s">"eq"</span>, target = <span class="s">"/name"</span>, is = <span class="s">"List-Unsubscribe"</span> } }
+
+[[group]]
+name = <span class="s">"bank"</span>
+match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from/address"</span>, regex = <span class="s">"@northbank\\.example$"</span> }</code></pre>
 </details>
 
 <ul>
@@ -715,6 +723,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 <li>source 没有自己的视图。想单独看某个 source，就写一个按 <code>/source</code> 匹配的 tag，比如 <code>[[tag]] name = "gmail"</code> 配 <code>match = { type = "eq", target = "/source", is = "personal-mail" }</code>。</li>
 <li><code>[digest] ai</code> 只能引用已定义的 profile。拼错了，校验会报出 config 路径。</li>
 <li>tag 没有 <code>color</code> 字段。UI 按 tag 在 config 里的顺序分配色相，在 6 个色相里轮流取，第 7 个 tag 起重复。色相只决定色调，明度和饱和度由 UI 按主题和用途决定，这样对比度由 UI 统一负责。Untagged 用中性色。</li>
+<li><code>[[group]]</code> 把同一个 source 里命中同一条规则的 thread 并成一个 conversation，名字就是这个 conversation 的标题。改规则后 reload 才重新分组。</li>
 </ul>
 
 <h3 id="rule">Rule 是一个递归的判别联合</h3>
@@ -994,7 +1003,6 @@ help[2]:
 <tr><td>IMAP 和非 Gmail 邮箱</td><td>等真有一个非 Gmail 邮箱再做</td><td>新的 source plugin，一个文件夹一个 stream</td></tr>
 <tr><td>plugin 需要密钥时的 <code>*_cmd</code> 字段</td><td>MVP 的 plugin 都不需要密钥</td><td>core 执行 <code>*_cmd</code> 取值，再交给 plugin，比如从 Keychain 取</td></tr>
 <tr><td>被 @ 时立刻 digest</td><td>要先能可靠地认出「@ 我」，而 RawItem 不再带 mentions</td><td>一条读 <code>raw</code> 的 rule 加一个绕过阈值的开关</td></tr>
-<tr><td>手动移动、合并 item</td><td>digest 是不变的 seq 范围，移动 item 会让它失真</td><td>移动时作废受影响的 digest</td></tr>
 <tr><td>我发的消息不改变 conversation 的状态</td><td>MVP 之外的附加功能。MVP 只保留一条规则，任何新 item 都让 <code>last_seq</code> 变大，包括我自己的回复</td><td>upsert 的事务里，和冷启动回填推 <code>seen_seq</code> 是同一处，见<a href="#visibility">第 08 节</a>。<code>from_me</code> 的 item 把 <code>seen_seq</code> 推到它的 seq。conversation 已经完成时，也把 <code>cleared_seq</code> 推过去。这样我自己的回复不会让它变成未读，也不会让它重新出现</td></tr>
 <tr><td>我写的字不计入自动 digest 的阈值</td><td>MVP 之外的附加功能。MVP 只保留一条规则，阈值按所有新 item 的 <code>body_new</code> 字数算，不分谁写的</td><td>自动链条数阈值字数的地方跳过 <code>from_me</code> 的 item，见<a href="#auto">第 07 节</a>。这些 item 仍然是 digest 的输入</td></tr>
 <tr><td>跨 conversation 的 topic 视图</td><td>topic 还没有稳定 id</td><td>先做稳定的 topic id</td></tr>
@@ -1088,8 +1096,9 @@ help[2]:
 <ul>
 <li><code>FIXTURE_NOW</code> 是 <code>2026-10-25T09:00:00-07:00</code>，从 <code>@weir/fixtures</code> 导出。fake-gws 的默认邮箱和 demo 的时钟都用它，fixtures 的代码里不读系统时间。</li>
 <li><code>packages/fixtures/config.toml</code> 是提交进仓库的 weir config：一个 <code>id = "gmail"</code>、<code>plugin = "gws"</code> 的 source，<code>command = ["fake-gws"]</code>，<code>backfill = "newer_than:30d"</code>，<code>labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]</code>，以及从原型 <code>tags.toml</code> 复制的四个 tag。<code>labels</code> 比默认多一个 <code>CATEGORY_PROMOTIONS</code>，这样两个只带它的推广 thread 也会拉进来，Promos tag 才有数据。GitHub 的 regex 改成 <code>@github\.example&gt;?$</code>。Me 和 On-call 是 <code>ai = true</code>，AI profile <code>[ai.fake-ai]</code> 的 <code>command = ["fake-ai"]</code>，<code>[digest]</code> 的阈值等参数照抄原型。<code>configToml({ mailbox: dir })</code> 生成同样的内容，<code>command</code> 换成 <code>["fake-gws", "--mailbox", dir]</code>；<code>gws</code> 和 <code>ai</code> 两个参数可以替换 fake-gws 和 fake-ai 的命令，demo 用它们传入 bin 的绝对路径，所以不依赖 PATH。一个测试保证提交的文件和 <code>configToml()</code> 逐字节相同。</li>
-<li><code>packages/fixtures/expected-tags.json</code> 以 <code>expectedTags</code> 导出，记录每个 tag 命中的 conversation 数和 item 数，以及 Untagged 的 conversation 数和其中的 item 数。conversation 按 <code>threadId</code> 分组，一个 conversation 里任意一条 item 命中就算这个 conversation 命中。当前的数是 Me 2/4、On-call 0/0、GitHub 4/9、Promos 2/2、Untagged 6/6（conversation/item）。</li>
-<li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。<code>--check</code> 还会让 <code>plugins/gws</code> 用和 fixtures config 相同的三个 label 对默认的 fake-gws 做一次冷启动，用它返回的 RawItem 按 externalId 去重后再算一遍计数，和这个文件不一致也失败。这一遍的 <code>fromMe</code> 按 stream 的 <code>me</code> 判断，conversation 按 <code>threadId</code> 分组。</li>
+<li>fixtures config 里还有一条 <code>[[group]]</code>：<code>Northbank alerts</code> 把 <code>@northbank.example</code> 发来的三个银行通知 thread 并成一个 conversation，demo 里能看到合并后的一行。</li>
+<li><code>packages/fixtures/expected-tags.json</code> 以 <code>expectedTags</code> 导出，记录每个 tag 命中的 conversation 数和 item 数，以及 Untagged 的 conversation 数和其中的 item 数。conversation 按 <code>threadId</code> 分组，命中同一条 <code>[[group]]</code> 的 thread 算一个 conversation，一个 conversation 里任意一条 item 命中就算这个 conversation 命中。当前的数是 Me 2/4、On-call 0/0、GitHub 4/9、Promos 2/2、Untagged 5/7（conversation/item）。</li>
+<li>这个文件由 <code>cd design/prototype &amp;&amp; bun data/gmail-counts.ts</code> 生成，加 <code>--check</code> 只比对不写入，不一致时退出码非 0。脚本用原型的 <code>rule.ts</code>，对 fixtures 生成的每封邮件按完整 raw 和裁剪后的 raw（去掉 <code>body.data</code> 和传输头）各算一次，两次结果不同就失败。<code>--check</code> 还会让 <code>plugins/gws</code> 用和 fixtures config 相同的三个 label 对默认的 fake-gws 做一次冷启动，用它返回的 RawItem 按 externalId 去重后再算一遍计数，和这个文件不一致也失败。这一遍的 <code>fromMe</code> 按 stream 的 <code>me</code> 判断，conversation 按 <code>threadId</code> 和 <code>[[group]]</code> 分组。</li>
 </ul>
 <p><code>bun run demo</code> 每次用 <code>mkdtemp</code> 在系统临时目录新建一个 home，把路径打印到 stderr，结束后删掉。它忽略环境里的 <code>WEIR_HOME</code>，所以不会写进已有的目录。它先只送达不晚于 <code>AI_SINCE</code>（<code>2026-10-20T00:00:00-07:00</code>）的 9 封邮件，时钟停在 <code>AI_SINCE</code> 启动 daemon，这样 AI tag 的 <code>ai_since</code> 就是 <code>AI_SINCE</code>，并把这些 conversation 标为已读。然后送达其余 22 封，时钟拨到 <code>FIXTURE_NOW</code>，reload，等这次 sync 完成且 digest 队列清空。最后检查搜索、tag 计数，以及每个 conversation 的自动 digest：数量和覆盖范围要和 <code>packages/fixtures/expected-digests.json</code> 一致，键是 conversation 标题加范围首尾两条的 <code>occurred_at</code>。没有 AI tag 的 conversation 不能有自动 digest，也不能有覆盖 <code>ai_since</code> 之前 item 的自动 digest。加 <code>--serve</code> 时，断言通过后 daemon 继续运行并打印它的 URL，按 Ctrl-C 才退出并删掉 home。PR 里的界面截图和录屏只来自 <code>bun run demo --serve</code> 的合成数据，不用真实邮箱。</p>
 </main>

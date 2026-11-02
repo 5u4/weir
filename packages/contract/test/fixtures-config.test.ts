@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { expect, it } from "vitest";
 import { decodeConfig } from "../src/Config.ts";
 
-it("decodes the fixtures config with its fake-ai profile, gmail source and four tags", () => {
+it("decodes the fixtures config with its fake-ai profile, gmail source, four tags and a group", () => {
   const config = Effect.runSync(decodeConfig(Bun.TOML.parse(configToml())));
   expect(config.ai).toEqual({
     "fake-ai": { command: ["fake-ai"], timeout: Duration.seconds(30), concurrency: 1 },
@@ -34,6 +34,7 @@ it("decodes the fixtures config with its fake-ai profile, gmail source and four 
     ["GitHub", false],
     ["Promos", false],
   ]);
+  expect(config.group.map(({ name }) => name)).toEqual(["Northbank alerts"]);
 });
 
 it("decodes the fixtures config pointed at a mutable mailbox", () => {

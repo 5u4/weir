@@ -11,6 +11,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { stripQuoted } from "./Body.ts";
+import { type Groups, joinThreads, regroupThreads } from "./Groups.ts";
 import { appendItemTags, recomputeTags, type Tags } from "./Tags.ts";
 
 export class SourceError extends Schema.TaggedError<SourceError>()("SourceError", {
@@ -42,14 +43,28 @@ const callSource = <A>(sourceId: string, call: (signal: AbortSignal) => Promise<
 export const errorMessage = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
 
-const writePage = Effect.fnUntraced(function* (stream: StreamRow, page: SyncPage, tags: Tags) {
+const writePage = Effect.fnUntraced(function* (
+  stream: StreamRow,
+  page: SyncPage,
+  tags: Tags,
+  groups: Groups,
+) {
+  const deleted = yield* Write.softDeleteItems(stream.id, page.deletions);
+  const removed = new Set(page.deletions);
+  const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
+  const { keys, moved } = yield* joinThreads(stream, upserts, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
-    page.upserts.map((item) => ({ ...item, bodyNew: item.bodyNew ?? stripQuoted(item.body) })),
+    upserts.map((item) => {
+      const thread = item.threadId ?? item.containerId;
+      return {
+        ...item,
+        bodyNew: item.bodyNew ?? stripQuoted(item.body),
+        key: keys.get(thread) ?? thread,
+      };
+    }),
   );
-  const recompute = new Set<ConversationId>(
-    yield* Write.softDeleteItems(stream.id, page.deletions),
-  );
+  const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds]);
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -79,6 +94,7 @@ export const syncStream = Effect.fnUntraced(function* (
   source: Source,
   descriptor: StreamDescriptor,
   tags: Tags,
+  groups: Groups,
   onWritten: Written,
 ) {
   const sql = yield* SqlClient.SqlClient;
@@ -90,8 +106,23 @@ export const syncStream = Effect.fnUntraced(function* (
       .withTransaction(
         Effect.gen(function* () {
           const upserted = yield* Write.upsertStream(sourceId, descriptor);
-          yield* recomputeTags(tags, upserted.fromMeChanged);
-          return upserted;
+          const regrouped =
+            upserted.fromMeChanged.length > 0 && groups.length > 0
+              ? yield* regroupThreads(
+                  sourceId,
+                  [
+                    ...new Set(
+                      (yield* Read.liveItems({ conversationIds: upserted.fromMeChanged })).map(
+                        (item) => item.threadId ?? item.containerId,
+                      ),
+                    ),
+                  ],
+                  groups,
+                )
+              : [];
+          const fromMeChanged = [...new Set([...upserted.fromMeChanged, ...regrouped])];
+          yield* recomputeTags(tags, fromMeChanged);
+          return { ...upserted, fromMeChanged };
         }),
       )
       .pipe(
@@ -108,7 +139,7 @@ export const syncStream = Effect.fnUntraced(function* (
         source.sync(descriptor.id, cursor, signal),
       ).pipe(Effect.flatMap(decodePage));
       yield* sql
-        .withTransaction(writePage(stream, page, tags))
+        .withTransaction(writePage(stream, page, tags, groups))
         .pipe(Effect.flatMap(onWritten), Effect.uninterruptible);
       counts = {
         upserts: counts.upserts + page.upserts.length,
@@ -144,6 +175,7 @@ export const syncSource = Effect.fnUntraced(function* (
   sourceId: string,
   source: Source,
   tags: Tags,
+  groups: Groups,
   onWritten: Written,
 ) {
   const sql = yield* SqlClient.SqlClient;
@@ -166,7 +198,7 @@ export const syncSource = Effect.fnUntraced(function* (
     ),
   );
   const failures = yield* Effect.forEach(descriptors, (descriptor) =>
-    syncStream(sourceId, source, descriptor, tags, onWritten).pipe(
+    syncStream(sourceId, source, descriptor, tags, groups, onWritten).pipe(
       Effect.as(null),
       Effect.catch((error) =>
         Effect.logError(`sync of ${sourceId}/${descriptor.id} failed`, error).pipe(

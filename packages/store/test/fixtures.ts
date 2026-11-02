@@ -17,17 +17,20 @@ export const mailStream: StreamDescriptor = {
   openLabel: "Open in Gmail",
 };
 
-export const rawItem = (externalId: string, overrides: Partial<StoredItem> = {}): StoredItem => ({
-  externalId,
-  threadId: `thread-${externalId}`,
-  containerId: "INBOX",
-  containerName: "Inbox",
-  occurredAt: "2026-10-28T09:00:00Z",
-  title: null,
-  from: { name: "Ada", address: "ada@example.com" },
-  body: "",
-  bodyNew: "",
-  link: null,
-  raw: {},
-  ...overrides,
-});
+export const rawItem = (externalId: string, overrides: Partial<StoredItem> = {}): StoredItem => {
+  const item = {
+    externalId,
+    threadId: `thread-${externalId}`,
+    containerId: "INBOX",
+    containerName: "Inbox",
+    occurredAt: "2026-10-28T09:00:00Z",
+    title: null,
+    from: { name: "Ada", address: "ada@example.com" },
+    body: "",
+    bodyNew: "",
+    link: null,
+    raw: {},
+    ...overrides,
+  };
+  return { ...item, key: overrides.key ?? item.threadId ?? item.containerId };
+};
