@@ -10,7 +10,7 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 ## Workflow
 
 1. **Locate.** Run `weir-axi` with no arguments. Done when you hold the `config:` path it prints (it follows `WEIR_HOME`).
-2. **Gather evidence.** `weir-axi search <query>` finds conversations, `weir-axi conv <id>` lists their items, and `weir-axi item <seq> --raw` prints the full rule input. Done when every pointer you plan to write appears in that output, and you also hold one item that should _not_ match.
+2. **Gather evidence.** `weir-axi search <query>` finds conversations, `weir-axi conv <id>` lists their items, and `weir-axi item <seq> --raw` prints the full rule input. `search` returns at most 20 conversations by default: raise `--limit` until it returns fewer than the limit, so the list is complete. Done when every pointer you plan to write appears in that output, and you also hold one item that should _not_ match.
 3. **Edit** `config.toml`.
 4. **Verify.** Run `weir-axi tag test <name>` for each changed tag and `weir-axi group test [name]` for groups. Each prints counts and at most three samples, so a stray match can hide outside them. Done when both print no validation error, every sample is one you expect, and each count equals the number of conversations your step 2 search found that should match. A nonzero `moves` is the number of items `reload` will move between conversations: tell the user that number before reloading.
 5. **Reload.** `weir-axi reload`, only after step 4 passes. A failed reload keeps no fallback: sync and digest stop until the config is valid.
