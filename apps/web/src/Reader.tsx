@@ -1,5 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
-import { hast, type Root } from "@weir/daemon/Markdown";
+import { hast, type Root } from "@weir/body/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";

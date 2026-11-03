@@ -1,5 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
+import { hast, leaves } from "@weir/body/Markdown";
 import { type Config, groupKey, groupNameOf, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
@@ -54,7 +55,6 @@ import * as ConfigFile from "./ConfigFile.ts";
 import { Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
-import { plainText } from "./Markdown.ts";
 import { segments, senderLabel, termPattern } from "./Match.ts";
 import * as ProcessIdentity from "./ProcessIdentity.ts";
 import * as Web from "./Web.ts";
@@ -368,7 +368,7 @@ const hitLines = (
         "body",
         item.bodyNew.search(pattern) === -1
           ? ""
-          : plainText(item.bodyNew).replace(/\s+/gu, " ").trim(),
+          : leaves(hast(item.bodyNew)).join(" ").replace(/\s+/gu, " ").trim(),
       ],
       ["from", senderLabel(item.fromName, item.fromAddress)],
       ["source", item.streamName],

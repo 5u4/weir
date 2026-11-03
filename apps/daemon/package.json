@@ -11,27 +11,21 @@
     "./Http": "./src/Http.ts",
     "./Loopback": "./src/Loopback.ts",
     "./main": "./src/main.ts",
-    "./Markdown": "./src/Markdown.ts",
     "./Match": "./src/Match.ts",
     "./ProcessIdentity": "./src/ProcessIdentity.ts"
   },
   "dependencies": {
     "@effect/platform-bun": "catalog:",
+    "@weir/body": "workspace:*",
     "@weir/contract": "workspace:*",
     "@weir/digest": "workspace:*",
     "@weir/plugin-gws": "workspace:*",
     "@weir/store": "workspace:*",
     "@weir/sync": "workspace:*",
-    "effect": "catalog:",
-    "remark-gfm": "4.0.1",
-    "remark-parse": "11.0.0",
-    "remark-rehype": "11.1.2",
-    "unified": "11.0.5"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
-    "@types/hast": "3.0.5",
-    "@types/mdast": "4.0.4",
     "@weir/fixtures": "workspace:*"
   }
 }

@@ -60,16 +60,19 @@ const image = (url: string | undefined, node: Mdast.Image | Mdast.ImageReference
   return alt === "" ? undefined : element("span", [text(alt)], { className: ["b-img"] });
 };
 
+type HtmlHandler = NonNullable<Handlers["html"]>;
+
+const literalHtml: HtmlHandler = (_, node: Mdast.Html, parent) =>
+  parent !== undefined && blockParents[parent.type] === true
+    ? element("p", [text(node.value)], { className: ["b-html"] })
+    : text(node.value);
+
 const handlers: Handlers = {
   text: (_, node: Mdast.Text) => text(node.value),
   inlineCode: (_, node: Mdast.InlineCode) => element("code", [text(node.value)]),
   break: () => element("br", []),
   code: (_, node: Mdast.Code) =>
     node.value === "" ? undefined : element("pre", [element("code", [text(node.value)])]),
-  html: (_, node: Mdast.Html, parent) =>
-    parent !== undefined && blockParents[parent.type] === true
-      ? element("p", [text(node.value)], { className: ["b-html"] })
-      : text(node.value),
   image: (_, node: Mdast.Image) => image(node.url, node),
   imageReference: (state, node: Mdast.ImageReference) =>
     image(state.definitionById.get(node.identifier.toUpperCase())?.url, node),
@@ -225,12 +228,15 @@ const rehypeWeir = () => (tree: Root) => {
   tree.children = children;
 };
 
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkRehype, { handlers })
-  .use(rehypeWeir)
-  .freeze();
+const pipeline = (html: HtmlHandler) =>
+  unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkRehype, { handlers: { ...handlers, html } })
+    .use(rehypeWeir)
+    .freeze();
+
+const processor = pipeline(literalHtml);
 
 export const hast = (markdown: string): Root => {
   const cached = trees.get(markdown);
@@ -242,6 +248,11 @@ export const hast = (markdown: string): Root => {
   return tree;
 };
 
+export const hastParsingHtml = (parse: (html: string) => Array<ElementContent>) => {
+  const parsing = pipeline((_, node: Mdast.Html) => parse(node.value));
+  return (markdown: string): Root => parsing.runSync(parsing.parse(markdown)) as Root;
+};
+
 const textLeaves = (node: RootContent): ReadonlyArray<string> =>
   node.type === "text"
     ? [node.value]
@@ -250,5 +261,3 @@ const textLeaves = (node: RootContent): ReadonlyArray<string> =>
       : [];
 
 export const leaves = (tree: Root): ReadonlyArray<string> => tree.children.flatMap(textLeaves);
-
-export const plainText = (markdown: string) => leaves(hast(markdown)).join(" ");

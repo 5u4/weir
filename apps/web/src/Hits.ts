@@ -1,4 +1,4 @@
-import { hast, leaves } from "@weir/daemon/Markdown";
+import { hast, leaves } from "@weir/body/Markdown";
 import { senderLabel } from "@weir/daemon/Match";
 import {
   type Detail,

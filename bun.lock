@@ -43,21 +43,16 @@
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform-bun": "catalog:",
+        "@weir/body": "workspace:*",
         "@weir/contract": "workspace:*",
         "@weir/digest": "workspace:*",
         "@weir/plugin-gws": "workspace:*",
         "@weir/store": "workspace:*",
         "@weir/sync": "workspace:*",
         "effect": "catalog:",
-        "remark-gfm": "4.0.1",
-        "remark-parse": "11.0.0",
-        "remark-rehype": "11.1.2",
-        "unified": "11.0.5",
       },
       "devDependencies": {
         "@effect/vitest": "catalog:",
-        "@types/hast": "3.0.5",
-        "@types/mdast": "4.0.4",
         "@weir/fixtures": "workspace:*",
       },
     },
@@ -69,6 +64,7 @@
         "@fontsource-variable/inter": "5.3.0",
         "@fontsource-variable/inter-tight": "5.3.0",
         "@fontsource-variable/noto-sans-sc": "5.3.1",
+        "@weir/body": "workspace:*",
         "@weir/daemon": "workspace:*",
         "effect": "catalog:",
         "hast-util-to-jsx-runtime": "2.3.6",
@@ -84,6 +80,23 @@
         "@vitejs/plugin-react": "6.1.2",
         "tailwindcss": "4.3.3",
         "vite": "8.3.5",
+      },
+    },
+    "packages/body": {
+      "name": "@weir/body",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+        "hast-util-from-html": "2.0.3",
+        "hast-util-to-text": "4.0.3",
+        "remark-gfm": "4.0.1",
+        "remark-parse": "11.0.0",
+        "remark-rehype": "11.1.2",
+        "unified": "11.0.5",
+      },
+      "devDependencies": {
+        "@types/hast": "3.0.5",
+        "@types/mdast": "4.0.4",
       },
     },
     "packages/contract": {
@@ -144,6 +157,7 @@
       "name": "@weir/sync",
       "version": "0.1.0",
       "dependencies": {
+        "@weir/body": "workspace:*",
         "@weir/contract": "workspace:*",
         "@weir/store": "workspace:*",
         "effect": "catalog:",
@@ -428,6 +442,8 @@
     "@vitest/spy": ["@vitest/spy@5.0.5", "", {}, "sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw=="],
 
     "@weir/cli": ["@weir/cli@workspace:apps/cli"],
+
+    "@weir/body": ["@weir/body@workspace:packages/body"],
 
     "@weir/contract": ["@weir/contract@workspace:packages/contract"],
 

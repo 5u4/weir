@@ -1,4 +1,4 @@
-import { hast } from "@weir/daemon/Markdown";
+import { hast } from "@weir/body/Markdown";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Prose } from "./Marked.tsx";

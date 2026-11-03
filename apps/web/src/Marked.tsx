@@ -1,4 +1,4 @@
-import type { Root } from "@weir/daemon/Markdown";
+import type { Root } from "@weir/body/Markdown";
 import { segments } from "@weir/daemon/Match";
 import type { Element, ElementContent } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";

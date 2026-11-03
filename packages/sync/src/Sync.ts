@@ -1,3 +1,4 @@
+import { derive } from "@weir/body/Body";
 import { type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { ConversationId, StreamRow } from "@weir/store/Rows";
@@ -10,7 +11,6 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { stripQuoted } from "./Body.ts";
 import { type Groups, joinThreads, regroupThreads } from "./Groups.ts";
 import { appendItemTags, recomputeTags, type Tags } from "./Tags.ts";
 
@@ -59,7 +59,7 @@ const writePage = Effect.fnUntraced(function* (
       const thread = item.threadId ?? item.containerId;
       return {
         ...item,
-        bodyNew: item.bodyNew ?? stripQuoted(item.body),
+        bodyNew: derive({ format: "markdown", body: item.body, bodyNew: item.bodyNew }).bodyNew,
         key: keys.get(thread) ?? thread,
       };
     }),
