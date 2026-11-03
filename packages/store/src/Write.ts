@@ -64,17 +64,13 @@ const decodeDigestIds = Schema.decodeUnknownEffect(
 const decodeMoveRefs = Schema.decodeUnknownEffect(
   Schema.Array(Schema.Struct({ seq: Seq, conversationId: ConversationId, key: Schema.String })),
 );
-const decodeTarget = Schema.decodeUnknownEffect(
-  Schema.Tuple([Schema.Struct({ id: ConversationId, lastSeq: Schema.NullOr(Seq) })]),
+const decodeBounds = Schema.decodeUnknownEffect(
+  Schema.Tuple([
+    Schema.Struct({ minUnseen: Schema.NullOr(Seq), minUncleared: Schema.NullOr(Seq) }),
+  ]),
 );
 const decodeWatermarks = Schema.decodeUnknownEffect(
-  Schema.Tuple([
-    Schema.Struct({
-      lastSeq: Seq,
-      seenSeq: Schema.NullOr(Seq),
-      clearedSeq: Schema.NullOr(Seq),
-    }),
-  ]),
+  Schema.Tuple([Schema.Struct({ seenSeq: Seq, clearedSeq: Seq })]),
 );
 const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
 const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
@@ -210,10 +206,18 @@ export const moveItems = Effect.fnUntraced(function* (
       if (byKey.size === 0) return [];
       const targets = yield* Effect.forEach([...byKey], ([key, seqs]) =>
         Effect.gen(function* () {
-          const [target] = yield* decodeTarget(
+          const [target] = yield* decodeConversationId(
             yield* sql`INSERT INTO conversation (source_id, key) VALUES (${sourceId}, ${key})
               ON CONFLICT (source_id, key) DO UPDATE SET key = excluded.key
-              RETURNING id, last_seq`,
+              RETURNING id`,
+          );
+          const [bounds] = yield* decodeBounds(
+            yield* sql`SELECT
+                min(CASE WHEN item.seq > coalesce(s.seen_seq, 0) THEN item.seq END) AS min_unseen,
+                min(CASE WHEN item.seq > coalesce(s.cleared_seq, 0) THEN item.seq END) AS min_uncleared
+              FROM item LEFT JOIN conversation_state s ON s.conversation_id = item.conversation_id
+              WHERE item.deleted_at IS NULL
+                AND (item.conversation_id = ${target.id} OR ${sql.in("item.seq", seqs)})`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
           if (groupNameOf(key) !== null) {
@@ -230,7 +234,7 @@ export const moveItems = Effect.fnUntraced(function* (
               )}`;
             }
           }
-          return target;
+          return { id: target.id, ...bounds };
         }),
       );
       yield* indexItems(sql.in("item.seq", [...byKey.values()].flat()));
@@ -238,23 +242,17 @@ export const moveItems = Effect.fnUntraced(function* (
       yield* recomputeConversations([...from, ...to]);
       yield* Effect.forEach(
         targets,
-        ({ id, lastSeq: lastBefore }) =>
+        ({ id, minUnseen, minUncleared }) =>
           Effect.gen(function* () {
-            const [now] = yield* decodeWatermarks(
-              yield* sql`SELECT c.last_seq, s.seen_seq, s.cleared_seq FROM conversation c
-                LEFT JOIN conversation_state s ON s.conversation_id = c.id
-                WHERE c.id = ${id}`,
+            const [marks] = yield* decodeWatermarks(
+              yield* sql`SELECT
+                  coalesce(max(CASE WHEN ${minUnseen} IS NULL OR seq < ${minUnseen} THEN seq END), 0)
+                    AS seen_seq,
+                  coalesce(max(CASE WHEN ${minUncleared} IS NULL OR seq < ${minUncleared} THEN seq END), 0)
+                    AS cleared_seq
+                FROM item WHERE conversation_id = ${id} AND deleted_at IS NULL`,
             );
-            const caughtUp = (watermark: Seq | null) =>
-              (watermark ?? 0) >= (lastBefore ?? 0) ? now.lastSeq : (watermark ?? Seq.make(0));
-            const rows = yield* encodeStates([
-              {
-                conversationId: id,
-                seenSeq: caughtUp(now.seenSeq),
-                clearedSeq: caughtUp(now.clearedSeq),
-                muted: false,
-              },
-            ]);
+            const rows = yield* encodeStates([{ conversationId: id, ...marks, muted: false }]);
             yield* sql`INSERT INTO conversation_state ${sql.insert(rows)}
               ON CONFLICT (conversation_id) DO UPDATE SET
                 seen_seq = excluded.seen_seq,
