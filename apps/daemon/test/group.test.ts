@@ -297,6 +297,37 @@ describe("group", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("a rule swap that moves the group's unread item out leaves the group done", () =>
+    Effect.gen(function* () {
+      const { deliver, rowOf, detail, seqsOf, configure, settle } = yield* start;
+      yield* deliver([
+        item("p1", "tp", 1, "Paid P"),
+        item("q1", "tq", 2, "Receipt Q"),
+        item("r1", "tr", 3, "Paid R"),
+      ]);
+      const p = (yield* rowOf("Paid P")).id;
+      const r = (yield* rowOf("Paid R")).id;
+      const lastP = lastOf(yield* seqsOf(p));
+      const lastR = lastOf(yield* seqsOf(r));
+      yield* settle(p, lastP);
+      yield* settle(r, lastR);
+      yield* configure(receipts);
+      const g = (yield* rowOf("Receipts")).id;
+      expect((yield* detail(g)).state.state).toBe("unread");
+
+      yield* configure(group("Receipts", "paid"));
+
+      expect(yield* rowOf("Receipts")).toMatchObject({ id: g, state: "done", new: 0, items: 2 });
+      expect((yield* detail(g)).state).toEqual({
+        seen_seq: lastR,
+        cleared_seq: lastR,
+        muted: false,
+        state: "done",
+      });
+      expect(yield* rowOf("Receipt Q")).toMatchObject({ state: "unread", new: 1, items: 1 });
+    }).pipe(Effect.scoped),
+  );
+
   it.live(
     "a stored thread that starts matching joins the group with only the new item unread",
     () =>
