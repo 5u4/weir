@@ -165,7 +165,7 @@ const edge = (node: PhrasingContent | undefined) =>
 
 const tidy = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
   nodes.flatMap((node): RootContent[] => {
-    if (node.type !== "paragraph" && node.type !== "heading") {
+    if (node.type !== "paragraph" && node.type !== "heading" && node.type !== "tableCell") {
       return "children" in node
         ? [{ ...node, children: tidy(node.children) } as RootContent]
         : [node];
@@ -173,7 +173,7 @@ const tidy = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
     const children = clean(node.children, {});
     while (edge(children[0])) children.shift();
     while (edge(children.at(-1))) children.pop();
-    return children.length > 0 ? [{ ...node, children }] : [];
+    return children.length > 0 || node.type === "tableCell" ? [{ ...node, children }] : [];
   });
 
 const wrapInto = (block: RootContent, wrapper: Wrapper): RootContent =>
