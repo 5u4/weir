@@ -65,6 +65,7 @@ export type TagConfig = typeof TagConfig.Type;
 
 export const GroupConfig = Schema.Struct({
   name: NonEmptyString,
+  ai: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   match: ItemRule,
 });
 export type GroupConfig = typeof GroupConfig.Type;

@@ -2,7 +2,7 @@ import { DurationShorthand } from "@weir/contract/Config";
 import { Digest, Trigger } from "@weir/contract/Digest";
 import { RuleInput } from "@weir/contract/Rule";
 import { BodyFormat, Party, RowParty } from "@weir/contract/Source";
-import { ConversationState } from "@weir/store/Rows";
+import { AiKind, ConversationState } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
@@ -70,10 +70,16 @@ const ViewCounts = {
 
 export const TagStatus = Schema.Struct({
   name: Schema.String,
-  ai: Schema.Boolean,
-  ai_since: Schema.NullOr(Schema.String),
   ...ViewCounts,
 });
+
+export const AiStatus = Schema.Struct({
+  kind: AiKind,
+  name: Schema.String,
+  ai_since: Schema.NullOr(Schema.String),
+  conversations: Schema.Int,
+});
+export type AiStatus = typeof AiStatus.Type;
 
 const JobRange = {
   conversation_id: Schema.Int,
@@ -104,6 +110,7 @@ export const Status = Schema.Struct({
   sync: Schema.Literals(["running", "stopped"]),
   sources: Schema.Array(SourceStatus),
   tags: Schema.Array(TagStatus),
+  ai: Schema.Array(AiStatus),
   untagged: Schema.Struct(ViewCounts),
   digest: Schema.NullOr(
     Schema.Struct({

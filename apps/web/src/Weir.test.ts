@@ -78,6 +78,7 @@ const daemon = vi.hoisted(() => {
         sources: [],
         tags: [],
         untagged: { conversations: 0, unread: 0, open: 0 },
+        ai: [],
         digest: {
           ai: "fake-ai",
           threshold: 1000,

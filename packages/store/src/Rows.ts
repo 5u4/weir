@@ -121,11 +121,14 @@ export const ListedConversationRow = Schema.Struct({
 });
 export type ListedConversationRow = typeof ListedConversationRow.Type;
 
-export const TagStateRow = Schema.Struct({
-  name: Schema.String,
-  aiSince: UtcIso,
-});
-export type TagStateRow = typeof TagStateRow.Type;
+export const AiKind = Schema.Literals(["tag", "group"]);
+export type AiKind = typeof AiKind.Type;
+
+export const AiScope = Schema.Struct({ kind: AiKind, name: Schema.String });
+export type AiScope = typeof AiScope.Type;
+
+export const AiStateRow = Schema.Struct({ ...AiScope.fields, aiSince: UtcIso });
+export type AiStateRow = typeof AiStateRow.Type;
 
 const syncRunFields = {
   streamId: StreamId,

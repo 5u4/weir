@@ -8,6 +8,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 import * as Read from "./Read.ts";
 import {
+  AiKind,
+  type AiScope,
+  AiStateRow,
   ConversationId,
   ConversationStateRow,
   ConversationTagRow,
@@ -21,7 +24,6 @@ import {
   StreamInsert,
   StreamRow,
   SyncRunInsert,
-  TagStateRow,
   UtcIso,
 } from "./Rows.ts";
 
@@ -97,7 +99,7 @@ const decodeWatermarks = Schema.decodeUnknownEffect(
 );
 const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
 const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
-const encodeTagStates = Schema.encodeEffect(Schema.Array(TagStateRow));
+const encodeAiStates = Schema.encodeEffect(Schema.Array(AiStateRow));
 
 const ownAddresses = (stream: StreamRow) =>
   new Set(stream.me.map((address) => address.toLowerCase()));
@@ -588,13 +590,24 @@ export const recordSourceFailure = Effect.fnUntraced(function* (
   });
 });
 
-export const reconcileTagState = Effect.fnUntraced(function* (aiTags: ReadonlyArray<string>) {
+export const reconcileAiState = Effect.fnUntraced(function* (scopes: ReadonlyArray<AiScope>) {
   const sql = yield* SqlClient.SqlClient;
-  yield* sql`DELETE FROM tag_state WHERE NOT ${sql.in("name", aiTags)}`;
-  if (aiTags.length === 0) return;
+  const enabled = sql.or(
+    AiKind.literals.map((kind) =>
+      sql.and([
+        sql`kind = ${kind}`,
+        sql.in(
+          "name",
+          scopes.filter((scope) => scope.kind === kind).map(({ name }) => name),
+        ),
+      ]),
+    ),
+  );
+  yield* sql`DELETE FROM ai_state WHERE NOT ${enabled}`;
+  if (scopes.length === 0) return;
   const aiSince = yield* DateTime.now;
-  const rows = yield* encodeTagStates(aiTags.map((name) => ({ name, aiSince })));
-  yield* sql`INSERT INTO tag_state ${sql.insert(rows)} ON CONFLICT (name) DO NOTHING`;
+  const rows = yield* encodeAiStates(scopes.map((scope) => ({ ...scope, aiSince })));
+  yield* sql`INSERT INTO ai_state ${sql.insert(rows)} ON CONFLICT (kind, name) DO NOTHING`;
 });
 
 export const recordDigestRun = Effect.fnUntraced(function* (run: DigestRunInsert) {

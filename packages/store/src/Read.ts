@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
+  AiStateRow,
   ConversationId,
   ConversationRow,
   ConversationTagRow,
@@ -18,7 +19,6 @@ import {
   SourcedItemRow,
   StreamId,
   StreamRow,
-  TagStateRow,
   UtcIso,
 } from "./Rows.ts";
 
@@ -255,11 +255,21 @@ export const conversationTitles = Effect.fnUntraced(function* (ids: ReadonlyArra
   return new Map(rows.map(({ id, title }) => [id, title]));
 });
 
-const decodeTagStates = Schema.decodeUnknownEffect(Schema.Array(TagStateRow));
+export const AiStateCount = Schema.Struct({ ...AiStateRow.fields, conversations: Schema.Int });
+export type AiStateCount = typeof AiStateCount.Type;
 
-export const tagStates = Effect.fnUntraced(function* () {
+const decodeAiStates = Schema.decodeUnknownEffect(Schema.Array(AiStateCount));
+
+export const aiStates = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
-  return yield* decodeTagStates(yield* sql`SELECT * FROM tag_state ORDER BY name`);
+  return yield* decodeAiStates(
+    yield* sql`SELECT ai_state.kind, ai_state.name, ai_state.ai_since,
+        count(conversation_ai.conversation_id) AS conversations
+      FROM ai_state LEFT JOIN conversation_ai
+        ON conversation_ai.kind = ai_state.kind AND conversation_ai.name = ai_state.name
+      GROUP BY ai_state.kind, ai_state.name
+      ORDER BY ai_state.kind, ai_state.name`,
+  );
 });
 
 export const TagCount = Schema.Struct({
@@ -421,9 +431,8 @@ const decodeAiSince = Schema.decodeUnknownEffect(
 export const aiSince = Effect.fnUntraced(function* (conversationId: ConversationId) {
   const sql = yield* SqlClient.SqlClient;
   const [{ aiSince }] = yield* decodeAiSince(
-    yield* sql`SELECT min(tag_state.ai_since) AS ai_since FROM conversation_tag
-      JOIN tag_state ON tag_state.name = conversation_tag.tag
-      WHERE conversation_tag.conversation_id = ${conversationId}`,
+    yield* sql`SELECT min(ai_since) AS ai_since FROM conversation_ai
+      WHERE conversation_id = ${conversationId}`,
   );
   return Option.fromNullOr(aiSince);
 });
@@ -431,9 +440,7 @@ export const aiSince = Effect.fnUntraced(function* (conversationId: Conversation
 export const aiConversations = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* decodeConversationIds(
-    yield* sql`SELECT DISTINCT conversation_tag.conversation_id AS id FROM conversation_tag
-      JOIN tag_state ON tag_state.name = conversation_tag.tag
-      ORDER BY id`,
+    yield* sql`SELECT DISTINCT conversation_id AS id FROM conversation_ai ORDER BY id`,
   );
   return rows.map(({ id }) => id);
 });
