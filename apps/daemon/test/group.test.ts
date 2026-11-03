@@ -154,6 +154,25 @@ describe("group", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("a new rule keeps an unread member's items unread in the group", () =>
+    Effect.gen(function* () {
+      const { client, rowOf, detail, configure, a, lastA } = yield* twoReceipts;
+      yield* client.read({ params: { id: a }, payload: { seq: lastA } });
+      yield* client.done({ params: { id: a }, payload: { seq: lastA } });
+
+      yield* configure(receipts);
+
+      const row = yield* rowOf("Receipts");
+      expect(row).toMatchObject({ state: "unread", new: 2, items: 4 });
+      expect((yield* detail(row.id)).state).toEqual({
+        seen_seq: lastA,
+        cleared_seq: lastA,
+        muted: false,
+        state: "unread",
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.live("widening a done group to a newer thread keeps it done", () =>
     Effect.gen(function* () {
       const { deliver, rowOf, detail, seqsOf, configure, lastB } = yield* twoReceipts;
