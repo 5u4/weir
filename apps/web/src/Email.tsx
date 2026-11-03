@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 export const emailFrame = (frame: HTMLIFrameElement) => {
   const measure = () => {
     const page = frame.contentDocument;
@@ -25,10 +27,6 @@ export const emailFrame = (frame: HTMLIFrameElement) => {
     const page = frame.contentDocument;
     if (page === null) return;
     observer.observe(page.documentElement);
-    for (const link of page.querySelectorAll("a, area")) {
-      link.setAttribute("target", "_blank");
-      link.setAttribute("rel", "noopener noreferrer");
-    }
     for (const type of ["focus", "blur"]) {
       page.defaultView?.addEventListener(type, () =>
         frame.ownerDocument.defaultView?.dispatchEvent(new FocusEvent(type)),
@@ -70,14 +68,23 @@ const emailHead = [
 
 export const emailSandbox = "allow-same-origin allow-popups allow-popups-to-escape-sandbox";
 
-export const emailDocument = (html: string) => `${emailHead}${html}`;
+export const emailDocument = (html: string) => {
+  const page = new DOMParser().parseFromString(html, "text/html");
+  for (const template of page.querySelectorAll("template")) template.remove();
+  for (const link of page.querySelectorAll("a, area")) {
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener noreferrer");
+  }
+  return `${emailHead}${page.documentElement.outerHTML}`;
+};
 
 export function Email({ html, title }: { html: string; title: string }) {
+  const page = useMemo(() => emailDocument(html), [html]);
   return (
     <iframe
       data-email
       title={title}
-      srcDoc={emailDocument(html)}
+      srcDoc={page}
       sandbox={emailSandbox}
       referrerPolicy="no-referrer"
       className="block border-none"

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Email, emailDocument, emailFrame } from "./Email.tsx";
@@ -34,7 +35,8 @@ describe("Email", () => {
       `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:">`,
     );
     expect(page.indexOf("default-src 'none'")).toBeLessThan(page.indexOf("img-src *"));
-    expect(page.endsWith(email)).toBe(true);
+    expect(page).toContain("<style>body{color:red}</style>");
+    expect(page).toContain("<td>Lisbon</td>");
   });
 
   it("asks for a light page, no referrer, and new tabs for links", () => {
@@ -44,65 +46,37 @@ describe("Email", () => {
     expect(head).toContain('<meta name="referrer" content="no-referrer">');
     expect(head).toContain('<base target="_blank">');
   });
+
+  it("opens every link in a new tab with no handle back to weir, whatever the email asked for", () => {
+    const page = new DOMParser().parseFromString(
+      emailDocument(
+        `<a href="https://a.example/" target="_self" rel="opener">a</a><a href="https://b.example/" target="_top">b</a><a href="https://c.example/" rel="opener">c</a><svg><a href="https://d.example/" target="_self"><text>d</text></a></svg><map><area href="https://e.example/" target="inbox" rel="opener nofollow"></map>`,
+      ),
+      "text/html",
+    );
+    const links = [...page.querySelectorAll("a, area")];
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(
+      ["a", "b", "c", "d", "e"].map((host) => `https://${host}.example/`),
+    );
+    expect(links.map((link) => [link.getAttribute("target"), link.getAttribute("rel")])).toEqual(
+      links.map(() => ["_blank", "noopener noreferrer"]),
+    );
+  });
+
+  it("drops templates so no shadow root can hide a link from that rewrite", () => {
+    const page = emailDocument(
+      `<div><template shadowrootmode="closed"><a href="https://hidden.example/" rel="opener">x</a></template>Sale</div>`,
+    );
+    expect(page).toContain("Sale");
+    expect(page).not.toContain("template");
+    expect(page).not.toContain("hidden.example");
+  });
 });
-
-class Tag {
-  readonly localName: string;
-  readonly attributes: Map<string, string>;
-  constructor(localName: string, attributes: Record<string, string> = {}) {
-    this.localName = localName;
-    this.attributes = new Map(Object.entries(attributes));
-  }
-  getAttribute(name: string) {
-    return this.attributes.get(name) ?? null;
-  }
-  setAttribute(name: string, value: string) {
-    this.attributes.set(name, value);
-  }
-  get target() {
-    return this.getAttribute("target") ?? "";
-  }
-  set target(value: string) {
-    this.setAttribute("target", value);
-  }
-  get rel() {
-    return this.getAttribute("rel") ?? "";
-  }
-  set rel(value: string) {
-    this.setAttribute("rel", value);
-  }
-  matches(selectors: string) {
-    return selectors.split(",").some((selector) => {
-      const [, name, attr] = selector.trim().match(/^([a-z]*)(?:\[([a-z]+)\])?$/) ?? [];
-      return (
-        (name === "" || name === this.localName) &&
-        (attr === undefined || this.attributes.has(attr))
-      );
-    });
-  }
-  closest(selectors: string) {
-    return this.matches(selectors) ? this : null;
-  }
-}
-
-class SvgLink extends Tag {
-  override get target(): never {
-    return { baseVal: this.getAttribute("target") ?? "" } as never;
-  }
-}
 
 class Page extends EventTarget {
   documentElement = { scrollWidth: 600, getBoundingClientRect: () => ({ height: 900 }) };
   body = { scrollHeight: 900 };
-  activeElement = new Tag("body");
-  readonly tags: ReadonlyArray<Tag>;
-  constructor(tags: ReadonlyArray<Tag> = []) {
-    super();
-    this.tags = tags;
-  }
-  querySelectorAll(selectors: string) {
-    return this.tags.filter((tag) => tag.matches(selectors));
-  }
+  activeElement: Element = document.body;
 }
 
 class Frame extends EventTarget {
@@ -159,20 +133,6 @@ describe("emailFrame", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens every link in a new tab with no handle back to weir, whatever the email asked for", () => {
-    const tags = [
-      new Tag("a", { target: "_self", rel: "opener" }),
-      new Tag("a", { target: "_top" }),
-      new SvgLink("a", { target: "_self" }),
-      new Tag("area", { target: "inbox", rel: "opener nofollow" }),
-      new Tag("a", { rel: "opener" }),
-    ];
-    new Frame(new Page(tags)).dispatchEvent(new Event("load"));
-    expect(tags.map((tag) => [tag.getAttribute("target"), tag.getAttribute("rel")])).toEqual(
-      tags.map(() => ["_blank", "noopener noreferrer"]),
-    );
-  });
-
   it("hands reading input inside the email to the iframe as bubbling events", () => {
     const page = new Page();
     const frame = new Frame(page);
@@ -214,9 +174,9 @@ describe("emailFrame", () => {
     frame.dispatchEvent(new Event("load"));
     const seen: Array<string> = [];
     frame.addEventListener("keydown", (event) => seen.push((event as Keyboard).key));
-    page.activeElement = new Tag("textarea");
+    page.activeElement = document.createElement("textarea");
     page.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "e" }));
-    page.activeElement = new Tag("body");
+    page.activeElement = document.body;
     page.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "PageDown" }));
     expect(seen).toEqual(["PageDown"]);
   });
