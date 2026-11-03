@@ -1,5 +1,5 @@
 import { useAtom, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
-import { hast, type Root } from "@weir/body/Markdown";
+import { hast } from "@weir/body/Markdown";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   type UIEvent,
   useCallback,
   useRef,
@@ -42,6 +43,7 @@ import {
   within,
 } from "./Digest.ts";
 import type { DockAction } from "./Dock.ts";
+import { Email } from "./Email.tsx";
 import { after, before, reshape, unfold } from "./Flip.ts";
 import { covered, quiet, scrolled } from "./HeaderFold.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
@@ -83,6 +85,8 @@ const separatorClass =
 const iconClass = "fill-none stroke-current linecap-round linejoin-round";
 
 const hitClass = "outline-hit outline-solid outline-ink";
+
+const htmlBubbleClass = "w-full min-w-0 overflow-hidden bg-email";
 
 const fadeClass = "opacity-faded transition-opacity duration-base";
 
@@ -318,17 +322,15 @@ function DayLine({ at }: { at: string }) {
 function Long({
   id,
   seq,
-  tree,
-  pattern,
   me,
   className,
+  children,
 }: {
   id: ConversationId;
   seq: number;
-  tree: Root;
-  pattern: RegExp | null;
   me: boolean;
   className: string;
+  children: ReactNode;
 }) {
   const [ui, setUi] = useAtom(readerUi(id));
   const [over, setOver] = useState(false);
@@ -339,6 +341,7 @@ function Long({
         Number.parseFloat(getComputedStyle(body).getPropertyValue("--clip")) + 2;
       const observer = new ResizeObserver(() => setOver(overflows()));
       observer.observe(body);
+      if (body.firstElementChild !== null) observer.observe(body.firstElementChild);
       const reveal = (event: FocusEvent) => {
         if (body.hasAttribute("data-open") || !overflows()) return;
         setUi((current) => ({ ...current, long: new Set(current.long).add(seq) }));
@@ -361,14 +364,8 @@ function Long({
   const open = ui.long.has(seq);
   return (
     <>
-      <div
-        className={className}
-        data-clip
-        data-open={open || undefined}
-        data-over={over || undefined}
-        ref={measure}
-      >
-        <Prose tree={tree} pattern={pattern} />
+      <div data-clip data-open={open || undefined} data-over={over || undefined} ref={measure}>
+        <div className={className}>{children}</div>
       </div>
       <button
         type="button"
@@ -447,7 +444,7 @@ function Bubble({
   tint: Tint;
 }) {
   const key = hitKey({ _tag: "Item", seq: item.seq });
-  const tree = hast(item.body_new);
+  const tree = item.format === "markdown" ? hast(item.body_new) : null;
   const hit = found.hits.get(key);
   const [shown, setPreview] = useAtom(preview);
   const run = controls?.run;
@@ -458,7 +455,7 @@ function Bubble({
   const previewed =
     digestible && shown !== null && shown.range !== null && within(shown.range, item.seq);
   const classes = [
-    "bl group relative flex min-w-0 max-w-lane",
+    `bl group relative flex min-w-0 max-w-lane ${tree === null ? "w-full" : ""}`,
     digestible &&
       `before:absolute before:-inset-y-0.5 before:w-0.5 before:rounded-xs before:transition-opacity before:duration-fast ${me ? "before:-right-1.5" : "before:-left-1.5"} ${tint === "tag" ? "before:bg-tag" : "before:bg-ink"} ${previewed ? "before:opacity-full" : "before:opacity-none"}`,
     digestible && run?._tag === "Running" && within(run.range, item.seq) && fadeClass,
@@ -482,19 +479,23 @@ function Bubble({
         }}
       >
         <div
-          className={`min-w-0 max-w-em-36 rounded-b-2xl px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${bubbleFillClass({ me, folded, previewed, tint })} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
+          className={`${tree === null ? htmlBubbleClass : `min-w-0 max-w-em-36 px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${bubbleFillClass({ me, folded, previewed, tint })}`} rounded-b-2xl ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
         >
-          {tree.children.length === 0 ? (
+          {(tree === null ? item.body_new.trim() === "" : tree.children.length === 0) ? (
             <p className={`m-0 ${folded ? foldedClass : "text-ink-3"}`}>(no text)</p>
           ) : (
             <Long
               id={id}
               seq={item.seq}
-              tree={tree}
-              pattern={found.pattern}
               me={me}
-              className={folded ? `${proseClass} ${foldedClass}` : proseClass}
-            />
+              className={tree === null ? "" : folded ? `${proseClass} ${foldedClass}` : proseClass}
+            >
+              {tree === null ? (
+                <Email html={item.body_new} title={item.title ?? item.from.name} />
+              ) : (
+                <Prose tree={tree} pattern={found.pattern} />
+              )}
+            </Long>
           )}
         </div>
         {hit?._tag === "Item" && hit.field !== "body" && (

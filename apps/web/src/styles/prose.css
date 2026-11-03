@@ -19,4 +19,8 @@
     max-height: none;
     mask-image: none;
   }
+
+  [data-email] {
+    height: var(--email-h, var(--max-height-clip));
+  }
 }
