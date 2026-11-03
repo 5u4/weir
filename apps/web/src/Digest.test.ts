@@ -36,7 +36,9 @@ const item = (seq: number): ItemSummary => ({
   from: { name: "Ada", address: "ada@example.com" },
   from_me: false,
   title: null,
+  format: "markdown",
   body_new: `message ${seq}`,
+  text_new: `message ${seq}`,
   stream: "robin.ellis@example.com",
 });
 

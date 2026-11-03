@@ -36,6 +36,7 @@
   --color-scroll: oklch(0.81 0.005 255);
   --color-ok: oklch(0.5 0.12 155);
   --color-bubble: oklch(0.953 0.004 255);
+  --color-email: oklch(1 0 0);
   --color-me-bg: oklch(0.19 0.006 255);
   --color-me-ink: oklch(0.975 0.002 255);
   --color-warn: oklch(0.52 0.13 58);

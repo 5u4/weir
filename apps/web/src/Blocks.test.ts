@@ -21,7 +21,9 @@ const item = (seq: number, minute: number, from = ada, from_me = false): ItemSum
   from,
   from_me,
   title: null,
+  format: "markdown",
   body_new: `message ${seq}`,
+  text_new: `message ${seq}`,
   stream: "robin.ellis@example.com",
 });
 

@@ -1,4 +1,4 @@
-import { hast } from "@weir/daemon/Markdown";
+import { hast } from "@weir/body/Markdown";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Prose } from "./Marked.tsx";
@@ -155,5 +155,20 @@ describe("Prose", () => {
     ).toBe(
       `<p><mark>Sale</mark>s <code><mark>sale</mark>()</code> <span><mark>sale</mark></span> ${img("https://cdn.example/s.png", "sale")}</p>`,
     );
+  });
+
+  it("marks a match that formatting splits across text nodes, piece by piece", () => {
+    expect(render("North**wind** and `data`base, not Nor th", /northwind|database/giu)).toBe(
+      "<p><mark>North</mark><strong><mark>wind</mark></strong> and <code><mark>data</mark></code><mark>base</mark>, not Nor th</p>",
+    );
+  });
+
+  it("never joins words across paragraphs, line breaks, list items or table cells", () => {
+    expect(
+      render(
+        "North\n\nwind\n\nNorth\\\nwind\n\n- North\n- wind\n\n| North | wind |\n|---|---|\n| a | b |",
+        /northwind/giu,
+      ),
+    ).not.toContain("<mark>");
   });
 });

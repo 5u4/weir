@@ -226,6 +226,7 @@ export const rawItem = (externalId: string, overrides: Partial<RawItem>): RawIte
   occurredAt: "2026-10-20T09:00:00Z",
   title: null,
   from: { name: "Ada", address: "ada@example.com" },
+  format: "markdown",
   body: "",
   bodyNew: "",
   link: null,

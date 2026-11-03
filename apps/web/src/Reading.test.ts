@@ -108,8 +108,9 @@ const daemon = vi.hoisted(() => {
             from: party,
             from_me: false,
             link: null,
-            body: state.body,
+            format: "markdown",
             body_new: state.body,
+            text_new: state.body,
             stream: "robin.ellis@example.com",
             raw: null,
             deleted_at: null,
@@ -128,6 +129,7 @@ const daemon = vi.hoisted(() => {
   }
   const page = { search: "" };
   const listeners = new Map<string, (event: unknown) => void>();
+  const focus = { has: true };
   const moveTo = (_: unknown, __: string, url: string) => {
     page.search = new URL(url, "http://weir.test").search;
   };
@@ -151,12 +153,12 @@ const daemon = vi.hoisted(() => {
   vi.stubGlobal("removeEventListener", () => {});
   vi.stubGlobal("document", {
     visibilityState: "visible",
-    hasFocus: () => true,
+    hasFocus: () => focus.has,
     querySelector: () => null,
     addEventListener: () => {},
     removeEventListener: () => {},
   });
-  return { state, requests, held, failing, page, listeners };
+  return { state, requests, held, failing, page, listeners, focus };
 });
 
 afterEach(() => {
@@ -165,6 +167,7 @@ afterEach(() => {
   daemon.held.length = 0;
   daemon.failing.clear();
   daemon.page.search = "";
+  daemon.focus.has = true;
 });
 
 const id = ConversationId.make(1);
@@ -239,6 +242,37 @@ it("a second Mark unread lands after the first, so the later choice wins", async
 
   await releaseNewestFirst(["unread 25", "unread 12"]);
   expect(daemon.state.seen).toBe(11);
+  registry.dispose();
+});
+
+it("focus moving into an email keeps the open conversation reading", async () => {
+  const registry = await loaded();
+  registry.mount(reading(id));
+  const reader = registry.get(reading(id));
+
+  daemon.listeners.get("blur")?.({});
+  reader.dispatch({ _tag: "Input" });
+  reader.dispatch({ _tag: "Viewport", inView: 25 });
+
+  await vi.waitFor(() => expect(daemon.requests).toEqual(["read 25"]));
+  registry.dispose();
+});
+
+it("leaving the app reads nothing until focus comes back", async () => {
+  const registry = await loaded();
+  registry.mount(reading(id));
+  const reader = registry.get(reading(id));
+
+  daemon.focus.has = false;
+  daemon.listeners.get("blur")?.({});
+  reader.dispatch({ _tag: "Input" });
+  reader.dispatch({ _tag: "Viewport", inView: 25 });
+  await pastDebounce();
+  expect(daemon.requests).toEqual([]);
+
+  daemon.focus.has = true;
+  daemon.listeners.get("focus")?.({});
+  await vi.waitFor(() => expect(daemon.requests).toEqual(["read 25"]));
   registry.dispose();
 });
 

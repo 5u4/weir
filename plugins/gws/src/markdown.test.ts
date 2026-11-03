@@ -56,4 +56,12 @@ describe("html", () => {
       ),
     ).toBe("Ship it.");
   });
+
+  it("links bare urls in table cells and keeps empty cells", () => {
+    const body = htmlBody(
+      "<table><tr><th>Where</th><th>Note</th></tr><tr><td>see https://x.example/a</td><td></td></tr></table>",
+    );
+    expect(body).toContain("see <https://x.example/a>");
+    expect(body.split("\n").map((row) => row.split("|").length)).toEqual([4, 4, 4]);
+  });
 });

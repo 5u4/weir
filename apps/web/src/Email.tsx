@@ -1,0 +1,94 @@
+import { useMemo } from "react";
+
+export const emailFrame = (frame: HTMLIFrameElement) => {
+  const measure = () => {
+    const page = frame.contentDocument;
+    if (page === null) return;
+    frame.style.removeProperty("--email-w");
+    const lane = frame.clientWidth;
+    const natural = page.documentElement.scrollWidth;
+    if (natural > lane) {
+      frame.style.setProperty("--email-w", `${natural}px`);
+      frame.style.setProperty("--email-scale", String(lane / natural));
+    } else {
+      frame.style.removeProperty("--email-scale");
+    }
+    const height = Math.max(
+      page.documentElement.getBoundingClientRect().height,
+      page.body?.scrollHeight ?? 0,
+    );
+    frame.style.setProperty("--email-h", `${Math.ceil(height)}px`);
+  };
+  const observer = new ResizeObserver(measure);
+  const loaded = () => {
+    measure();
+    observer.disconnect();
+    if (frame.parentElement !== null) observer.observe(frame.parentElement);
+    const page = frame.contentDocument;
+    if (page === null) return;
+    observer.observe(page.documentElement);
+    for (const type of ["focus", "blur"]) {
+      page.defaultView?.addEventListener(type, () =>
+        frame.ownerDocument.defaultView?.dispatchEvent(new FocusEvent(type)),
+      );
+    }
+    page.addEventListener("wheel", (event) => frame.dispatchEvent(new WheelEvent("wheel", event)), {
+      passive: true,
+    });
+    page.addEventListener(
+      "touchmove",
+      () => frame.dispatchEvent(new Event("touchmove", { bubbles: true })),
+      { passive: true },
+    );
+    page.addEventListener("pointerdown", (event) =>
+      frame.dispatchEvent(new PointerEvent("pointerdown", event)),
+    );
+    page.addEventListener("keydown", (event) => {
+      if (page.activeElement?.closest("input, textarea, select, [contenteditable]")) return;
+      frame.dispatchEvent(new KeyboardEvent("keydown", event));
+    });
+  };
+  frame.addEventListener("load", loaded);
+  return () => {
+    observer.disconnect();
+    frame.removeEventListener("load", loaded);
+  };
+};
+
+const emailHead = [
+  "<!doctype html><html><head>",
+  '<meta charset="utf-8">',
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:">`,
+  '<meta name="referrer" content="no-referrer">',
+  '<meta name="color-scheme" content="light">',
+  '<base target="_blank">',
+  "<style>:root:root,:root:root>body{height:auto!important;min-height:0!important;margin:0}</style>",
+  "</head><body>",
+].join("");
+
+export const emailSandbox = "allow-same-origin allow-popups allow-popups-to-escape-sandbox";
+
+export const emailDocument = (html: string) => {
+  const page = new DOMParser().parseFromString(html, "text/html");
+  for (const template of page.querySelectorAll("template")) template.remove();
+  for (const link of page.querySelectorAll("a, area")) {
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener noreferrer");
+  }
+  return `${emailHead}${page.documentElement.outerHTML}`;
+};
+
+export function Email({ html, title }: { html: string; title: string }) {
+  const page = useMemo(() => emailDocument(html), [html]);
+  return (
+    <iframe
+      data-email
+      title={title}
+      srcDoc={page}
+      sandbox={emailSandbox}
+      referrerPolicy="no-referrer"
+      className="block border-none"
+      ref={emailFrame}
+    />
+  );
+}

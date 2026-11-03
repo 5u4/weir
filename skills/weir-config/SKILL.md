@@ -19,6 +19,7 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 
 - A pointer to a missing path matches nothing. It raises no error.
 - `some` and `every` re-root at each element: the inner rule's `target` is relative to the element. For an array of strings, the inner target is `""`.
+- `/body` is the visible text of the whole message, quoted history included. It holds no markup or CSS, and a link contributes only the text a reader sees, not its target. A `/body` regex never matches a tag, an attribute or a hidden link URL.
 - Write regexes as TOML literal strings `'...'` so backslashes stay single.
 - `Untagged` is reserved, in any case.
 - File order is display order for tags and precedence for groups: the first group whose rule matches any item of a thread wins.

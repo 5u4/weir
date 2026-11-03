@@ -10,7 +10,6 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { stripQuoted } from "./Body.ts";
 import { type Groups, joinThreads, regroupThreads } from "./Groups.ts";
 import { appendItemTags, recomputeTags, type Tags } from "./Tags.ts";
 
@@ -51,17 +50,15 @@ const writePage = Effect.fnUntraced(function* (
 ) {
   const deleted = yield* Write.softDeleteItems(stream.id, page.deletions);
   const removed = new Set(page.deletions);
-  const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
-  const { keys, moved } = yield* joinThreads(stream, upserts, deleted.threads, groups);
+  const drafts = page.upserts
+    .filter(({ externalId }) => !removed.has(externalId))
+    .map((item) => Write.draft(stream, item));
+  const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
-    upserts.map((item) => {
-      const thread = item.threadId ?? item.containerId;
-      return {
-        ...item,
-        bodyNew: item.bodyNew ?? stripQuoted(item.body),
-        key: keys.get(thread) ?? thread,
-      };
+    drafts.map((draft) => {
+      const thread = draft.threadId ?? draft.containerId;
+      return { ...draft, key: keys.get(thread) ?? thread };
     }),
   );
   const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds]);

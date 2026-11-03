@@ -172,18 +172,17 @@ export const reading = Atom.family((id: ConversationId) =>
       { immediate: true },
     );
 
-    const onFocus = () => dispatch({ _tag: "Focus", focused: true });
-    const onBlur = () => dispatch({ _tag: "Focus", focused: false });
+    const onFocus = () => dispatch({ _tag: "Focus", focused: document.hasFocus() });
     const onVisibility = () => dispatch({ _tag: "Visibility", visible: visibleNow() });
     addEventListener("focus", onFocus);
-    addEventListener("blur", onBlur);
+    addEventListener("blur", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     get.addFinalizer(() => {
       dispatch({ _tag: "Leave" });
       stop();
       observer.disconnect();
       removeEventListener("focus", onFocus);
-      removeEventListener("blur", onBlur);
+      removeEventListener("blur", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     });
 

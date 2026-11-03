@@ -38,6 +38,7 @@ const searches: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
     ],
   ],
   ["idempotency backfill", ["The Pragmatic Ledger #212: idempotency keys are not enough"]],
+  ["Alfama", ["Last call: 2 nights for the price of 1 in Lisbon"]],
   [
     "60",
     [

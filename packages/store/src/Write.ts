@@ -1,5 +1,6 @@
+import { derive } from "@weir/body/Body";
 import { groupKeyPrefix, groupNameOf } from "@weir/contract/Config";
-import type { RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
+import type { BodyFormat, RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -24,7 +25,29 @@ import {
   UtcIso,
 } from "./Rows.ts";
 
-export type StoredItem = RawItem & { readonly bodyNew: string; readonly key: string };
+declare const drafted: unique symbol;
+
+export interface ItemDraft {
+  readonly sourceId: string;
+  readonly externalId: string;
+  readonly threadId: string | null;
+  readonly containerId: string;
+  readonly containerName: string;
+  readonly occurredAt: string;
+  readonly title: string | null;
+  readonly fromName: string;
+  readonly fromAddress: string;
+  readonly fromMe: boolean;
+  readonly format: BodyFormat;
+  readonly bodyNew: string;
+  readonly text: string;
+  readonly textNew: string;
+  readonly link: string | null;
+  readonly raw: unknown;
+  readonly [drafted]: true;
+}
+
+export type StoredItem = ItemDraft & { readonly key: string };
 
 export interface ItemMove {
   readonly seq: Seq;
@@ -79,13 +102,31 @@ const encodeTagStates = Schema.encodeEffect(Schema.Array(TagStateRow));
 const ownAddresses = (stream: StreamRow) =>
   new Set(stream.me.map((address) => address.toLowerCase()));
 
+export const draft = (stream: StreamRow, item: RawItem): ItemDraft =>
+  ({
+    sourceId: stream.sourceId,
+    externalId: item.externalId,
+    threadId: item.threadId,
+    containerId: item.containerId,
+    containerName: item.containerName,
+    occurredAt: item.occurredAt,
+    title: item.title,
+    fromName: item.from.name,
+    fromAddress: item.from.address,
+    fromMe: ownAddresses(stream).has(item.from.address.toLowerCase()),
+    format: item.format,
+    ...derive(item),
+    link: item.link,
+    raw: item.raw,
+  }) as ItemDraft;
+
 const indexItems = Effect.fnUntraced(function* (items: Statement.Fragment) {
   const sql = yield* SqlClient.SqlClient;
   // FTS5 cannot filter UNINDEXED columns without a full scan, so an item's row is keyed by rowid = seq.
   yield* sql`DELETE FROM search_fts WHERE rowid IN (SELECT seq FROM item WHERE ${items})`;
   yield* sql`INSERT INTO search_fts (rowid, text, conversation_id, item_seq, digest_id)
     SELECT item.seq,
-      concat_ws(char(10), item.title, item.from_name, item.from_address, stream.name, item.body_new),
+      concat_ws(char(10), item.title, item.from_name, item.from_address, stream.name, item.text_new),
       item.conversation_id,
       item.seq,
       NULL
@@ -273,7 +314,6 @@ export const writeItems = Effect.fnUntraced(function* (
 ) {
   const sql = yield* SqlClient.SqlClient;
   const syncedAt = yield* DateTime.now;
-  const me = ownAddresses(stream);
   const latest = [...new Map(items.map((item) => [item.externalId, item])).values()];
   return yield* sql.withTransaction(
     Effect.gen(function* () {
@@ -314,11 +354,13 @@ export const writeItems = Effect.fnUntraced(function* (
             occurredAt: DateTime.makeUnsafe(item.occurredAt),
             syncedAt,
             title: item.title,
-            fromName: item.from.name,
-            fromAddress: item.from.address,
-            fromMe: me.has(item.from.address.toLowerCase()),
-            body: item.body,
+            fromName: item.fromName,
+            fromAddress: item.fromAddress,
+            fromMe: item.fromMe,
+            format: item.format,
             bodyNew: item.bodyNew,
+            text: item.text,
+            textNew: item.textNew,
             link: item.link,
             raw: item.raw,
             deletedAt: null,
@@ -337,8 +379,10 @@ export const writeItems = Effect.fnUntraced(function* (
                 from_name = excluded.from_name,
                 from_address = excluded.from_address,
                 from_me = excluded.from_me,
-                body = excluded.body,
+                format = excluded.format,
                 body_new = excluded.body_new,
+                text = excluded.text,
+                text_new = excluded.text_new,
                 link = excluded.link,
                 raw = excluded.raw,
                 deleted_at = excluded.deleted_at

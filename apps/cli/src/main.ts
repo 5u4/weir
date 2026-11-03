@@ -142,12 +142,12 @@ const conv = Command.make("conv", { id: Argument.Int("id") }, ({ id }) =>
         .filter(
           ({ seq }) => !digests.some(({ from_seq, to_seq }) => from_seq <= seq && seq <= to_seq),
         )
-        .map(({ seq, occurred_at, from, from_me, body_new }) => ({
+        .map(({ seq, occurred_at, from, from_me, text_new }) => ({
           seq,
           occurred_at,
           from: `${from.name} <${from.address}>`,
           from_me,
-          body: truncate(body_new, false),
+          body: truncate(text_new, false),
         })),
       help: [
         "weir item <seq> --full",
@@ -199,7 +199,7 @@ const item = Command.make(
         yield* print(found.input);
         return;
       }
-      const body = truncate(found.body, full);
+      const body = truncate(found.text, full);
       yield* print({
         item: {
           seq,
@@ -214,7 +214,7 @@ const item = Command.make(
         },
         body,
         help: [
-          ...(body === found.body ? [] : [`weir item ${seq} --full`]),
+          ...(body === found.text ? [] : [`weir item ${seq} --full`]),
           `weir item ${seq} --raw`,
           `weir conv ${found.conversation_id}`,
         ],

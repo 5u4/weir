@@ -1,6 +1,7 @@
 import type { Element, Root as HastRoot } from "hast";
 import { fromHtml } from "hast-util-from-html";
-import { defaultHandlers as htmlHandlers, toMdast } from "hast-util-to-mdast";
+import { toHtml } from "hast-util-to-html";
+import { toMdast } from "hast-util-to-mdast";
 import type { Link, Nodes, Parents, PhrasingContent, Root, RootContent } from "mdast";
 import { gfmToMarkdown } from "mdast-util-gfm";
 import {
@@ -164,7 +165,7 @@ const edge = (node: PhrasingContent | undefined) =>
 
 const tidy = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
   nodes.flatMap((node): RootContent[] => {
-    if (node.type !== "paragraph" && node.type !== "heading") {
+    if (node.type !== "paragraph" && node.type !== "heading" && node.type !== "tableCell") {
       return "children" in node
         ? [{ ...node, children: tidy(node.children) } as RootContent]
         : [node];
@@ -172,7 +173,7 @@ const tidy = (nodes: ReadonlyArray<RootContent>): RootContent[] =>
     const children = clean(node.children, {});
     while (edge(children[0])) children.shift();
     while (edge(children.at(-1))) children.pop();
-    return children.length > 0 ? [{ ...node, children }] : [];
+    return children.length > 0 || node.type === "tableCell" ? [{ ...node, children }] : [];
   });
 
 const wrapInto = (block: RootContent, wrapper: Wrapper): RootContent =>
@@ -235,15 +236,7 @@ const handlers: Partial<Handlers> = {
 const convert = (dropQuoted: boolean) => (html: string) => {
   const hast = fromHtml(html);
   if (dropQuoted) unquote(hast);
-  const mdast = toMdast(hast, {
-    handlers: {
-      table: htmlHandlers.div,
-      tr: htmlHandlers.div,
-      td: htmlHandlers.div,
-      th: htmlHandlers.div,
-    },
-    nodeHandlers: { comment: () => undefined },
-  });
+  const mdast = toMdast(hast, { nodeHandlers: { comment: () => undefined } });
   const root: Root = {
     type: "root",
     children: tidy(lift(mdast.type === "root" ? mdast.children : [])),
@@ -253,6 +246,12 @@ const convert = (dropQuoted: boolean) => (html: string) => {
 
 export const htmlBody = convert(false);
 export const htmlBodyNew = convert(true);
+
+export const htmlNew = (html: string) => {
+  const hast = fromHtml(html);
+  unquote(hast);
+  return toHtml(hast);
+};
 
 const TAGS =
   /<\/?(?:details|summary|picture|source|img|sub|sup|br|div|span|p|a|b|i|em|strong|code|kbd|table|thead|tbody|tr|td|th|ul|ol|li|hr|h[1-6]|blockquote|pre|g-emoji)\b[^<>]*>/gi;

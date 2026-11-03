@@ -420,6 +420,7 @@ const ghostOf = (source: HTMLElement, seen: ReadonlyMap<Element, Pose>) => {
     const pose = from === undefined ? undefined : seen.get(from);
     if (pose !== undefined && el instanceof HTMLElement) pin(el, pose, el !== copy);
   });
+  for (const frame of copy.querySelectorAll("iframe")) frame.removeAttribute("srcdoc");
   const ghost = document.createElement("div");
   ghost.append(copy);
   return ghost;

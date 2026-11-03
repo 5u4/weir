@@ -1,7 +1,7 @@
 import { DurationShorthand } from "@weir/contract/Config";
 import { Digest, Trigger } from "@weir/contract/Digest";
 import { RuleInput } from "@weir/contract/Rule";
-import { Party, RowParty } from "@weir/contract/Source";
+import { BodyFormat, Party, RowParty } from "@weir/contract/Source";
 import { ConversationState } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
@@ -175,7 +175,9 @@ export const ItemSummary = Schema.Struct({
   from: Party,
   from_me: Schema.Boolean,
   title: Schema.NullOr(Schema.String),
+  format: BodyFormat,
   body_new: Schema.String,
+  text_new: Schema.String,
   stream: Schema.String,
 });
 
@@ -222,8 +224,7 @@ export const Item = Schema.Struct({
   from: Party,
   from_me: Schema.Boolean,
   link: Schema.NullOr(Schema.String),
-  body: Schema.String,
-  body_new: Schema.String,
+  text: Schema.String,
   input: RuleInput,
   deleted_at: Schema.NullOr(Schema.String),
 });

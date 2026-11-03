@@ -1,7 +1,7 @@
 import { TextDecoder } from "node:util";
-import type { RawItem } from "@weir/contract/Source";
+import type { ItemBody, RawItem } from "@weir/contract/Source";
 import type { Message, MessagePart } from "./gws.ts";
-import { htmlBody, htmlBodyNew, plainBody, plainNew } from "./markdown.ts";
+import { htmlBody, htmlBodyNew, htmlNew, plainBody, plainNew } from "./markdown.ts";
 
 const TRANSPORT =
   /^(received|arc-|dkim-signature|x-google-|x-gm-|x-received|authentication-results|received-spf|return-path|delivered-to|x-forwarded|feedback-id|x-ses|x-sg-|x-mailgun|x-feedback)/i;
@@ -58,6 +58,30 @@ const mailbox = (header: string) => {
   };
 };
 
+const BULK_CATEGORIES: Record<string, true> = {
+  CATEGORY_UPDATES: true,
+  CATEGORY_PROMOTIONS: true,
+  CATEGORY_SOCIAL: true,
+  CATEGORY_FORUMS: true,
+};
+const DESIGNED = /<(?:table|style)\b/i;
+
+const content = (html: string | null, plain: string, labels: readonly string[]): ItemBody => {
+  if (html === null)
+    return {
+      format: "markdown",
+      body: plainBody(plain),
+      bodyNew: plainNew(plain),
+    };
+  if (labels.some((label) => BULK_CATEGORIES[label]) && DESIGNED.test(html))
+    return { format: "html", body: html, bodyNew: htmlNew(html) };
+  return {
+    format: "markdown",
+    body: htmlBody(html).trim(),
+    bodyNew: htmlBodyNew(html).trim(),
+  };
+};
+
 export const toRawItem = (message: Message, emailAddress: string): RawItem => {
   const html = textOf(message.payload, "text/html");
   const plain = textOf(message.payload, "text/plain") ?? "";
@@ -69,8 +93,7 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     occurredAt: new Date(Number(message.internalDate)).toISOString(),
     title: headerOf(message.payload, "subject"),
     from: mailbox(headerOf(message.payload, "from") ?? ""),
-    body: html === null ? plainBody(plain) : htmlBody(html).trim(),
-    bodyNew: html === null ? plainNew(plain) : htmlBodyNew(html).trim(),
+    ...content(html, plain, message.labelIds ?? []),
     link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,
     raw: { ...message, payload: trimPart(message.payload) },
   };

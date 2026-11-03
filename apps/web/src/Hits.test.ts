@@ -1,4 +1,5 @@
 import { RegistryProvider } from "@effect/atom-react/RegistryContext";
+import { derive } from "@weir/body/Body";
 import { termPattern } from "@weir/daemon/Match";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -32,7 +33,9 @@ const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSum
   from,
   from_me: false,
   title: null,
+  format: "markdown",
   body_new,
+  text_new: derive({ format: "markdown", body: body_new, bodyNew: body_new }).textNew,
   stream: "robin.ellis@example.com",
 });
 
@@ -126,6 +129,8 @@ const venue = detail(
     ]),
   ],
 );
+
+const vendor = detail([item(9, lisa, "We signed with North**wind** for the `data`base move.")]);
 
 const found = (of: Detail, query: string) => hits(of, termPattern(query));
 
@@ -301,6 +306,7 @@ describe("landing on a hit", () => {
     ["snapshot", runbook],
     ["runbook", runbook],
     ["venue", venue],
+    ["northwind database", vendor],
   ] as const)("%s: every counted hit shows a marked target once revealed", (query, of) => {
     const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
     expect(counted.length).toBeGreaterThan(0);
@@ -332,12 +338,32 @@ const newsletter = detail([
   item(1, { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example" }, newsletterBody),
 ]);
 
+describe("HTML body", () => {
+  const html = `<html><head><style>.promo{color:#600}</style></head><body><table class="promo" width="600"><tr><td>Alfama walking tour</td></tr></table></body></html>`;
+  const email = detail([
+    {
+      ...item(1, rachel, ""),
+      format: "html",
+      body_new: html,
+      text_new: derive({ format: "html", body: html, bodyNew: html }).textNew,
+    },
+  ]);
+
+  it("is a body hit on a visible word", () => {
+    expect(hits(email, termPattern("walking"))).toEqual([{ _tag: "Item", seq: 1, field: "body" }]);
+  });
+
+  it.each(["table", "promo", "color", "width"])("is no hit on the markup word %s", (query) => {
+    expect(hits(email, termPattern(query))).toEqual([]);
+  });
+});
+
 describe("newsletter body", () => {
   it.each([
     ["link text", "Lamport"],
     ["heading", "months"],
     ["inline code", "mergeClocks"],
-    ["HTML shown as text", "<b>raw"],
+    ["HTML shown as text", "raw"],
     ["list item", "tombstones"],
   ])("a query on the %s is a body hit marked in the rendered body", (_, query) => {
     expect(hits(newsletter, termPattern(query))).toEqual([{ _tag: "Item", seq: 1, field: "body" }]);

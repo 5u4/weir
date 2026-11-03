@@ -1,4 +1,3 @@
-import { hast, leaves } from "@weir/daemon/Markdown";
 import { senderLabel } from "@weir/daemon/Match";
 import {
   type Detail,
@@ -47,8 +46,8 @@ export const hits = (detail: Detail, pattern: RegExp | null): ReadonlyArray<Hit>
       }
     });
   }
-  for (const { seq, from, body_new, stream } of detail.items) {
-    const field = leaves(hast(body_new)).some((leaf) => matches(leaf, pattern))
+  for (const { seq, from, text_new, stream } of detail.items) {
+    const field = matches(text_new, pattern)
       ? "body"
       : matches(senderLabel(from.name, from.address), pattern)
         ? "from"

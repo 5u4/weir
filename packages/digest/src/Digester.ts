@@ -131,7 +131,7 @@ export const make = Effect.fnUntraced(function* (
           from: { name: item.fromName, address: item.fromAddress },
           from_me: item.fromMe,
           title: item.title,
-          body_new: item.bodyNew,
+          body_new: item.textNew,
         }),
       ),
       digests: digests.filter(({ id }) => id !== plan.replaces?.id),

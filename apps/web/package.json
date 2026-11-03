@@ -12,6 +12,7 @@
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource-variable/inter-tight": "5.3.0",
     "@fontsource-variable/noto-sans-sc": "5.3.1",
+    "@weir/body": "workspace:*",
     "@weir/daemon": "workspace:*",
     "effect": "catalog:",
     "hast-util-to-jsx-runtime": "2.3.6",
@@ -25,6 +26,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "6.1.2",
+    "happy-dom": "21.0.4",
     "tailwindcss": "4.3.3",
     "vite": "8.3.5"
   }

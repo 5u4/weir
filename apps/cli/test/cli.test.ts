@@ -25,6 +25,7 @@ const weir = (home: string, ...args: ReadonlyArray<string>) =>
   });
 
 const longBody = `${"word ".repeat(200)}END`;
+const receipt = `<html><head><style>td{color:#600}</style></head><body><table width="600"><tr><td>Total</td><td>CAD 42</td></tr></table></body></html>`;
 
 const items: ReadonlyArray<RawItem> = [
   {
@@ -35,10 +36,25 @@ const items: ReadonlyArray<RawItem> = [
     occurredAt: "2026-10-20T09:00:00Z",
     title: "Quarterly invoice review",
     from: { name: "Ada", address: "ada@example.com" },
+    format: "markdown",
     body: longBody,
     bodyNew: longBody,
     link: null,
     raw: { labelIds: ["INBOX"] },
+  },
+  {
+    externalId: "a2",
+    threadId: "t1",
+    containerId: "INBOX",
+    containerName: "Inbox",
+    occurredAt: "2026-10-20T10:00:00Z",
+    title: "Your invoice receipt",
+    from: { name: "Billing", address: "billing@example.com" },
+    format: "html",
+    body: receipt,
+    bodyNew: receipt,
+    link: null,
+    raw: { labelIds: [] },
   },
 ];
 
@@ -138,6 +154,18 @@ match = { type = "eq", target = "/raw/labelIds/0", is = "INBOX" }
 `);
       const tested = yield* weir(home.root, "tag", "test", "Inbox");
       expect(tested.output.tags).toEqual([{ name: "Inbox", conversations: 1, items: 1 }]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("item and conv print an HTML email as its visible text", () =>
+    Effect.gen(function* () {
+      const { home } = yield* startDaemon;
+      const item = yield* weir(home.root, "item", "2");
+      expect(item.output).toMatchObject({ item: { conversation: 1 }, body: "Total CAD 42" });
+      const conv = yield* weir(home.root, "conv", "1");
+      expect(conv.output).toMatchObject({
+        items: [{ seq: 1 }, { seq: 2, body: "Total CAD 42" }],
+      });
     }).pipe(Effect.scoped),
   );
 

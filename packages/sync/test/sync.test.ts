@@ -674,6 +674,31 @@ describe("syncStream bodyNew", () => {
   );
 });
 
+describe("syncStream HTML items", () => {
+  const html = `<html><head><style>.cell{color:#600}</style></head><body><table class="cell"><tr><td>Lisbon</td><td>Alfama</td></tr></table></body></html>`;
+  const designed = rawItem("h1", { format: "html", body: html, bodyNew: html });
+
+  it.effect("are found by a word in a table cell, never by CSS or a class name", () =>
+    Effect.gen(function* () {
+      yield* run(new Map([[null, page({ cursor: "c1", upserts: [designed] })]]));
+      expect(yield* search({ query: "Alfama" })).toHaveLength(1);
+      expect(yield* search({ query: "LisbonAlfama" })).toEqual([]);
+      expect(yield* search({ query: "color" })).toEqual([]);
+      expect(yield* search({ query: "cell" })).toEqual([]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("match a /body rule on visible text, not on markup", () =>
+    Effect.gen(function* () {
+      yield* run(new Map([[null, page({ cursor: "c1", upserts: [designed] })]]), [
+        { name: "visible", match: { type: "regex", target: "/body", regex: "Lisbon\\s+Alfama" } },
+        { name: "markup", match: { type: "regex", target: "/body", regex: "<td|color" } },
+      ]);
+      expect(yield* tagsByThread).toEqual(["thread-h1:visible"]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+});
+
 describe("syncSource failures", () => {
   const failingStreams = (failure: () => Promise<unknown>): Source => ({
     streams: failure as Source["streams"],
