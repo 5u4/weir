@@ -23,7 +23,7 @@ export const freePort = () => {
 };
 
 export const makeHome = (configBody: string) => {
-  const home = Home.make(mkdtempSync(join(tmpdir(), "weir-daemon-")));
+  const home = Home.make(mkdtempSync(join(tmpdir(), "weir-home-")));
   const port = freePort();
   const writeConfig = (body: string) => writeFileSync(home.config, `port = ${port}\n\n${body}`);
   writeConfig(configBody);

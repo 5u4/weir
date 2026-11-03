@@ -1,10 +1,10 @@
 {
-  "name": "@weir/axi",
+  "name": "@weir/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "weir-axi": "./src/main.ts"
+    "weir": "./src/main.ts"
   },
   "dependencies": {
     "@effect/platform-bun": "catalog:",

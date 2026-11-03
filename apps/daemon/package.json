@@ -10,11 +10,10 @@
     "./Home": "./src/Home.ts",
     "./Http": "./src/Http.ts",
     "./Loopback": "./src/Loopback.ts",
+    "./main": "./src/main.ts",
     "./Markdown": "./src/Markdown.ts",
-    "./Match": "./src/Match.ts"
-  },
-  "bin": {
-    "weir-daemon": "./src/main.ts"
+    "./Match": "./src/Match.ts",
+    "./ProcessIdentity": "./src/ProcessIdentity.ts"
   },
   "dependencies": {
     "@effect/platform-bun": "catalog:",

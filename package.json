@@ -41,7 +41,7 @@
     "@effect/language-service": "catalog:",
     "@toon-format/toon": "catalog:",
     "@types/bun": "catalog:",
-    "@weir/axi": "workspace:*",
+    "@weir/cli": "workspace:*",
     "@weir/daemon": "workspace:*",
     "@weir/fixtures": "workspace:*",
     "effect": "catalog:",

@@ -49,7 +49,7 @@ export class Daemon extends Context.Service<
   }
 >()("@weir/daemon/Daemon") {}
 
-const platform = BunChildProcessSpawner.layer.pipe(
+export const platform = BunChildProcessSpawner.layer.pipe(
   Layer.provideMerge(Layer.mergeAll(BunFileSystem.layer, BunPath.layer)),
 );
 

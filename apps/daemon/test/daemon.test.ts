@@ -121,7 +121,11 @@ guide = "prompts/missing.md"
       const { home, port } = makeHome(sourceConfig("1h"));
       yield* Effect.gen(function* () {
         yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource([])) }));
-        expect(JSON.parse(readFileSync(home.daemon, "utf8"))).toEqual({ port, pid: process.pid });
+        expect(JSON.parse(readFileSync(home.daemon, "utf8"))).toEqual({
+          port,
+          pid: process.pid,
+          started: expect.any(String),
+        });
       }).pipe(Effect.scoped);
       expect(existsSync(home.daemon)).toBe(false);
     }),
