@@ -1,3 +1,4 @@
+import { groupKeyPrefix } from "@weir/contract/Config";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -64,10 +65,22 @@ export const migration = Effect.gen(function* () {
     cleared_seq INTEGER,
     muted INTEGER
   )`;
-  yield* sql`CREATE TABLE tag_state (
-    name TEXT PRIMARY KEY,
-    ai_since TEXT
+  yield* sql`CREATE TABLE ai_state (
+    kind TEXT,
+    name TEXT,
+    ai_since TEXT,
+    PRIMARY KEY (kind, name)
   )`;
+  yield* sql`CREATE VIEW conversation_ai AS
+    SELECT conversation_tag.conversation_id, ai_state.kind, ai_state.name, ai_state.ai_since
+      FROM conversation_tag
+      JOIN ai_state ON ai_state.kind = 'tag' AND ai_state.name = conversation_tag.tag
+    UNION ALL
+    SELECT conversation.id, ai_state.kind, ai_state.name, ai_state.ai_since
+      FROM ai_state
+      JOIN conversation ON conversation.key = ${sql.literal(`'${groupKeyPrefix}'`)} || ai_state.name
+      WHERE ai_state.kind = 'group'
+        AND EXISTS (SELECT 1 FROM item WHERE item.conversation_id = conversation.id AND item.deleted_at IS NULL)`;
   yield* sql`CREATE TABLE sync_run (
     id INTEGER PRIMARY KEY,
     stream_id INTEGER,

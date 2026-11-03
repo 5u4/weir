@@ -241,14 +241,12 @@ const demo = Effect.gen(function* () {
     ].join(", ")}`,
   );
 
-  const aiTags = status.tags.filter(({ ai_since }) => ai_since !== null);
-  for (const { name, ai_since } of status.tags) {
-    const ai = name === "Me" || name === "On-call";
-    if (
-      ai !== (ai_since !== null) ||
-      (ai_since !== null && millisOf(ai_since) !== millisOf(AI_SINCE))
-    )
-      problems.push(`tag ${name} ai_since ${ai_since}, expected ${ai ? AI_SINCE : null}`);
+  const aiScopes = status.ai.map(({ kind, name }) => `${kind} ${name}`);
+  if (JSON.stringify(aiScopes) !== JSON.stringify(["tag Me", "tag On-call"]))
+    problems.push(`ai scopes ${JSON.stringify(aiScopes)}, expected tag Me and tag On-call`);
+  for (const { kind, name, ai_since } of status.ai) {
+    if (ai_since === null || millisOf(ai_since) !== millisOf(AI_SINCE))
+      problems.push(`${kind} ${name} ai_since ${ai_since}, expected ${AI_SINCE}`);
   }
 
   const key = (conversation: string, first: string, last: string) =>
@@ -259,11 +257,11 @@ const demo = Effect.gen(function* () {
       digest,
     ]),
   );
-  const aiNames = new Set(aiTags.map(({ name }) => name));
+  const aiTags = new Set(status.ai.map(({ name }) => name));
   const got = new Set<string>();
   for (const { id } of yield* allConversations) {
     const conversation = yield* client.conversation({ params: { id } });
-    const isAi = conversation.tags.some((tag) => aiNames.has(tag));
+    const isAi = conversation.tags.some((tag) => aiTags.has(tag));
     for (const digest of conversation.digests) {
       if (digest.trigger !== "auto") continue;
       const range = conversation.items.filter(
@@ -281,7 +279,8 @@ const demo = Effect.gen(function* () {
       if (got.has(k)) problems.push(`"${conversation.title}" has duplicate auto digest ${k}`);
       got.add(k);
       const expected = want.get(k);
-      if (!isAi) problems.push(`"${conversation.title}" has no AI tag but has auto digest ${k}`);
+      if (!isAi)
+        problems.push(`"${conversation.title}" is in no AI scope but has auto digest ${k}`);
       if (millisOf(first.occurred_at) < millisOf(AI_SINCE))
         problems.push(
           `"${conversation.title}" auto digest starts before ai_since at ${first.occurred_at}`,
@@ -304,7 +303,7 @@ const demo = Effect.gen(function* () {
       );
   }
   lines.push(
-    `ai_since ${aiTags.map(({ name }) => name).join(", ")}: ${AI_SINCE}`,
+    `ai_since ${aiScopes.join(", ")}: ${AI_SINCE}`,
     `auto digests: ${got.size}`,
     ...[...got].map((k) => `  ${k}`),
   );

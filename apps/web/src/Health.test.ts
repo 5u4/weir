@@ -25,6 +25,7 @@ const status = (
   sources,
   tags: [],
   untagged: { conversations: 0, unread: 0, open: 0 },
+  ai: [],
   digest: null,
 });
 

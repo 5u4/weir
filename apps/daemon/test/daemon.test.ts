@@ -10,11 +10,15 @@ import {
 } from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
+import * as Read from "@weir/store/Read";
+import type { ConversationId } from "@weir/store/Rows";
 import { matchItem } from "@weir/sync/Match";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
@@ -200,7 +204,7 @@ describe("reload", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("tag_state and conversation tags follow the config on every reload", () =>
+  it.live("ai_state and conversation tags follow the config on every reload", () =>
     Effect.gen(function* () {
       const { clock, set } = yield* adjustableClock("2026-10-28T00:00:00Z");
       yield* Effect.gen(function* () {
@@ -212,8 +216,12 @@ describe("reload", () => {
         const tags = client
           .status()
           .pipe(
-            Effect.map(({ tags }) =>
-              tags.map(({ name, ai_since, conversations }) => [name, ai_since, conversations]),
+            Effect.map(({ tags, ai }) =>
+              tags.map(({ name, conversations }) => [
+                name,
+                ai.find((scope) => scope.kind === "tag" && scope.name === name)?.ai_since ?? null,
+                conversations,
+              ]),
             ),
           );
         yield* eventually(client.status(), synced);
@@ -253,6 +261,115 @@ describe("reload", () => {
           ["Promo", null, 1],
           ["Finance", "2026-10-31T00:00:00.000Z", 1],
         ]);
+      }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
+    }),
+  );
+});
+
+describe("ai", () => {
+  it.live("a group with ai digests its conversation even when a tag without ai covers more", () =>
+    Effect.gen(function* () {
+      const { clock, set } = yield* adjustableClock("2026-10-28T00:00:00Z");
+      yield* Effect.gen(function* () {
+        const invoices = (ai: boolean, match = invoiceTitle) => `
+[[group]]
+name = "Invoices"
+ai = ${ai}
+match = ${match}
+`;
+        const everything = tag(
+          "Everything",
+          `{ type = "regex", target = "/title", regex = "invoice|sale", flags = "i" }`,
+        );
+        const { home, port, writeConfig } = makeHome(
+          sourceConfig("1h") + everything + invoices(true),
+        );
+        yield* Layer.build(Http.layer(home, { fake: fakePlugin(fakeSource(mailbox)) }));
+        const client = yield* apiClient(port);
+        const configure = (body: string) =>
+          Effect.gen(function* () {
+            writeConfig(sourceConfig("1h") + body);
+            yield* client.reload();
+          });
+        const store = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+          effect.pipe(Effect.provide(Database.layer(home.db)));
+        const since = (id: number) =>
+          store(Read.aiSince(id as ConversationId)).pipe(
+            Effect.map(Option.map(DateTime.formatIso)),
+            Effect.map(Option.getOrNull),
+          );
+        yield* eventually(client.status(), synced);
+        const idOf = (q: string) =>
+          client.search({ query: { q } }).pipe(
+            Effect.map(({ conversations }) => {
+              const [only] = conversations;
+              if (only === undefined || conversations.length !== 1) throw new Error(q);
+              return only;
+            }),
+          );
+        const group = yield* idOf("invoice");
+        const sale = yield* idOf("weekend sale");
+        expect(group.title).toBe("Invoices");
+        expect(group.tags).toEqual(["Everything"]);
+        expect(sale.tags).toEqual(["Everything"]);
+
+        expect(yield* store(Read.aiConversations())).toEqual([group.id]);
+        expect(yield* since(group.id)).toBe("2026-10-28T00:00:00.000Z");
+        expect(yield* since(sale.id)).toBeNull();
+        expect((yield* client.status()).ai).toEqual([
+          {
+            kind: "group",
+            name: "Invoices",
+            ai_since: "2026-10-28T00:00:00.000Z",
+            conversations: 1,
+          },
+        ]);
+
+        yield* set("2026-10-29T00:00:00Z");
+        yield* configure(everything + invoices(false));
+        expect(yield* store(Read.aiConversations())).toEqual([]);
+        expect((yield* client.status()).ai).toEqual([]);
+
+        yield* set("2026-10-30T00:00:00Z");
+        yield* configure(everything + invoices(true));
+        expect(yield* since(group.id)).toBe("2026-10-30T00:00:00.000Z");
+
+        yield* set("2026-10-31T00:00:00Z");
+        const finance = tag("Finance", invoiceTitle, true);
+        yield* configure(everything + finance + invoices(true));
+        expect(yield* store(Read.aiConversations())).toEqual([group.id]);
+        expect(yield* since(group.id)).toBe("2026-10-30T00:00:00.000Z");
+
+        yield* set("2026-11-01T00:00:00Z");
+        yield* configure(everything + finance + invoices(false));
+        yield* configure(everything + finance + invoices(true));
+        expect(yield* since(group.id)).toBe("2026-10-31T00:00:00.000Z");
+        expect((yield* client.status()).ai).toEqual([
+          { kind: "tag", name: "Finance", ai_since: "2026-10-31T00:00:00.000Z", conversations: 1 },
+          {
+            kind: "group",
+            name: "Invoices",
+            ai_since: "2026-11-01T00:00:00.000Z",
+            conversations: 1,
+          },
+        ]);
+
+        yield* set("2026-11-02T00:00:00Z");
+        const nothing = `{ type = "regex", target = "/title", regex = "^no such title$" }`;
+        yield* configure(everything + invoices(true, nothing));
+        expect(yield* store(Read.aiConversations())).toEqual([]);
+        expect((yield* client.status()).ai).toEqual([
+          {
+            kind: "group",
+            name: "Invoices",
+            ai_since: "2026-11-01T00:00:00.000Z",
+            conversations: 0,
+          },
+        ]);
+
+        yield* configure(everything + invoices(true));
+        expect(yield* store(Read.aiConversations())).toEqual([group.id]);
+        expect(yield* since(group.id)).toBe("2026-11-01T00:00:00.000Z");
       }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
     }),
   );

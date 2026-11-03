@@ -23,7 +23,9 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 - Write regexes as TOML literal strings `'...'` so backslashes stay single.
 - `Untagged` is reserved, in any case.
 - File order is display order for tags and precedence for groups: the first group whose rule matches any item of a thread wins.
-- Setting `ai = true` on a tag starts AI work from now (`ai_since`). Renaming the tag resets it.
+- `ai = true` on a tag or a `[[group]]` turns on auto digest from now (`ai_since`). Renaming the tag or group resets it, and so does turning `ai` off and on again.
+- AI scopes are a union: a conversation auto-digests if it carries any `ai = true` tag or is an `ai = true` group. A tag without `ai` never turns AI off for a group it covers.
+- `weir` prints each AI scope under `ai` with its `ai_since` and conversation count: check it after reload.
 - Tags have no `color`.
 - A per-source view is a tag matching `/source`.
 - `{ type = "group", name = "..." }` in a tag matches every item of the conversation that group produced. It reads no pointer, so inside `some` or `every` it still tests the conversation's group, not the element.
@@ -58,6 +60,22 @@ name = "Ops"
 match = { type = "or", rules = [
   { type = "group", name = "Deploys" },
   { type = "regex", target = "/from/address", regex = '@pager\.example$', flags = "i" },
+] }
+```
+
+Only The Grove auto-digests. Housing covers it and BC Hydro but has no `ai`, so BC Hydro stays originals only:
+
+```toml
+[[group]]
+name = "The Grove"
+ai = true
+match = { type = "regex", target = "/from/address", regex = '@thegrove\.example$', flags = "i" }
+
+[[tag]]
+name = "Housing"
+match = { type = "or", rules = [
+  { type = "group", name = "The Grove" },
+  { type = "regex", target = "/from/address", regex = '@bchydro\.example$', flags = "i" },
 ] }
 ```
 

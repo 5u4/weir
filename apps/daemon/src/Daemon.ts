@@ -5,6 +5,7 @@ import type { Config } from "@weir/contract/Config";
 import * as Digester from "@weir/digest/Digester";
 import { gws } from "@weir/plugin-gws";
 import * as Read from "@weir/store/Read";
+import type { AiScope } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
 import { regroupAll } from "@weir/sync/Groups";
 import * as Scheduler from "@weir/sync/Scheduler";
@@ -24,6 +25,11 @@ import * as Events from "./Events.ts";
 import type { WeirHome } from "./Home.ts";
 
 export const plugins: Scheduler.PluginRegistry = { gws };
+
+export const aiScopes = (config: Config): Array<AiScope> => [
+  ...config.tag.filter(({ ai }) => ai).map(({ name }) => ({ kind: "tag" as const, name })),
+  ...config.group.filter(({ ai }) => ai).map(({ name }) => ({ kind: "group" as const, name })),
+];
 
 export type Listing =
   | { readonly state: "pending" }
@@ -149,7 +155,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
       const start = Effect.fnUntraced(function* (loaded: ConfigFile.Loaded) {
         const { config, sources } = loaded;
         yield* sql.withTransaction(
-          Write.reconcileTagState(config.tag.filter(({ ai }) => ai).map(({ name }) => name)).pipe(
+          Write.reconcileAiState(aiScopes(config)).pipe(
             Effect.andThen(regroupAll(config.group)),
             Effect.andThen(recomputeAllTags(config.tag)),
           ),

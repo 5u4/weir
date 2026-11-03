@@ -63,16 +63,8 @@ const home = Command.make("weir", {}, () =>
       config: status.config.path,
       sync: status.sync,
       ...(status.config.error === null ? {} : { config_error: status.config.error.message }),
-      tags: [
-        ...status.tags.map(({ name, ai, conversations, unread, open }) => ({
-          name,
-          ai,
-          conversations,
-          unread,
-          open,
-        })),
-        { name: untagged, ai: false, ...status.untagged },
-      ],
+      tags: [...status.tags, { name: untagged, ...status.untagged }],
+      ai: status.ai,
       sources: status.sources.flatMap(
         ({ id, listing, error, streams }): Array<SourceRow> =>
           streams.length === 0

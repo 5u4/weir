@@ -86,6 +86,7 @@ mode = "test"
 
 [[tag]]
 name = "Finance"
+ai = true
 match = { type = "regex", target = "/title", regex = "invoice" }
 `;
 
@@ -106,15 +107,16 @@ const startDaemon = Effect.gen(function* () {
 });
 
 describe("weir", () => {
-  it.live("home shows tags with Untagged and each source's stream", () =>
+  it.live("home shows tags with Untagged, the AI scopes and each source's stream", () =>
     Effect.gen(function* () {
       const { home } = yield* startDaemon;
       const { output, exitCode } = yield* weir(home.root);
       expect(exitCode).toBe(0);
       expect(output.tags).toEqual([
-        { name: "Finance", ai: false, conversations: 1, unread: 0, open: 1 },
-        { name: "Untagged", ai: false, conversations: 0, unread: 0, open: 0 },
+        { name: "Finance", conversations: 1, unread: 0, open: 1 },
+        { name: "Untagged", conversations: 0, unread: 0, open: 0 },
       ]);
+      expect(output.ai).toMatchObject([{ kind: "tag", name: "Finance", conversations: 1 }]);
       expect(output.sources).toMatchObject([
         { id: "mail", stream: "me@example.com", listing: "ok", backfill: "done", error: null },
       ]);

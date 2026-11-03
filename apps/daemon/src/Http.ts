@@ -51,7 +51,7 @@ import {
   type View,
 } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
-import { Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
+import { aiScopes, Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
 import { segments, senderLabel, termPattern } from "./Match.ts";
@@ -106,9 +106,7 @@ const status = Effect.fnUntraced(function* (
   digester: Option.Option<Digester.Digester>,
 ) {
   const streams = yield* Read.streams();
-  const aiSince = new Map(
-    (yield* Read.tagStates()).map(({ name, aiSince }) => [name, DateTime.formatIso(aiSince)]),
-  );
+  const aiStates = yield* Read.aiStates();
   const counts = yield* Read.tagCounts();
   const countsOf = (tag: string | null) => {
     const row = counts.find((count) => count.tag === tag);
@@ -166,12 +164,16 @@ const status = Effect.fnUntraced(function* (
           })),
       };
     }),
-    tags: state.config.tag.map(({ name, ai }) => ({
-      name,
-      ai,
-      ai_since: aiSince.get(name) ?? null,
-      ...countsOf(name),
-    })),
+    tags: state.config.tag.map(({ name }) => ({ name, ...countsOf(name) })),
+    ai: aiScopes(state.config).map(({ kind, name }) => {
+      const row = aiStates.find((ai) => ai.kind === kind && ai.name === name);
+      return {
+        kind,
+        name,
+        ai_since: row === undefined ? null : DateTime.formatIso(row.aiSince),
+        conversations: row?.conversations ?? 0,
+      };
+    }),
     untagged: countsOf(null),
     digest:
       state.config.digest === undefined

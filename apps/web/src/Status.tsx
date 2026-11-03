@@ -167,6 +167,7 @@ const termClass = "text-sm text-ink-3";
 const valueClass =
   "m-0 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-md text-ink tabular-nums";
 const tagClass = "flex flex-wrap items-baseline gap-x-2 gap-y-0";
+const scopeKindClass = "text-xs font-bold tracking-wide text-ink-3 uppercase";
 const errsFileClass = `${codeClass} text-warn`;
 const errsClass = "mx-0 mt-3 mb-0 grid list-none gap-2 rounded-2xl bg-warn-wash px-3.5 py-3";
 const errsItemClass =
@@ -401,7 +402,6 @@ export function StatusView({ status: value, health }: { status: Status; health: 
   const current = useAtomValue(now);
   const warn = health.alert;
   const { title, detail } = verdictText(health.verdict, current);
-  const aiTags = value.tags.filter(({ ai }) => ai);
   return (
     <div className="max-w-status px-reader pt-5.5 pb-24 max-wide:pt-3.5">
       <header
@@ -449,19 +449,20 @@ export function StatusView({ status: value, health }: { status: Status; health: 
           <div className={fieldClass}>
             <dt className={termClass}>AI on</dt>
             <dd className={valueClass}>
-              {aiTags.length === 0 ? (
+              {value.ai.length === 0 ? (
                 <span>
-                  No tag has <code className={codeClass}>ai = true</code>
+                  No tag or group has <code className={codeClass}>ai = true</code>
                 </span>
               ) : (
                 <ul className={listClass}>
-                  {aiTags.map((tag) => (
-                    <li key={tag.name} className={tagClass}>
-                      <b>{tag.name}</b>
+                  {value.ai.map((scope) => (
+                    <li key={`${scope.kind}:${scope.name}`} className={tagClass}>
+                      <b>{scope.name}</b>
+                      {scope.kind === "group" && <span className={scopeKindClass}>group</span>}
                       <span className="text-ink-3">
-                        {tag.ai_since === null
-                          ? plural(tag.conversations, "conversation")
-                          : `since ${dayAndTime(DateTime.makeUnsafe(tag.ai_since))} · ${plural(tag.conversations, "conversation")}`}
+                        {scope.ai_since === null
+                          ? plural(scope.conversations, "conversation")
+                          : `since ${dayAndTime(DateTime.makeUnsafe(scope.ai_since))} · ${plural(scope.conversations, "conversation")}`}
                       </span>
                     </li>
                   ))}
