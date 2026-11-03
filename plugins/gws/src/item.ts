@@ -58,13 +58,28 @@ const mailbox = (header: string) => {
   };
 };
 
+const BULK_CATEGORIES: Record<string, true> = {
+  CATEGORY_UPDATES: true,
+  CATEGORY_PROMOTIONS: true,
+  CATEGORY_SOCIAL: true,
+  CATEGORY_FORUMS: true,
+};
 const DESIGNED = /<(?:table|style)\b/i;
 
-const content = (html: string | null, plain: string): ItemBody => {
+const content = (html: string | null, plain: string, labels: readonly string[]): ItemBody => {
   if (html === null)
-    return { format: "markdown", body: plainBody(plain), bodyNew: plainNew(plain) };
-  if (DESIGNED.test(html)) return { format: "html", body: html, bodyNew: htmlNew(html) };
-  return { format: "markdown", body: htmlBody(html).trim(), bodyNew: htmlBodyNew(html).trim() };
+    return {
+      format: "markdown",
+      body: plainBody(plain),
+      bodyNew: plainNew(plain),
+    };
+  if (labels.some((label) => BULK_CATEGORIES[label]) && DESIGNED.test(html))
+    return { format: "html", body: html, bodyNew: htmlNew(html) };
+  return {
+    format: "markdown",
+    body: htmlBody(html).trim(),
+    bodyNew: htmlBodyNew(html).trim(),
+  };
 };
 
 export const toRawItem = (message: Message, emailAddress: string): RawItem => {
@@ -78,8 +93,10 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     occurredAt: new Date(Number(message.internalDate)).toISOString(),
     title: headerOf(message.payload, "subject"),
     from: mailbox(headerOf(message.payload, "from") ?? ""),
-    ...content(html, plain),
-    link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,
+    ...content(html, plain, message.labelIds ?? []),
+    link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(
+      emailAddress,
+    )}#all/${message.id}`,
     raw: { ...message, payload: trimPart(message.payload) },
   };
 };

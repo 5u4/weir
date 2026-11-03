@@ -21,12 +21,20 @@ const mixed = (...parts: MessagePart[]): MessagePart => ({
   parts,
 });
 
-const itemOf = (payload: MessagePart, from = "Ben Ortiz <ben@example.com>") => {
+const itemOf = (
+  payload: MessagePart,
+  from = "Ben Ortiz <ben@example.com>",
+  labelIds?: string[],
+) => {
   const message: Message = {
     id: "m1",
     threadId: "t1",
     internalDate: "1761000000000",
-    payload: { ...payload, headers: [{ name: "From", value: from }, ...(payload.headers ?? [])] },
+    ...(labelIds === undefined ? {} : { labelIds }),
+    payload: {
+      ...payload,
+      headers: [{ name: "From", value: from }, ...(payload.headers ?? [])],
+    },
   };
   return toRawItem(message, ME);
 };
@@ -92,7 +100,10 @@ describe("from header", () => {
     ],
     ['"Ben <Ops>, Ortiz" <ben@example.com>', "Ben <Ops>, Ortiz", "ben@example.com"],
   ])("parses %s", (header, name, address) => {
-    expect(itemOf(text("text/plain", "hi"), header).from).toEqual({ name, address });
+    expect(itemOf(text("text/plain", "hi"), header).from).toEqual({
+      name,
+      address,
+    });
   });
 });
 
@@ -103,25 +114,44 @@ describe("body format", () => {
     parts: [text("text/plain", plain), text("text/html", html)],
   });
 
+  const BULK = "Shop <deals@example.com>";
+
   it.each([
-    ["a layout table", `<table width="600"><tr><td>Your trip is booked</td></tr></table>`],
-    ["a style block", `<style>p{color:#333}</style><p>Your trip is booked</p>`],
-  ])("keeps an email built with %s as its original HTML", (_, html) => {
-    const item = itemOf(alternative("Your trip is booked", html));
+    [
+      "a layout table",
+      "CATEGORY_PROMOTIONS",
+      `<table width="600"><tr><td>Your trip is booked</td></tr></table>`,
+    ],
+    ["a style block", "CATEGORY_UPDATES", `<style>p{color:#333}</style><p>Your trip is booked</p>`],
+  ])("keeps a bulk email built with %s as its original HTML", (_, category, html) => {
+    const item = itemOf(alternative("Your trip is booked", html), BULK, ["INBOX", category]);
     expect(item).toMatchObject({ format: "html", body: html });
   });
 
   it("drops the quoted history and signature from an HTML email's new part", () => {
     const html = `<table><tr><td>See you Friday</td></tr></table><div class="gmail_signature">Ben</div><div class="gmail_quote"><div class="gmail_attr">On Tue Ada wrote:</div>earlier plan</div>`;
-    const item = itemOf(alternative("See you Friday", html));
+    const item = itemOf(alternative("See you Friday", html), BULK, ["CATEGORY_SOCIAL"]);
     expect(item.format).toBe("html");
     expect(item.bodyNew).toContain("See you Friday");
     expect(item.bodyNew).not.toMatch(/Ben|earlier plan|gmail_/);
   });
 
-  it("converts simple HTML without tables or styles to markdown", () => {
-    const item = itemOf(alternative("Ship it.", "<p>Ship <b>it</b>.</p><ul><li>today</li></ul>"));
-    expect(item).toMatchObject({ format: "markdown", body: "Ship **it**.\n\n- today" });
+  it.each([
+    ["a personal", ["INBOX", "CATEGORY_PERSONAL"]],
+    ["an uncategorized sent", ["SENT"]],
+  ])("converts %s Outlook reply with a style block to markdown", (_, labels) => {
+    const html = `<style>p.MsoNormal{margin:0}</style><div class="WordSection1"><p class="MsoNormal">Ship it.</p></div>`;
+    const item = itemOf(alternative("Ship it.", html), undefined, labels);
+    expect(item).toMatchObject({ format: "markdown", body: "Ship it." });
+  });
+
+  it("converts a bulk email with simple HTML to markdown", () => {
+    const html = "<p>Ship <b>it</b>.</p><ul><li>today</li></ul>";
+    const item = itemOf(alternative("Ship it.", html), BULK, ["CATEGORY_PROMOTIONS"]);
+    expect(item).toMatchObject({
+      format: "markdown",
+      body: "Ship **it**.\n\n- today",
+    });
   });
 
   it("keeps plain-only mail as markdown", () => {
