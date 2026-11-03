@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { Email, emailDocument } from "./Email.tsx";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Email, emailDocument, emailFrame } from "./Email.tsx";
 
 const email = `<html><head><meta http-equiv="Content-Security-Policy" content="img-src *"><style>body{color:red}</style></head><body><table><tr><td>Lisbon</td></tr></table></body></html>`;
 
@@ -43,5 +43,154 @@ describe("Email", () => {
     expect(head).toContain('<meta name="color-scheme" content="light">');
     expect(head).toContain('<meta name="referrer" content="no-referrer">');
     expect(head).toContain('<base target="_blank">');
+  });
+});
+
+class Tag {
+  readonly localName: string;
+  target: string | undefined;
+  constructor(localName: string, target?: string) {
+    this.localName = localName;
+    this.target = target;
+  }
+  matches(selectors: string) {
+    return selectors.split(",").some((selector) => {
+      const [, name, attr] = selector.trim().match(/^([a-z]*)(?:\[([a-z]+)\])?$/) ?? [];
+      return (
+        (name === "" || name === this.localName) &&
+        (attr === undefined || this[attr as "target"] !== undefined)
+      );
+    });
+  }
+  closest(selectors: string) {
+    return this.matches(selectors) ? this : null;
+  }
+}
+
+class Page extends EventTarget {
+  documentElement = { scrollWidth: 600, getBoundingClientRect: () => ({ height: 900 }) };
+  body = { scrollHeight: 900 };
+  activeElement = new Tag("body");
+  readonly tags: ReadonlyArray<Tag>;
+  constructor(tags: ReadonlyArray<Tag> = []) {
+    super();
+    this.tags = tags;
+  }
+  querySelectorAll(selectors: string) {
+    return this.tags.filter((tag) => tag.matches(selectors));
+  }
+}
+
+class Frame extends EventTarget {
+  clientWidth = 600;
+  parentElement = null;
+  style = { setProperty: () => {}, removeProperty: () => {} };
+  contentDocument: Page;
+  constructor(contentDocument: Page) {
+    super();
+    this.contentDocument = contentDocument;
+    emailFrame(this as unknown as HTMLIFrameElement);
+  }
+}
+
+class Wheel extends Event {
+  deltaY: number;
+  constructor(type: string, init: WheelEventInit = {}) {
+    super(type, { bubbles: init.bubbles ?? false, cancelable: init.cancelable ?? false });
+    this.deltaY = init.deltaY ?? 0;
+  }
+}
+
+class Pointer extends Event {
+  pointerType: string;
+  constructor(type: string, init: PointerEventInit = {}) {
+    super(type, { bubbles: init.bubbles ?? false, cancelable: init.cancelable ?? false });
+    this.pointerType = init.pointerType ?? "";
+  }
+}
+
+class Keyboard extends Event {
+  key: string;
+  constructor(type: string, init: KeyboardEventInit = {}) {
+    super(type, { bubbles: init.bubbles ?? false, cancelable: init.cancelable ?? false });
+    this.key = init.key ?? "";
+  }
+}
+
+describe("emailFrame", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("WheelEvent", Wheel);
+    vi.stubGlobal("PointerEvent", Pointer);
+    vi.stubGlobal("KeyboardEvent", Keyboard);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("opens every link in a new tab, whatever target the email gave it", () => {
+    const tags = [
+      new Tag("a", "_self"),
+      new Tag("a", "_top"),
+      new Tag("area", "inbox"),
+      new Tag("a"),
+    ];
+    new Frame(new Page(tags)).dispatchEvent(new Event("load"));
+    expect(tags.map((tag) => tag.target)).toEqual(["_blank", "_blank", "_blank", undefined]);
+  });
+
+  it("hands reading input inside the email to the iframe as bubbling events", () => {
+    const page = new Page();
+    const frame = new Frame(page);
+    frame.dispatchEvent(new Event("load"));
+    const seen: Array<Event> = [];
+    for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) {
+      frame.addEventListener(type, (event) => seen.push(event));
+    }
+    page.dispatchEvent(new Wheel("wheel", { bubbles: true, cancelable: true, deltaY: 120 }));
+    page.dispatchEvent(new Event("touchmove", { bubbles: true, cancelable: true }));
+    page.dispatchEvent(new Pointer("pointerdown", { bubbles: true, pointerType: "mouse" }));
+    page.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "PageDown" }));
+    expect(seen.map((event) => [event.type, event.bubbles])).toEqual([
+      ["wheel", true],
+      ["touchmove", true],
+      ["pointerdown", true],
+      ["keydown", true],
+    ]);
+    expect((seen[0] as Wheel).deltaY).toBe(120);
+    expect((seen[2] as Pointer).pointerType).toBe("mouse");
+    expect((seen[3] as Keyboard).key).toBe("PageDown");
+  });
+
+  it("relays input from each document the frame loads", () => {
+    const frame = new Frame(new Page());
+    frame.dispatchEvent(new Event("load"));
+    const next = new Page();
+    frame.contentDocument = next;
+    frame.dispatchEvent(new Event("load"));
+    const seen: Array<string> = [];
+    frame.addEventListener("keydown", (event) => seen.push((event as Keyboard).key));
+    next.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "ArrowDown" }));
+    expect(seen).toEqual(["ArrowDown"]);
+  });
+
+  it("keeps keys typed into a field in the email to the email", () => {
+    const page = new Page();
+    const frame = new Frame(page);
+    frame.dispatchEvent(new Event("load"));
+    const seen: Array<string> = [];
+    frame.addEventListener("keydown", (event) => seen.push((event as Keyboard).key));
+    page.activeElement = new Tag("textarea");
+    page.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "e" }));
+    page.activeElement = new Tag("body");
+    page.dispatchEvent(new Keyboard("keydown", { bubbles: true, key: "PageDown" }));
+    expect(seen).toEqual(["PageDown"]);
   });
 });

@@ -1,4 +1,57 @@
-import { useCallback } from "react";
+export const emailFrame = (frame: HTMLIFrameElement) => {
+  const measure = () => {
+    const page = frame.contentDocument;
+    if (page === null) return;
+    frame.style.removeProperty("--email-w");
+    const lane = frame.clientWidth;
+    const natural = page.documentElement.scrollWidth;
+    if (natural > lane) {
+      frame.style.setProperty("--email-w", `${natural}px`);
+      frame.style.setProperty("--email-scale", String(lane / natural));
+    } else {
+      frame.style.removeProperty("--email-scale");
+    }
+    const height = Math.max(
+      page.documentElement.getBoundingClientRect().height,
+      page.body?.scrollHeight ?? 0,
+    );
+    frame.style.setProperty("--email-h", `${Math.ceil(height)}px`);
+  };
+  const observer = new ResizeObserver(measure);
+  const loaded = () => {
+    measure();
+    observer.disconnect();
+    if (frame.parentElement !== null) observer.observe(frame.parentElement);
+    const page = frame.contentDocument;
+    if (page === null) return;
+    observer.observe(page.documentElement);
+    for (const link of page.querySelectorAll<HTMLAnchorElement | HTMLAreaElement>(
+      "a[target], area[target]",
+    )) {
+      link.target = "_blank";
+    }
+    page.addEventListener("wheel", (event) => frame.dispatchEvent(new WheelEvent("wheel", event)), {
+      passive: true,
+    });
+    page.addEventListener(
+      "touchmove",
+      () => frame.dispatchEvent(new Event("touchmove", { bubbles: true })),
+      { passive: true },
+    );
+    page.addEventListener("pointerdown", (event) =>
+      frame.dispatchEvent(new PointerEvent("pointerdown", event)),
+    );
+    page.addEventListener("keydown", (event) => {
+      if (page.activeElement?.closest("input, textarea, select, [contenteditable]")) return;
+      frame.dispatchEvent(new KeyboardEvent("keydown", event));
+    });
+  };
+  frame.addEventListener("load", loaded);
+  return () => {
+    observer.disconnect();
+    frame.removeEventListener("load", loaded);
+  };
+};
 
 const emailHead = [
   "<!doctype html><html><head>",
@@ -16,39 +69,6 @@ export const emailSandbox = "allow-same-origin allow-popups allow-popups-to-esca
 export const emailDocument = (html: string) => `${emailHead}${html}`;
 
 export function Email({ html, title }: { html: string; title: string }) {
-  const fit = useCallback((frame: HTMLIFrameElement) => {
-    const measure = () => {
-      const page = frame.contentDocument;
-      if (page === null) return;
-      frame.style.removeProperty("--email-w");
-      const lane = frame.clientWidth;
-      const natural = page.documentElement.scrollWidth;
-      if (natural > lane) {
-        frame.style.setProperty("--email-w", `${natural}px`);
-        frame.style.setProperty("--email-scale", String(lane / natural));
-      } else {
-        frame.style.removeProperty("--email-scale");
-      }
-      const height = Math.max(
-        page.documentElement.getBoundingClientRect().height,
-        page.body?.scrollHeight ?? 0,
-      );
-      frame.style.setProperty("--email-h", `${Math.ceil(height)}px`);
-    };
-    const observer = new ResizeObserver(measure);
-    const loaded = () => {
-      measure();
-      observer.disconnect();
-      if (frame.parentElement !== null) observer.observe(frame.parentElement);
-      const page = frame.contentDocument;
-      if (page !== null) observer.observe(page.documentElement);
-    };
-    frame.addEventListener("load", loaded);
-    return () => {
-      observer.disconnect();
-      frame.removeEventListener("load", loaded);
-    };
-  }, []);
   return (
     <iframe
       data-email
@@ -57,7 +77,7 @@ export function Email({ html, title }: { html: string; title: string }) {
       sandbox={emailSandbox}
       referrerPolicy="no-referrer"
       className="block border-none"
-      ref={fit}
+      ref={emailFrame}
     />
   );
 }
