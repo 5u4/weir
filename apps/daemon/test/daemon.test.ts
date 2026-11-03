@@ -271,11 +271,11 @@ describe("ai", () => {
     Effect.gen(function* () {
       const { clock, set } = yield* adjustableClock("2026-10-28T00:00:00Z");
       yield* Effect.gen(function* () {
-        const invoices = (ai: boolean) => `
+        const invoices = (ai: boolean, match = invoiceTitle) => `
 [[group]]
 name = "Invoices"
 ai = ${ai}
-match = ${invoiceTitle}
+match = ${match}
 `;
         const everything = tag(
           "Everything",
@@ -353,6 +353,23 @@ match = ${invoiceTitle}
             conversations: 1,
           },
         ]);
+
+        yield* set("2026-11-02T00:00:00Z");
+        const nothing = `{ type = "regex", target = "/title", regex = "^no such title$" }`;
+        yield* configure(everything + invoices(true, nothing));
+        expect(yield* store(Read.aiConversations())).toEqual([]);
+        expect((yield* client.status()).ai).toEqual([
+          {
+            kind: "group",
+            name: "Invoices",
+            ai_since: "2026-11-01T00:00:00.000Z",
+            conversations: 0,
+          },
+        ]);
+
+        yield* configure(everything + invoices(true));
+        expect(yield* store(Read.aiConversations())).toEqual([group.id]);
+        expect(yield* since(group.id)).toBe("2026-11-01T00:00:00.000Z");
       }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, clock));
     }),
   );

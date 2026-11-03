@@ -79,7 +79,8 @@ export const migration = Effect.gen(function* () {
     SELECT conversation.id, ai_state.kind, ai_state.name, ai_state.ai_since
       FROM ai_state
       JOIN conversation ON conversation.key = ${sql.literal(`'${groupKeyPrefix}'`)} || ai_state.name
-      WHERE ai_state.kind = 'group'`;
+      WHERE ai_state.kind = 'group'
+        AND EXISTS (SELECT 1 FROM item WHERE item.conversation_id = conversation.id AND item.deleted_at IS NULL)`;
   yield* sql`CREATE TABLE sync_run (
     id INTEGER PRIMARY KEY,
     stream_id INTEGER,
