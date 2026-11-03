@@ -1,4 +1,4 @@
-import { type GroupConfig, groupKeyPrefix } from "@weir/contract/Config";
+import { type GroupConfig, groupKey } from "@weir/contract/Config";
 import type { RuleInput } from "@weir/contract/Rule";
 import type { RawItem } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
@@ -21,7 +21,7 @@ const keysOf = (groups: Groups, inputs: ReadonlyMap<string, ReadonlyArray<RuleIn
       const group = groups.find((candidate) =>
         threadInputs.some((input) => match(candidate.match, input)),
       );
-      return [thread, group === undefined ? thread : `${groupKeyPrefix}${group.name}`];
+      return [thread, group === undefined ? thread : groupKey(group.name)];
     }),
   );
 

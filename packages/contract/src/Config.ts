@@ -71,6 +71,11 @@ export type GroupConfig = typeof GroupConfig.Type;
 
 export const groupKeyPrefix = "group:";
 
+export const groupKey = (name: string) => `${groupKeyPrefix}${name}`;
+
+export const groupNameOf = (key: string): string | null =>
+  key.startsWith(groupKeyPrefix) ? key.slice(groupKeyPrefix.length) : null;
+
 const duplicatesOf = (
   section: string,
   field: string,

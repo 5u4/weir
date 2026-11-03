@@ -1,4 +1,4 @@
-import { groupKeyPrefix } from "@weir/contract/Config";
+import { groupKeyPrefix, groupNameOf } from "@weir/contract/Config";
 import type { RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -216,7 +216,7 @@ export const moveItems = Effect.fnUntraced(function* (
               RETURNING id, last_seq`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
-          if (key.startsWith(groupKeyPrefix)) {
+          if (groupNameOf(key) !== null) {
             const dropped = yield* decodeDigestIds(
               yield* sql`DELETE FROM digest WHERE conversation_id = ${target.id}
                 AND EXISTS (SELECT 1 FROM item WHERE ${sql.in("item.seq", seqs)}

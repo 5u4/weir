@@ -1,6 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { type Config, groupKeyPrefix, untagged } from "@weir/contract/Config";
+import { type Config, groupKey, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
 import { backlog, type Gap, gaps } from "@weir/digest/Range";
@@ -263,7 +263,7 @@ const groupTest = Effect.fnUntraced(function* (file: string, name: string | unde
     groups: config.group
       .filter((group) => name === undefined || group.name === name)
       .map((group) => {
-        const merged = planned.filter(({ key }) => key === `${groupKeyPrefix}${group.name}`);
+        const merged = planned.filter(({ key }) => key === groupKey(group.name));
         const sources = [...new Set(merged.map(({ conversationId }) => conversationId))].flatMap(
           (id) => conversations.get(id) ?? [],
         );
