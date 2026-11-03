@@ -15,30 +15,29 @@ import * as HttpApiClient from "effect/http-api/HttpApiClient";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Lifecycle from "./Lifecycle.ts";
 
 const bodyLimit = 400;
 
 const noIdleTimeout: BunFetchRequestInit = { timeout: false };
 
-class AxiError extends Schema.TaggedError<AxiError>()("AxiError", { message: Schema.String }) {}
+class CliError extends Schema.TaggedError<CliError>()("CliError", { message: Schema.String }) {}
 
 const daemon = Effect.gen(function* () {
   const home = yield* Home.fromEnv;
   const text = yield* Effect.tryPromise({
     try: () => Bun.file(home.daemon).text(),
     catch: () =>
-      new AxiError({
-        message: `weir daemon is not running (no ${home.daemon}); start it with weir-daemon`,
+      new CliError({
+        message: `weir daemon is not running (no ${home.daemon}); start it with weir start`,
       }),
   });
   const { port } = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Home.DaemonFile))(
     text,
   ).pipe(
-    Effect.mapError(
-      () => new AxiError({ message: `${home.daemon} is not valid; restart weir-daemon` }),
-    ),
+    Effect.mapError(() => new CliError({ message: `${home.daemon} is not valid; run weir start` })),
   );
-  return yield* HttpApiClient.make(Api, { baseUrl: `http://127.0.0.1:${port}` });
+  return yield* HttpApiClient.make(Api, { baseUrl: Lifecycle.url(port) });
 });
 
 interface SourceRow {
@@ -55,7 +54,7 @@ const print = (value: unknown) => Console.log(encode(value));
 const truncate = (text: string, full: boolean) =>
   full || text.length <= bodyLimit ? text : `${text.slice(0, bodyLimit)}…`;
 
-const home = Command.make("weir-axi", {}, () =>
+const home = Command.make("weir", {}, () =>
   Effect.gen(function* () {
     const client = yield* daemon;
     const status = yield* client.status();
@@ -88,10 +87,10 @@ const home = Command.make("weir-axi", {}, () =>
               })),
       ),
       help: [
-        "weir-axi search <query> [--tag <tag>] [--source <id>] [--from <who>] [--since 7d]",
-        "weir-axi tag test [<name>]",
-        "weir-axi group test [<name>]",
-        "weir-axi reload",
+        "weir search <query> [--tag <tag>] [--source <id>] [--from <who>] [--since 7d]",
+        "weir tag test [<name>]",
+        "weir group test [<name>]",
+        "weir reload",
       ],
     });
   }),
@@ -126,8 +125,8 @@ const search = Command.make(
         conversations,
         help:
           conversations[0] === undefined
-            ? ["weir-axi search <fewer or shorter words>"]
-            : [`weir-axi conv ${conversations[0].id}`],
+            ? ["weir search <fewer or shorter words>"]
+            : [`weir conv ${conversations[0].id}`],
       });
     }),
 );
@@ -151,9 +150,9 @@ const conv = Command.make("conv", { id: Argument.Int("id") }, ({ id }) =>
           body: truncate(body_new, false),
         })),
       help: [
-        "weir-axi item <seq> --full",
-        "weir-axi item <seq> --raw",
-        `weir-axi digest ${id} [--from <seq> | --up-to <seq>]`,
+        "weir item <seq> --full",
+        "weir item <seq> --raw",
+        `weir digest ${id} [--from <seq> | --up-to <seq>]`,
       ],
     });
   }),
@@ -169,7 +168,7 @@ const digest = Command.make(
   ({ id, from, upTo }) =>
     Effect.gen(function* () {
       if (Option.isSome(from) && Option.isSome(upTo)) {
-        return yield* new AxiError({ message: "--from and --up-to are exclusive; pass one" });
+        return yield* new CliError({ message: "--from and --up-to are exclusive; pass one" });
       }
       const client = yield* daemon;
       const { digests } = yield* client
@@ -181,7 +180,7 @@ const digest = Command.make(
           },
         })
         .pipe(Effect.provideService(FetchHttpClient.RequestInit, noIdleTimeout));
-      yield* print({ digests, help: [`weir-axi conv ${id}`] });
+      yield* print({ digests, help: [`weir conv ${id}`] });
     }),
 );
 
@@ -215,9 +214,9 @@ const item = Command.make(
         },
         body,
         help: [
-          ...(body === found.body ? [] : [`weir-axi item ${seq} --full`]),
-          `weir-axi item ${seq} --raw`,
-          `weir-axi conv ${found.conversation_id}`,
+          ...(body === found.body ? [] : [`weir item ${seq} --full`]),
+          `weir item ${seq} --raw`,
+          `weir conv ${found.conversation_id}`,
         ],
       });
     }),
@@ -240,7 +239,7 @@ const tagTest = Command.make(
         samples: result.tags.flatMap(({ name, samples }) =>
           samples.map(({ id, title }) => ({ tag: name, id, title })),
         ),
-        help: ["weir-axi search <query> --tag <name>", "weir-axi reload"],
+        help: ["weir search <query> --tag <name>", "weir reload"],
       });
     }),
 );
@@ -266,7 +265,7 @@ const groupTest = Command.make(
         samples: result.groups.flatMap(({ name, samples }) =>
           samples.map(({ id, title }) => ({ group: name, id, title })),
         ),
-        help: ["weir-axi conv <id>", "weir-axi reload"],
+        help: ["weir conv <id>", "weir reload"],
       });
     }),
 );
@@ -279,8 +278,34 @@ const reload = Command.make("reload", {}, () =>
       reloaded: reloaded.loaded_at,
       sources: reloaded.sources,
       tags: reloaded.tags,
-      help: ["weir-axi"],
+      help: ["weir"],
     });
+  }),
+);
+
+const start = Command.make("start", {}, () =>
+  Effect.gen(function* () {
+    const home = yield* Home.fromEnv;
+    const { daemon, started } = yield* Lifecycle.start(home);
+    yield* print({
+      daemon: started ? "started" : "running",
+      pid: daemon.pid,
+      url: Lifecycle.url(daemon.port),
+      log: home.log,
+      help: ["weir", "weir stop"],
+    });
+  }),
+);
+
+const stop = Command.make("stop", {}, () =>
+  Effect.gen(function* () {
+    const stopped = yield* Lifecycle.stop(yield* Home.fromEnv);
+    yield* print(
+      Option.match(stopped, {
+        onNone: () => ({ daemon: "not running", help: ["weir start"] }),
+        onSome: ({ pid }) => ({ daemon: "stopped", pid, help: ["weir start"] }),
+      }),
+    );
   }),
 );
 
@@ -302,22 +327,27 @@ home.pipe(
     Command.make("tag").pipe(Command.withSubcommands([tagTest])),
     Command.make("group").pipe(Command.withSubcommands([groupTest])),
     reload,
+    start,
+    stop,
   ]),
   Command.run({ version: "0.1.0" }),
   Effect.catchTags({
     ConfigInvalid: ({ message, file, issues }) => fail({ error: message, file, issues }),
     NotFound: ({ message }) => fail({ error: message }),
-    AxiError: ({ message }) => fail({ error: message }),
+    CliError: ({ message }) => fail({ error: message }),
     DigestConflict: ({ message }) => fail({ error: message }),
     DigestFailed: ({ error, log_path }) =>
       fail({ error: log_path === null ? error : `${error}; log: ${log_path}`, log: log_path }),
     DigestInterrupted: ({ message }) => fail({ error: message }),
+    DaemonExited: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
+    DaemonSilent: ({ message, log }) => fail({ error: message, log, help: ["weir stop"] }),
+    PlatformError: ({ message }) => fail({ error: message }),
     HttpClientError: ({ message, request }) =>
       Effect.gen(function* () {
         const { daemon } = yield* Home.fromEnv;
         yield* fail({
           error: `cannot reach weir daemon at ${new URL(request.url).host} from ${daemon}: ${message}`,
-          help: ["weir-daemon"],
+          help: ["weir start"],
         });
       }),
   }),

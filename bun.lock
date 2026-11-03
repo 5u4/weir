@@ -9,7 +9,7 @@
         "@effect/language-service": "catalog:",
         "@toon-format/toon": "catalog:",
         "@types/bun": "catalog:",
-        "@weir/axi": "workspace:*",
+        "@weir/cli": "workspace:*",
         "@weir/daemon": "workspace:*",
         "@weir/fixtures": "workspace:*",
         "effect": "catalog:",
@@ -20,11 +20,11 @@
         "vitest": "catalog:",
       },
     },
-    "apps/axi": {
-      "name": "@weir/axi",
+    "apps/cli": {
+      "name": "@weir/cli",
       "version": "0.1.0",
       "bin": {
-        "weir-axi": "./src/main.ts",
+        "weir": "./src/main.ts",
       },
       "dependencies": {
         "@effect/platform-bun": "catalog:",
@@ -41,9 +41,6 @@
     "apps/daemon": {
       "name": "@weir/daemon",
       "version": "0.1.0",
-      "bin": {
-        "weir-daemon": "./src/main.ts",
-      },
       "dependencies": {
         "@effect/platform-bun": "catalog:",
         "@weir/contract": "workspace:*",
@@ -430,7 +427,7 @@
 
     "@vitest/spy": ["@vitest/spy@5.0.5", "", {}, "sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw=="],
 
-    "@weir/axi": ["@weir/axi@workspace:apps/axi"],
+    "@weir/cli": ["@weir/cli@workspace:apps/cli"],
 
     "@weir/contract": ["@weir/contract@workspace:packages/contract"],
 

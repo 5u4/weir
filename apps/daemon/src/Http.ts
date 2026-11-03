@@ -51,11 +51,12 @@ import {
   type View,
 } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
-import { Daemon, layer as daemonLayer, type State } from "./Daemon.ts";
+import { Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
 import { plainText } from "./Markdown.ts";
 import { segments, senderLabel, termPattern } from "./Match.ts";
+import * as ProcessIdentity from "./ProcessIdentity.ts";
 import * as Web from "./Web.ts";
 
 const tagTestBatch = 200;
@@ -764,12 +765,17 @@ const advertise = (home: WeirHome) =>
       if (address._tag === "UnixPathAddress") {
         return yield* Effect.die(new Error(`weir daemon listens on ${address.path}, not TCP`));
       }
+      const identity = yield* ProcessIdentity.identify(process.pid).pipe(
+        Effect.flatMap(Effect.fromOption),
+        Effect.provide(platform),
+        Effect.orDie,
+      );
       const temp = `${home.daemon}.${process.pid}.tmp`;
       yield* Effect.acquireRelease(
         Effect.sync(() => {
           writeFileSync(
             temp,
-            JSON.stringify({ port: address.port, pid: process.pid } satisfies DaemonFile),
+            JSON.stringify({ ...identity, port: address.port } satisfies DaemonFile),
           );
           renameSync(temp, home.daemon);
         }),

@@ -12,7 +12,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-const axiMain = join(import.meta.dirname, "../src/main.ts");
+const cliMain = join(import.meta.dirname, "../src/main.ts");
 const fakeAi = join(import.meta.dirname, "../node_modules/.bin/fake-ai");
 
 interface DigestRow {
@@ -31,9 +31,9 @@ interface Output {
   readonly conversations?: ReadonlyArray<{ readonly id: number }>;
 }
 
-const spawnAxi = (home: string, args: ReadonlyArray<string>, env: Record<string, string> = {}) =>
+const spawnWeir = (home: string, args: ReadonlyArray<string>, env: Record<string, string> = {}) =>
   Effect.promise(async () => {
-    const proc = Bun.spawn([process.execPath, axiMain, ...args], {
+    const proc = Bun.spawn([process.execPath, cliMain, ...args], {
       env: { ...process.env, WEIR_HOME: home, ...env },
       stdout: "pipe",
       stderr: "pipe",
@@ -104,7 +104,7 @@ context = 6000
 
 const start = (args: ReadonlyArray<string> = []) =>
   Effect.gen(function* () {
-    const home = Home.make(mkdtempSync(join(tmpdir(), "weir-axi-digest-")));
+    const home = Home.make(mkdtempSync(join(tmpdir(), "weir-cli-digest-")));
     const capture = join(home.root, "capture.jsonl");
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     const port = server.port;
@@ -113,11 +113,11 @@ const start = (args: ReadonlyArray<string> = []) =>
       writeFileSync(home.config, `port = ${port}\n\n${configFor(capture, next)}`);
     configure(args);
     yield* Layer.build(Http.layer(home, { fake: plugin }));
-    const axi = (...argv: ReadonlyArray<string>) => spawnAxi(home.root, argv);
+    const weir = (...argv: ReadonlyArray<string>) => spawnWeir(home.root, argv);
     const conversationOf = (query: string) =>
       Effect.gen(function* () {
         for (let attempt = 0; attempt < 200; attempt++) {
-          const { output } = yield* axi("search", query);
+          const { output } = yield* weir("search", query);
           const id = output.conversations?.[0]?.id;
           if (id !== undefined) return id;
           yield* Effect.sleep(Duration.millis(25));
@@ -126,16 +126,16 @@ const start = (args: ReadonlyArray<string> = []) =>
       });
     const invoice = yield* conversationOf("quarterly");
     const weekly = yield* conversationOf("weekly");
-    const [s1, s2, s3, s4] = ((yield* axi("conv", String(invoice))).output.items ?? []).map(
+    const [s1, s2, s3, s4] = ((yield* weir("conv", String(invoice))).output.items ?? []).map(
       ({ seq }) => seq,
     );
-    const [w1] = ((yield* axi("conv", String(weekly))).output.items ?? []).map(({ seq }) => seq);
+    const [w1] = ((yield* weir("conv", String(weekly))).output.items ?? []).map(({ seq }) => seq);
     if ([s1, s2, s3, s4, w1].includes(undefined)) throw new Error("expected 5 items");
     return {
       home,
       capture,
       configure,
-      axi,
+      weir,
       invoice,
       weekly,
       seqs: [s1, s2, s3, s4, w1] as [number, number, number, number, number],
@@ -145,16 +145,16 @@ const start = (args: ReadonlyArray<string> = []) =>
 const ranges = (digests: ReadonlyArray<DigestRow> | undefined) =>
   (digests ?? []).map(({ from_seq, to_seq, trigger }) => [from_seq, to_seq, trigger]);
 
-describe("weir-axi digest", () => {
+describe("weir digest", () => {
   it.live("a1: digest now prints the written digest and conv shows it", () =>
     Effect.gen(function* () {
-      const { axi, weekly, seqs } = yield* start();
+      const { weir, weekly, seqs } = yield* start();
       const w1 = seqs[4];
-      const written = yield* axi("digest", String(weekly));
+      const written = yield* weir("digest", String(weekly));
       expect(written.exitCode).toBe(0);
       expect(ranges(written.output.digests)).toEqual([[w1, w1, "manual"]]);
       expect(written.output.digests?.[0]?.headline).not.toBe("");
-      const shown = yield* axi("conv", String(weekly));
+      const shown = yield* weir("conv", String(weekly));
       expect(shown.output.digests?.map(({ id }) => id)).toEqual(
         written.output.digests?.map(({ id }) => id),
       );
@@ -163,8 +163,13 @@ describe("weir-axi digest", () => {
 
   it.live("a2: --from digests from that item to the end", () =>
     Effect.gen(function* () {
-      const { axi, invoice, seqs } = yield* start();
-      const { exitCode, output } = yield* axi("digest", String(invoice), "--from", String(seqs[2]));
+      const { weir, invoice, seqs } = yield* start();
+      const { exitCode, output } = yield* weir(
+        "digest",
+        String(invoice),
+        "--from",
+        String(seqs[2]),
+      );
       expect(exitCode).toBe(0);
       expect(ranges(output.digests)).toEqual([[seqs[2], seqs[3], "manual"]]);
     }).pipe(Effect.scoped),
@@ -172,8 +177,8 @@ describe("weir-axi digest", () => {
 
   it.live("a3: --up-to digests earlier items ending at that item", () =>
     Effect.gen(function* () {
-      const { axi, invoice, seqs } = yield* start();
-      const { exitCode, output } = yield* axi(
+      const { weir, invoice, seqs } = yield* start();
+      const { exitCode, output } = yield* weir(
         "digest",
         String(invoice),
         "--up-to",
@@ -186,8 +191,8 @@ describe("weir-axi digest", () => {
 
   it.live("a4: --from with --up-to is an error and digests nothing", () =>
     Effect.gen(function* () {
-      const { axi, invoice, seqs, capture } = yield* start();
-      const both = yield* axi(
+      const { weir, invoice, seqs, capture } = yield* start();
+      const both = yield* weir(
         "digest",
         String(invoice),
         "--from",
@@ -198,18 +203,18 @@ describe("weir-axi digest", () => {
       expect(both.exitCode).toBe(1);
       expect(both.output.error).toBe("--from and --up-to are exclusive; pass one");
       expect(existsSync(capture)).toBe(false);
-      expect((yield* axi("conv", String(invoice))).output.digests).toEqual([]);
+      expect((yield* weir("conv", String(invoice))).output.digests).toEqual([]);
     }).pipe(Effect.scoped),
   );
 
   it.live("a5: an unknown conversation (404) and nothing to digest (409) are errors", () =>
     Effect.gen(function* () {
-      const { axi, weekly } = yield* start();
-      const unknown = yield* axi("digest", "999999");
+      const { weir, weekly } = yield* start();
+      const unknown = yield* weir("digest", "999999");
       expect(unknown.exitCode).toBe(1);
       expect(unknown.output.error).toContain("999999");
-      expect((yield* axi("digest", String(weekly))).exitCode).toBe(0);
-      const empty = yield* axi("digest", String(weekly));
+      expect((yield* weir("digest", String(weekly))).exitCode).toBe(0);
+      const empty = yield* weir("digest", String(weekly));
       expect(empty.exitCode).toBe(1);
       expect(empty.output.error).toBe("nothing after the last digest");
     }).pipe(Effect.scoped),
@@ -217,8 +222,8 @@ describe("weir-axi digest", () => {
 
   it.live("a6: an AI that never answers validly is a 502 error naming the log", () =>
     Effect.gen(function* () {
-      const { axi, weekly } = yield* start(["--invalid", "always"]);
-      const { exitCode, output } = yield* axi("digest", String(weekly));
+      const { weir, weekly } = yield* start(["--invalid", "always"]);
+      const { exitCode, output } = yield* weir("digest", String(weekly));
       expect(exitCode).toBe(1);
       const log = output.log ?? "";
       expect(existsSync(log)).toBe(true);
@@ -228,11 +233,11 @@ describe("weir-axi digest", () => {
 
   it.live("a7: conv lists the digests and only the originals no digest covers", () =>
     Effect.gen(function* () {
-      const { axi, invoice, seqs } = yield* start();
+      const { weir, invoice, seqs } = yield* start();
       const [s1, s2, s3, s4] = seqs;
-      yield* axi("digest", String(invoice), "--up-to", String(s2));
-      yield* axi("digest", String(invoice), "--from", String(s4));
-      const { exitCode, output } = yield* axi("conv", String(invoice));
+      yield* weir("digest", String(invoice), "--up-to", String(s2));
+      yield* weir("digest", String(invoice), "--from", String(s4));
+      const { exitCode, output } = yield* weir("conv", String(invoice));
       expect(exitCode).toBe(0);
       expect(ranges(output.digests)).toEqual([
         [s1, s2, "manual"],
@@ -246,14 +251,14 @@ describe("weir-axi digest", () => {
     "a reload during a held digest is a 503 DigestInterrupted error",
     () =>
       Effect.gen(function* () {
-        const { axi, weekly, capture, configure } = yield* start(["--delay", "10000"]);
-        const held = yield* Effect.forkChild(axi("digest", String(weekly)));
+        const { weir, weekly, capture, configure } = yield* start(["--delay", "10000"]);
+        const held = yield* Effect.forkChild(weir("digest", String(weekly)));
         for (let attempt = 0; attempt < 400 && !existsSync(capture); attempt++) {
           yield* Effect.sleep(Duration.millis(25));
         }
         expect(readFileSync(capture, "utf8")).not.toBe("");
         configure([]);
-        expect((yield* axi("reload")).exitCode).toBe(0);
+        expect((yield* weir("reload")).exitCode).toBe(0);
         const { exitCode, output } = yield* Fiber.join(held);
         expect(exitCode).toBe(1);
         expect(output.error).toBe("the digest was interrupted by a reload or shutdown; try again");
@@ -266,7 +271,7 @@ describe("weir-axi digest", () => {
     () =>
       Effect.gen(function* () {
         const { home, weekly, seqs } = yield* start(["--delay", "10000"]);
-        const { exitCode, output } = yield* spawnAxi(home.root, ["digest", String(weekly)], {
+        const { exitCode, output } = yield* spawnWeir(home.root, ["digest", String(weekly)], {
           BUN_CONFIG_HTTP_IDLE_TIMEOUT: "1",
         });
         expect(exitCode).toBe(0);

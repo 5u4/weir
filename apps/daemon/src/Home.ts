@@ -1,11 +1,13 @@
 import * as Config from "effect/Config";
 import * as Schema from "effect/Schema";
+import { ProcessIdentity } from "./ProcessIdentity.ts";
 
 export interface WeirHome {
   readonly root: string;
   readonly config: string;
   readonly db: string;
   readonly daemon: string;
+  readonly log: string;
   readonly digestLogs: string;
 }
 
@@ -14,6 +16,7 @@ export const make = (root: string): WeirHome => ({
   config: `${root}/config.toml`,
   db: `${root}/weir.db`,
   daemon: `${root}/daemon.json`,
+  log: `${root}/daemon.log`,
   digestLogs: `${root}/logs/digest`,
 });
 
@@ -23,7 +26,7 @@ export const fromEnv = Config.NonEmptyString("WEIR_HOME").pipe(
 );
 
 export const DaemonFile = Schema.Struct({
+  ...ProcessIdentity.fields,
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
-  pid: Schema.Int,
 });
 export type DaemonFile = typeof DaemonFile.Type;

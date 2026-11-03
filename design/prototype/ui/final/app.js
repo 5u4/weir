@@ -1244,7 +1244,7 @@ function step(d) {
 
 /* Search: every conversation in the run, every tag, read, cleared and muted. A conversation matches when each
    whitespace-separated term appears somewhere in it (case-insensitive substring), which stands in for SQLite FTS5.
-   Field chips mirror the weir-axi search flags: from: and source: narrow which messages count, in: the tag. An
+   Field chips mirror the weir search flags: from: and source: narrow which messages count, in: the tag. An
    original matches only on what its message added (bodyNew), never on the history it quotes. */
 const FIELD = { title: "Title", headline: "Digest headline", digest: "Digest", body: "Original", from: "Sender", source: "Source" };
 const CHIP = /(^|\s)(from|in|source):(\S+)/gi;

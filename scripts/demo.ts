@@ -93,16 +93,15 @@ const decodeTagTest = Schema.decodeUnknownSync(
   }),
 );
 
-const axi = (...args: ReadonlyArray<string>) =>
+const weir = (...args: ReadonlyArray<string>) =>
   Effect.promise(async () => {
-    const proc = Bun.spawn([...bin("apps/axi/src/main.ts"), ...args], {
+    const proc = Bun.spawn([...bin("apps/cli/src/main.ts"), ...args], {
       env: { ...process.env, WEIR_HOME: home.root },
       stdout: "pipe",
       stderr: "inherit",
     });
     const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    if (exitCode !== 0)
-      throw new Error(`weir-axi ${args.join(" ")} exited ${exitCode}:\n${stdout}`);
+    if (exitCode !== 0) throw new Error(`weir ${args.join(" ")} exited ${exitCode}:\n${stdout}`);
     return decode(stdout);
   });
 
@@ -196,7 +195,7 @@ const demo = Effect.gen(function* () {
   const problems: Array<string> = [];
 
   for (const [query, expected] of searches) {
-    const titles = decodeSearch(yield* axi("search", ...query.split(" "))).conversations.map(
+    const titles = decodeSearch(yield* weir("search", ...query.split(" "))).conversations.map(
       ({ title }) => title,
     );
     if (JSON.stringify(titles.toSorted()) !== JSON.stringify(expected.toSorted())) {
@@ -210,7 +209,7 @@ const demo = Effect.gen(function* () {
     );
   }
 
-  const tagTest = decodeTagTest(yield* axi("tag", "test"));
+  const tagTest = decodeTagTest(yield* weir("tag", "test"));
   const actual = Object.fromEntries(
     tagTest.tags.map(({ name, conversations, items }) => [name, { conversations, items }]),
   );
