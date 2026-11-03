@@ -86,7 +86,8 @@ const iconClass = "fill-none stroke-current linecap-round linejoin-round";
 
 const hitClass = "outline-hit outline-solid outline-ink";
 
-const htmlBubbleClass = "w-full min-w-0 overflow-hidden bg-email";
+const emailSurfaceClass = (me: boolean) =>
+  `overflow-hidden rounded-b-2xl bg-email ${me ? "rounded-tl-2xl rounded-tr-md" : "rounded-tl-md rounded-tr-2xl"}`;
 
 const fadeClass = "opacity-faded transition-opacity duration-base";
 
@@ -479,7 +480,7 @@ function Bubble({
         }}
       >
         <div
-          className={`${tree === null ? htmlBubbleClass : `min-w-0 max-w-em-36 px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${bubbleFillClass({ me, folded, previewed, tint })}`} rounded-b-2xl ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
+          className={`${tree === null ? "w-full min-w-0" : `min-w-0 max-w-em-36 px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${bubbleFillClass({ me, folded, previewed, tint })}`} rounded-b-2xl ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
         >
           {(tree === null ? item.body_new.trim() === "" : tree.children.length === 0) ? (
             <p className={`m-0 ${folded ? foldedClass : "text-ink-3"}`}>(no text)</p>
@@ -487,8 +488,14 @@ function Bubble({
             <Long
               id={id}
               seq={item.seq}
-              me={me}
-              className={tree === null ? "" : folded ? `${proseClass} ${foldedClass}` : proseClass}
+              me={me && tree !== null}
+              className={
+                tree === null
+                  ? emailSurfaceClass(me)
+                  : folded
+                    ? `${proseClass} ${foldedClass}`
+                    : proseClass
+              }
             >
               {tree === null ? (
                 <Email html={item.body_new} title={item.title ?? item.from.name} />
