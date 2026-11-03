@@ -204,6 +204,7 @@ export const moveItems = Effect.fnUntraced(function* (
         else seqs.push(seq);
       }
       if (byKey.size === 0) return [];
+      const moving = [...byKey.values()].flat();
       const targets = yield* Effect.forEach([...byKey], ([key, seqs]) =>
         Effect.gen(function* () {
           const [target] = yield* decodeConversationId(
@@ -217,7 +218,8 @@ export const moveItems = Effect.fnUntraced(function* (
                 min(CASE WHEN item.seq > coalesce(s.cleared_seq, 0) THEN item.seq END) AS min_uncleared
               FROM item LEFT JOIN conversation_state s ON s.conversation_id = item.conversation_id
               WHERE item.deleted_at IS NULL
-                AND (item.conversation_id = ${target.id} OR ${sql.in("item.seq", seqs)})`,
+                AND ((item.conversation_id = ${target.id} AND NOT ${sql.in("item.seq", moving)})
+                  OR ${sql.in("item.seq", seqs)})`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
           if (groupNameOf(key) !== null) {
@@ -237,7 +239,7 @@ export const moveItems = Effect.fnUntraced(function* (
           return { id: target.id, ...bounds };
         }),
       );
-      yield* indexItems(sql.in("item.seq", [...byKey.values()].flat()));
+      yield* indexItems(sql.in("item.seq", moving));
       const to = targets.map(({ id }) => id);
       yield* recomputeConversations([...from, ...to]);
       yield* Effect.forEach(
