@@ -130,6 +130,8 @@ const venue = detail(
   ],
 );
 
+const vendor = detail([item(9, lisa, "We signed with North**wind** for the `data`base move.")]);
+
 const found = (of: Detail, query: string) => hits(of, termPattern(query));
 
 const describeHit = (hit: Hit) =>
@@ -304,6 +306,7 @@ describe("landing on a hit", () => {
     ["snapshot", runbook],
     ["runbook", runbook],
     ["venue", venue],
+    ["northwind database", vendor],
   ] as const)("%s: every counted hit shows a marked target once revealed", (query, of) => {
     const counted = hits(of, termPattern(query)).map((hit) => `${hitKey(hit)} marked`);
     expect(counted.length).toBeGreaterThan(0);
