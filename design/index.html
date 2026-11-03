@@ -744,7 +744,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 <li><code>target</code> 是 RFC 6901 的 JSON Pointer。<code>""</code> 指整个输入，<code>/a/b</code> 逐层取值。键里的 <code>/</code> 写成 <code>~1</code>，<code>~</code> 写成 <code>~0</code>。<code>@odata.type</code> 这种键可以直接写。</li>
 <li>路径不存在就不匹配。<code>eq</code>、<code>regex</code>、<code>exists</code>、<code>some</code> 都是 false。<code>every</code> 的目标不存在或者不是数组时也是 false。</li>
 <li><code>some</code> 和 <code>every</code> 把数组的每个元素当成新的根，里面的 <code>target</code> 从元素算起。上面 <code>lists</code> 的例子就是这样找邮件头。</li>
-<li><code>group</code> 不读 pointer：conversation 的 key 是 <code>group:&lt;name&gt;</code> 时，它对这个 conversation 的每条 item 都为 true，否则为 false。所以它能和 <code>and</code>、<code>or</code>、<code>not</code> 组合，在 <code>some</code>、<code>every</code> 里也照样成立。一个 thread 同时命中几条 group 的规则时，只属于写在前面的那条，<code>group</code> 看的是归组结果，不是重新跑 group 的规则。tag 引用了 config 里没有的 group 名，校验会报 <code>unknown group</code> 和 tag 的路径；group 的 <code>match</code> 里写 <code>group</code> 解码失败。<code>weir-axi tag test</code> 用上次 reload 存下的归组。</li>
+<li><code>group</code> 不读 pointer：conversation 的 key 是 <code>group:&lt;name&gt;</code> 时，它对这个 conversation 的每条 item 都为 true，否则为 false。所以它能和 <code>and</code>、<code>or</code>、<code>not</code> 组合，在 <code>some</code>、<code>every</code> 里也照样成立。一个 thread 同时命中几条 group 的规则时，只属于写在前面的那条，<code>group</code> 看的是归组结果，不是重新跑 group 的规则。tag 引用了 config 里没有的 group 名，校验会报 <code>unknown group</code> 和 tag 的路径；group 的 <code>match</code> 里写 <code>group</code> 解码失败。<code>weir tag test</code> 用上次 reload 存下的归组。</li>
 <li>以后再加的操作见<a href="#later">第 14 节</a>，包括数值比较、glob、对整个 conversation 的量词，以及「我以前给这个人写过信」这类跨 item 的历史条件。</li>
 </ul>
 <div class="callout warn"><span class="t">TOML 的一个坑</span>
