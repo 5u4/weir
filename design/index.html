@@ -147,7 +147,7 @@ ol.trace > li > strong:first-child { display: block; }
 <tr><td><code>digest</code></td><td>AI 对一个 conversation 里一段连续 seq 写的摘要，由一句 headline 和若干 topic 组成。写好就不变，同一个 conversation 的 digest 互不重叠。</td></tr>
 <tr><td><code>topic</code></td><td>digest 里的一件事，有标题、状态（open、resolved、fyi）、正文，以及它涉及的 item seq。</td></tr>
 <tr><td><code>seq</code></td><td>item 写进数据库的顺序号，全局递增。已读、完成和 digest 的范围都用它。</td></tr>
-<tr><td><code>ai_since</code></td><td>一个 <code>ai = true</code> 的 tag 第一次以 <code>ai = true</code> 加载的时间。自动 digest 只处理 <code>occurred_at</code> 不早于它的 item。存在 <code>tag_state</code> 里。</td></tr>
+<tr><td><code>ai_since</code></td><td>一个 AI 范围第一次以 <code>ai = true</code> 加载的时间。AI 范围是一个 <code>ai = true</code> 的 tag 或 <code>[[group]]</code>。自动 digest 只处理 <code>occurred_at</code> 不早于它的 item。存在 <code>ai_state</code> 里。</td></tr>
 </tbody></table></div>
 
 <h2 id="trace"><span class="n">02</span>一封新回复从进来到被你清掉，一共经过八步</h2>
@@ -180,7 +180,7 @@ sequenceDiagram
 <li><strong>按结构挂进 conversation。</strong>conversation 的 key 是 source 加上 <code>thread_id ?? container_id</code>；这个 thread 有一条 item 命中 <code>[[group]]</code> 时，key 是 <code>group:&lt;name&gt;</code>。这封邮件的 thread 已经有 conversation，它直接挂进去。这一步不调用 AI。</li>
 <li><strong>对新 item 跑 tag rule。</strong>core 用每个 tag 的 rule 匹配这一条 item。命中的 tag 加到 conversation 上。已有的 tag 不会因为新 item 没命中而去掉，因为一条命中就够。这里 <code>work</code> 本来就在。</li>
 <li><strong>conversation 立刻重新出现。</strong>conversation 的 <code>last_seq</code> 变成新 item 的 seq，比昨天「完成」记下的 <code>cleared_seq</code> 大。所以它回到 <code>work</code> 视图，状态是未读。灵动岛那句话里的计数加一，标签页标题变成 <code>(1) weir</code>。这一步没有后台任务，是查询时算出来的。此时阅读区里，上一份 digest 之后的三封邮件还是原文气泡。</li>
-<li><strong>算待 digest 的字数。</strong>conversation 带 <code>ai = true</code> 的 tag，所以走自动 digest。起点是上一份 digest 之后、<code>occurred_at</code> 不早于 <code>ai_since</code> 的第一条 item。从起点到最后一条，<code>text_new</code> 一共 1500 字符，过了 1000 的阈值。没有安静期，也没有定时器，条件一成立就排进 digest 队列。</li>
+<li><strong>算待 digest 的字数。</strong>conversation 带 <code>ai = true</code> 的 tag，在一个 AI 范围里，所以走自动 digest。起点是上一份 digest 之后、<code>occurred_at</code> 不早于 <code>ai_since</code> 的第一条 item。从起点到最后一条，<code>text_new</code> 一共 1500 字符，过了 1000 的阈值。没有安静期，也没有定时器，条件一成立就排进 digest 队列。</li>
 <li><strong>AI 写一份 digest。</strong>输入是这三封邮件，加上它们前面约 6000 字符的上下文。上下文里已经被 digest 覆盖的部分用 digest 代替。AI 输出一句 headline 和几个 topic，每个 topic 列出它涉及的 seq。core 校验后插入一行 <code>digest</code>，范围从 9154 到 9311。</li>
 <li><strong>你打开它。</strong>上次读过的 digest 各收成一行。这份新 digest 是一张卡片，有 headline 和 topic。topic 下的「N originals」能把原文展开在原处。阅读区只有这一种视图，原文要么在 topic 下展开，要么是还没 digest 的原文气泡。你从列表点开它，这一下就算开始阅读。一条消息或一张 digest 卡片的底边在视口里才算读过，所以一屏放得下的 conversation 打开就是已读，长的要往下滚。<code>seen_seq</code> 前进到看过的最大 seq，读到底时等于 <code>last_seq</code>。按 URL 打开或从搜索打开不算。规则见<a href="#visibility">第 08 节</a>。</li>
 <li><strong>你点「完成」。</strong><code>cleared_seq</code> 前进到 <code>last_seq</code>，conversation 离开列表，下一条自动打开。灵动岛里的计数跟着变，没有别的提示，也没有撤销。点错了就去「已清理」里点「恢复」。</li>
@@ -189,7 +189,7 @@ sequenceDiagram
 <p>四个变体，各自在不同的步骤分叉：</p>
 <ul>
 <li><strong>新开的 thread</strong>在第 2 步分叉。没有同 key 的 conversation，sync 新开一个，标题用 item 的标题。第 3 步照常跑 rule。见<a href="#assign">第 06 节</a>。</li>
-<li><strong>没有 AI tag 的 conversation</strong>在第 5 步分叉。比如只带 <code>github</code> 这种 <code>ai = false</code> 的 tag，或者一个 tag 都没有、落在 Untagged。它不自动 digest，阅读区全是原文气泡。你想要摘要时，点「Digest now」手动写一份。</li>
+<li><strong>不在任何 AI 范围里的 conversation</strong>在第 5 步分叉。比如只带 <code>github</code> 这种 <code>ai = false</code> 的 tag，或者一个 tag 都没有、落在 Untagged，而且它也不是 <code>ai = true</code> 的 group。它不自动 digest，阅读区全是原文气泡。你想要摘要时，点「Digest now」手动写一份。</li>
 <li><strong>字数没到阈值</strong>在第 5 步停下。新邮件只是原文气泡，等下一封邮件把字数推过阈值。不想等就点「Digest now」。</li>
 <li><strong>agent 查询</strong>不经过第 7、8 步。agent 运行 <code>weir</code>，首页显示 <code>work</code> 有 1 个未读。<code>weir conv &lt;id&gt;</code> 读到同样的 digest 和原文。CLI 读取不改变已读状态。</li>
 </ul>
@@ -356,11 +356,11 @@ flowchart TD
 <tr><td>原始层</td><td><code>stream</code>、<code>item</code></td><td>从 source 重新 sync</td></tr>
 <tr><td>派生层</td><td><code>conversation</code>、<code>conversation_tag</code></td><td>从 item 和 config 重算，不调用 AI</td></tr>
 <tr><td>AI 层</td><td><code>digest</code></td><td>能重新生成，但要花 AI 费用，写出来的内容也会不同</td></tr>
-<tr><td>用户层</td><td><code>conversation_state</code>、<code>tag_state</code></td><td>找不回来，需要备份</td></tr>
+<tr><td>用户层</td><td><code>conversation_state</code>、<code>ai_state</code></td><td>找不回来，需要备份</td></tr>
 <tr><td>运维层</td><td><code>sync_run</code>、<code>digest_run</code></td><td>直接丢</td></tr>
 </tbody></table></div>
 <p>搜索索引 <code>search_fts</code> 不属于这五层。它只是索引，丢了就从 <code>item</code> 和 <code>digest</code> 重建，不用 sync，也不用调用 AI。</p>
-<p><code>tag_state</code> 放在用户层，是因为丢了它，每个 AI tag 的 <code>ai_since</code> 会被重置成丢失之后的那一刻。中间这段时间的消息就不再自动 digest。</p>
+<p><code>ai_state</code> 放在用户层，是因为丢了它，每个 AI 范围的 <code>ai_since</code> 会被重置成丢失之后的那一刻。中间这段时间的消息就不再自动 digest。</p>
 
 <div class="diagram"><pre class="mermaid">
 erDiagram
@@ -383,7 +383,7 @@ erDiagram
 <tr><td><code>conversation</code></td><td><code>id, source_id, key, title, first_at, last_at, last_seq</code></td><td><code>(source_id, key)</code> 唯一，<code>key</code> 是 <code>thread_id ?? container_id</code>，thread 命中 <code>[[group]]</code> 时是 <code>group:&lt;name&gt;</code>。group 的 <code>title</code> 是 group 名。</td></tr>
 <tr><td><code>conversation_tag</code></td><td><code>conversation_id, tag</code></td><td>tag 的缓存，给列表查询和计数用。sync 写新 item 时追加。已有 item 再次 upsert 时，重算这个 conversation 的行。启动和 reload 时按当前 config 整表重算。</td></tr>
 <tr><td><code>digest</code></td><td><code>id, conversation_id, from_seq, to_seq, headline, topics, trigger, ai_profile, created_at</code></td><td><code>topics</code> 存 JSON，每项是 <code>{ title, state, body, seqs }</code>，<code>state</code> 取 <code>open</code>、<code>resolved</code>、<code>fyi</code>。<code>trigger</code> 取 <code>auto</code>、<code>manual</code>。同一 conversation 的范围互不重叠。行写好就不改，Redo 时整行替换。索引 <code>(conversation_id, from_seq DESC, id DESC)</code> 给按 conversation 取 digest 用。</td></tr>
-<tr><td><code>tag_state</code></td><td><code>name, ai_since</code></td><td><code>name</code> 是主键。每个 <code>ai = true</code> 的 tag 一行，规则见<a href="#tag-state">第 09 节</a>。</td></tr>
+<tr><td><code>ai_state</code></td><td><code>kind, name, ai_since</code></td><td><code>(kind, name)</code> 是主键，<code>kind</code> 取 <code>tag</code> 或 <code>group</code>，tag 和 group 可以同名。每个 <code>ai = true</code> 的 tag 或 group 一行，规则见<a href="#ai-state">第 09 节</a>。视图 <code>conversation_ai</code> 由它算出每个 conversation 所在的 AI 范围：tag 范围经 <code>conversation_tag</code>，group 范围是 key 为 <code>group:&lt;name&gt;</code> 的 conversation。自动 digest 和 Status 都只读这个视图。</td></tr>
 <tr><td><code>search_fts</code></td><td><code>text, conversation_id, item_seq, digest_id</code></td><td>搜索用的 FTS5 表，trigram 分词。结构和写法见<a href="#fts">下文</a>。</td></tr>
 <tr><td><code>conversation_state</code></td><td><code>conversation_id, seen_seq, cleared_seq, muted</code></td><td>三个字段就够表达已读、完成、静音。</td></tr>
 <tr><td><code>sync_run</code></td><td><code>id, stream_id, started_at, ms, upserts, deletions, error</code></td><td>Status 视图和 CLI 首页读它。</td></tr>
@@ -395,7 +395,7 @@ erDiagram
 <h3 id="where">daemon 或 agent 需要知道的放 SQLite，导航放 URL，其他放 localStorage</h3>
 <p>判断标准只有一个：daemon 或 agent 需不需要知道这件事。</p>
 <ul>
-<li>放 SQLite：已读、完成、静音，以及 <code>tag_state</code>。CLI 首页要显示未读数，自动 digest 要知道 <code>ai_since</code>，所以它们必须在 daemon 那边。</li>
+<li>放 SQLite：已读、完成、静音，以及 <code>ai_state</code>。CLI 首页要显示未读数，自动 digest 要知道 <code>ai_since</code>，所以它们必须在 daemon 那边。</li>
 <li>放 URL：当前视图、搜索词和 chip、打开的 conversation，全是 <code>/</code> 上的查询参数 <code>?v=&lt;视图&gt;&amp;q=&lt;搜索词和 chip&gt;&amp;c=&lt;conversation id&gt;</code>。不用路径路由，免得和根上的 API 路径（<code>/status</code>、<code>/search</code>）撞名。刷新、前进和后退都能还原它们。页面不从 localStorage 恢复视图。</li>
 <li>放 localStorage：主题。它只跟浏览器有关，在状态视图的 Appearance 里选，见<a href="#no-settings">第 09 节</a>。</li>
 </ul>
@@ -460,7 +460,7 @@ flowchart TD
   D --> F[match every tag rule on this item]
   E --> F
   F --> G[add matched tags to the conversation]
-  G --> H{any tag with ai = true?}
+  G --> H{in a tag or group with ai = true?}
   H -- no --> Z[originals only, manual Digest now]
   H -- yes --> I{pending text since ai_since over threshold?}
   I -- no --> Y[wait for the next item]
@@ -495,10 +495,10 @@ flowchart TD
 
 <h3 id="assign-seen">一条新邮件在 UI 上的样子</h3>
 <div class="tw"><table>
-<thead><tr><th>时间</th><th>新 thread</th><th>回复已有 thread，带 AI tag</th><th>回复已有 thread，没有 AI tag</th></tr></thead>
+<thead><tr><th>时间</th><th>新 thread</th><th>回复已有 thread，在 AI 范围里</th><th>回复已有 thread，不在 AI 范围里</th></tr></thead>
 <tbody>
 <tr><td>sync 之后</td><td>出现在命中的 tag 视图里，都没命中就在 Untagged。标题是邮件主题，内容是原文</td><td>所在 conversation 变成未读，新邮件是原文气泡</td><td>所在 conversation 变成未读，新邮件是原文气泡</td></tr>
-<tr><td>字数过阈值后</td><td>带 AI tag 时写一份 digest。没有 AI tag 时不变</td><td>新写一份 digest，原文收进 digest 的 topic 下</td><td>不变，可以手动 Digest now</td></tr>
+<tr><td>字数过阈值后</td><td>在 AI 范围里时写一份 digest。不在时不变</td><td>新写一份 digest，原文收进 digest 的 topic 下</td><td>不变，可以手动 Digest now</td></tr>
 </tbody></table></div>
 
 <h2 id="digest"><span class="n">07</span>digest 按字数自动生成，从不自动重算</h2>
@@ -525,9 +525,9 @@ flowchart TD
 </ul>
 
 <h3 id="auto">自动 digest 只看数据库里已有的行</h3>
-<p>只有带 <code>ai = true</code> tag 的 conversation 自动 digest。每次 sync 写完，core 对受影响的 conversation 算下面几个值。stream 代表「我」的地址变了、因此重新打 tag 的 conversation，也在那次提交之后算一次：</p>
+<p>只有在 AI 范围里的 conversation 自动 digest：它带着一个 <code>ai = true</code> 的 tag，或者它就是一个 <code>ai = true</code> 的 <code>[[group]]</code>。范围取并集，在任意一个里就算。没有 <code>ai</code> 的 tag 不会关掉 group 打开的 AI。比如 group「The Grove」是 <code>ai = true</code>，tag「Housing」同时覆盖 The Grove 和 BC Hydro 但没有 <code>ai</code>，那么只有 The Grove 自动 digest。每次 sync 写完，core 对受影响的 conversation 算下面几个值。stream 代表「我」的地址变了、因此重新打 tag 的 conversation，也在那次提交之后算一次：</p>
 <ol>
-<li><code>since</code> 是这个 conversation 上所有 AI tag 的 <code>ai_since</code> 里最早的一个。</li>
+<li><code>since</code> 是这个 conversation 所在的所有 AI 范围的 <code>ai_since</code> 里最早的一个。</li>
 <li><code>floor</code> 是这个 conversation 所有 digest 的 <code>to_seq</code> 最大值，自动和手动的都算。没有 digest 时是 0。</li>
 <li><code>start</code> 是大于 <code>floor</code>、而且 <code>occurred_at</code> 不早于 <code>since</code> 的最小 seq。</li>
 <li>待 digest 字数是 seq 从 <code>start</code> 起所有 item 的 <code>text_new</code> 字符数之和。</li>
@@ -536,10 +536,10 @@ flowchart TD
 <p>没有安静期，没有最长等待，也没有两次之间的最小间隔。所有值都由数据库里已有的行算出，不存进度字段。daemon 崩溃或重启后再算一遍，得到的是同一个范围。</p>
 <p>比较 <code>ai_since</code> 用的是 <code>occurred_at</code>，不是 <code>synced_at</code>。冷启动时历史邮件是启动之后才 sync 进来的，按 <code>synced_at</code> 比较会把整个历史都送去 digest。按 <code>occurred_at</code> 比较，有一种边界情况：一条消息在 <code>ai_since</code> 之前发出、之后才收到，它不会自动 digest。这是接受的代价。</p>
 <ul>
-<li><strong>冷启动不 digest 旧内容。</strong>tag 第一次以 <code>ai = true</code> 加载时，<code>ai_since</code> 记成那一刻。回填的历史都比它早。</li>
-<li><strong>新加的 AI tag 也不 digest 旧内容。</strong>道理相同，旧消息只能看原文，或者手动 digest。</li>
+<li><strong>冷启动不 digest 旧内容。</strong>tag 或 group 第一次以 <code>ai = true</code> 加载时，<code>ai_since</code> 记成那一刻。回填的历史都比它早。</li>
+<li><strong>新加的 AI 范围也不 digest 旧内容。</strong>道理相同，旧消息只能看原文，或者手动 digest。</li>
 <li><strong>冷启动回填的历史算已读，不算完成。</strong>它们不计入灵动岛的数字，但留在各自的视图里。想一次清掉一批，就写一个 tag 圈出它们，再点那个 tag 的 Clear all。规则见<a href="#visibility">第 08 节</a>。</li>
-<li><strong>旧 thread 因为一条新 item 命中了 AI tag。</strong>只有 <code>occurred_at</code> 不早于 <code>since</code> 的 item 计入字数，也就是从这条起。</li>
+<li><strong>旧 thread 因为一条新 item 进了 AI 范围。</strong>比如命中了 AI tag，或者被并进 <code>ai = true</code> 的 group。只有 <code>occurred_at</code> 不早于 <code>since</code> 的 item 计入字数，也就是从这条起。</li>
 </ul>
 
 <h3 id="context">每次调用带上前文，长范围切块</h3>
@@ -572,7 +572,7 @@ flowchart TD
 <li><code>command</code> 是 argv 数组，不经过 shell 拼接。</li>
 <li>core 拼好完整的 prompt，从 stdin 传入。prompt 包括系统指令、输出语言、<code>guide</code> 文件、上下文、数据，以及输出 schema。</li>
 <li>core 取 stdout 里最后一个 JSON 块，用 Schema 校验。这样能兼容在 JSON 前后输出多余文字的 harness。</li>
-<li>校验失败时重试，同一个范围最多调用 3 次。重试的 prompt 末尾带上校验错误，并重申各项长度和数量限制。3 次都失败，原始输出写到 <code>~/.weir/logs/digest/</code>，<code>digest_run</code> 记下错误，这个 conversation 的阅读区显示失败和重试按钮。阅读区的数据来自 <code>GET /conversations/:id</code>：<code>digests[]</code> 是已有的 digest，<code>digest.last_failure</code> 是这个 conversation 最近一次运行失败时的 <code>digest_run</code>，最近一次成功时是 <code>null</code>。<code>digest.backlog</code> 是 <code>{chars, threshold}</code>，<code>chars</code> 数 <code>ai_since</code> 之后、最后一份 digest 之后还没 digest 的字数；不属于 AI tag 或没配 <code>[digest]</code> 时是 <code>null</code>。<code>digest.earlier</code> 和 <code>digest.now</code> 是 Digest earlier 和 Digest now 的范围（见<a href="#manual">手动入口</a>），不看 AI tag；没配 <code>[digest]</code> 时都是 <code>null</code>，配了但没有这样的空隙时 <code>earlier</code> 是 <code>[]</code>。之后自动 digest 不再重试这个范围，直到有新 item 让范围的末尾往后移，或者 reload。</li>
+<li>校验失败时重试，同一个范围最多调用 3 次。重试的 prompt 末尾带上校验错误，并重申各项长度和数量限制。3 次都失败，原始输出写到 <code>~/.weir/logs/digest/</code>，<code>digest_run</code> 记下错误，这个 conversation 的阅读区显示失败和重试按钮。阅读区的数据来自 <code>GET /conversations/:id</code>：<code>digests[]</code> 是已有的 digest，<code>digest.last_failure</code> 是这个 conversation 最近一次运行失败时的 <code>digest_run</code>，最近一次成功时是 <code>null</code>。<code>digest.backlog</code> 是 <code>{chars, threshold}</code>，<code>chars</code> 数 <code>ai_since</code> 之后、最后一份 digest 之后还没 digest 的字数；不在任何 AI 范围里或没配 <code>[digest]</code> 时是 <code>null</code>。<code>digest.earlier</code> 和 <code>digest.now</code> 是 Digest earlier 和 Digest now 的范围（见<a href="#manual">手动入口</a>），不看 AI 范围；没配 <code>[digest]</code> 时都是 <code>null</code>，配了但没有这样的空隙时 <code>earlier</code> 是 <code>[]</code>。之后自动 digest 不再重试这个范围，直到有新 item 让范围的末尾往后移，或者 reload。</li>
 <li>不同 conversation 的调用可以并发，并发数由 profile 的 <code>concurrency</code> 决定。同一个 conversation 的调用按顺序跑，因为后一份要用前一份当上下文。</li>
 </ul>
 <details>
@@ -606,9 +606,9 @@ flowchart TD
 <tr><td>新增 tag</td><td>立刻按 rule 匹配全部 item，旧 conversation 也会带上它。</td></tr>
 <tr><td>改 rule</td><td>重算，conversation 可能多出或失去这个 tag。</td></tr>
 <tr><td>调整顺序</td><td>只影响显示。显示顺序就是 config 里的书写顺序，Untagged 排在最后。没有 priority 字段。</td></tr>
-<tr><td><code>ai</code> 从 false 改成 true</td><td><code>tag_state</code> 插入一行，<code>ai_since</code> 是这一刻。之前的消息不自动 digest。</td></tr>
-<tr><td><code>ai</code> 从 true 改成 false</td><td>删掉这一行。已有 digest 保留，不再自动写新的。之后再改回 true，从那一刻重新算。</td></tr>
-<tr><td>改 <code>name</code></td><td>等于删除再新增。新名字的 <code>ai_since</code> 从这一刻算。</td></tr>
+<tr><td><code>ai</code> 从 false 改成 true</td><td><code>ai_state</code> 插入一行，<code>ai_since</code> 是这一刻。之前的消息不自动 digest。<code>[[group]]</code> 的 <code>ai</code> 同理。</td></tr>
+<tr><td><code>ai</code> 从 true 改成 false</td><td>删掉这一行。已有 digest 保留，不再自动写新的，除非 conversation 还在别的 AI 范围里。之后再改回 true，从那一刻重新算。</td></tr>
+<tr><td>改 <code>name</code></td><td>等于删除再新增。新名字的 <code>ai_since</code> 从这一刻算。group 改名同理。</td></tr>
 <tr><td>删除 tag</td><td>原来的 conversation 失去这个 tag。一个 tag 都不剩的进入 Untagged。已有 digest 保留。</td></tr>
 <tr><td>改 prompt、<code>guide</code> 或 AI profile</td><td>不重算，见<a href="#recompute">第 07 节</a>。</td></tr>
 </tbody></table></div>
@@ -713,6 +713,7 @@ match = { type = <span class="s">"some"</span>, target = <span class="s">"/raw/p
 
 [[group]]
 name = <span class="s">"bank"</span>
+ai = true
 match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from/address"</span>, regex = <span class="s">"@northbank\\.example$"</span> }</code></pre>
 </details>
 
@@ -721,7 +722,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 <li><code>guide</code> 是对所有 digest 生效的额外指令，比如「人名保留英文」。原型里 gpt-6-luna 有 8 个标题写成了繁体，这类问题靠 <code>language</code> 和 <code>guide</code> 约束。</li>
 <li>tag 的 <code>name</code> 原样显示在 UI 里，也是它的 id，写什么语言都可以。<code>Untagged</code> 是保留名，不分大小写，因为 <code>in:</code> chip 用它表示没有 tag 的 conversation。写了这个名字，校验会报错并给出 config 路径。</li>
 <li>tag 的数量没有上限。tag 多了，灵动岛那句话会折行，药丸里的 tag 区可以横向滚动。</li>
-<li><code>ai</code> 默认是 false。只要 conversation 带着一个 <code>ai = true</code> 的 tag，它就自动 digest。</li>
+<li><code>ai</code> 默认是 false，tag 和 group 上都能写。只要 conversation 带着一个 <code>ai = true</code> 的 tag，或者它是一个 <code>ai = true</code> 的 group，它就自动 digest。</li>
 <li>每个 source 一个 <code>[[source]]</code>。plugin 自己的配置放在 <code>[source.config]</code> 里，core 不解析，原样交给 plugin 校验。</li>
 <li>source 没有自己的视图。想单独看某个 source，就写一个按 <code>/source</code> 匹配的 tag，比如 <code>[[tag]] name = "gmail"</code> 配 <code>match = { type = "eq", target = "/source", is = "personal-mail" }</code>。</li>
 <li><code>[digest] ai</code> 只能引用已定义的 profile。拼错了，校验会报出 config 路径。</li>
@@ -754,19 +755,19 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 上面的 <code>match</code> 把嵌套的 inline table 写成了多行。TOML 1.0 要求 inline table 写在一行里，这种写法靠的是 <code>Bun.TOML.parse</code> 能接受它。原型实测可以解析。换 TOML 解析器之前要先确认这一点，否则长 rule 只能写成一行，或者改用 <code>[tag.match]</code> 子表。
 </div>
 
-<h3 id="tag-state">tag_state 记下每个 AI tag 从哪一刻开始</h3>
-<p>每次加载 config，core 对照 <code>tag_state</code> 做两件事：</p>
+<h3 id="ai-state">ai_state 记下每个 AI 范围从哪一刻开始</h3>
+<p>AI 范围是 <code>(kind, name)</code>：<code>ai = true</code> 的 tag 或 group。每次加载 config，core 对照 <code>ai_state</code> 做两件事：</p>
 <ul>
-<li><code>ai = true</code> 的 tag 还没有行，就插入一行，<code>ai_since</code> 是这一刻。已有行的不动。</li>
-<li><code>ai = false</code> 的 tag 有行，就删掉。</li>
+<li><code>ai = true</code> 的范围还没有行，就插入一行，<code>ai_since</code> 是这一刻。已有行的不动。</li>
+<li>不再是 <code>ai = true</code> 的范围有行，就删掉。</li>
 </ul>
-<p>所以把 <code>ai</code> 关掉再打开，从打开那一刻重新算。改名的 tag 是一个新 tag，也从这一刻算。这样不管什么时候加 AI tag，都不会把历史一次性送给 AI。</p>
+<p>所以把 <code>ai</code> 关掉再打开，从打开那一刻重新算。改名的 tag 或 group 是一个新范围，也从这一刻算。这样不管什么时候加 AI 范围，都不会把历史一次性送给 AI。</p>
 
 <h3 id="reload">改了 config 要手动 reload</h3>
 <p>daemon 只在启动和 reload 时读取 <code>config.toml</code> 和 <code>prompts/</code>。改完后，在 UI 的状态视图点 Reload，或者运行 <code>weir reload</code>。两者调用的是同一个 HTTP 接口。</p>
 <ul>
 <li>reload 不等正在跑的 sync 整轮结束，只等正在写的那一页提交。正在拉的那一页被中断，不写，规则见<a href="#source">第 04 节</a>。它也不等 AI 调用：正在跑的 AI 调用被中断，子进程被杀掉，这次调用不写 digest。已经开始的写入会写完；一个范围拆成几段调用时，已写好的段保留。等着结果的手动 digest 或 Redo 请求返回 503 <code>DigestInterrupted</code>。reload 之后对每个 AI conversation 重新规划自动 digest，被中断的范围会重新排队。daemon 关闭时同样中断 sync 和 AI 调用。然后 reload 重新读取并校验全部 config，包括 <code>guide</code> 文件、每个 tag 的 Rule 和每个 plugin 的 <code>configSchema</code>。</li>
-<li>校验通过，就按新 config 重建 source、AI profile 和 tag，重算 <code>conversation_tag</code>，更新 <code>tag_state</code>，继续 sync 和 digest。</li>
+<li>校验通过，就按新 config 重建 source、AI profile 和 tag，更新 <code>ai_state</code>，重新分组，重算 <code>conversation_tag</code>，继续 sync 和 digest。</li>
 <li>校验失败，接口返回错误，列出出错的文件和 config 路径。daemon 不会退回上一份 config。sync 和 digest 停下，UI 和 CLI 仍然能读已有的数据，状态视图和 CLI 首页都显示这个错误。改好之后再 reload 一次。</li>
 <li>启动时校验失败，daemon 打印错误后退出。</li>
 <li><code>port</code> 改了要重启 daemon 才生效，先 <code>weir stop</code> 再 <code>weir start</code>。daemon 绑定端口后，把 <code>{port, pid, started}</code> 写进 <code>$WEIR_HOME/daemon.json</code>，先写临时文件再 rename。<code>started</code> 是 <code>ps</code> 报的进程启动时间。CLI 用 <code>pid</code> 加 <code>started</code> 认定 daemon 进程，pid 被别的进程复用时不会认错。daemon 退出时，只有文件里的 <code>pid</code> 是自己的，才删掉这个文件。</li>
@@ -779,7 +780,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 <p>点状态按钮后，状态视图在阅读岛里替换阅读内容，就像打开一个 conversation。它不加第三栏，两栏也不动。按 Esc 或关闭按钮，回到原来的内容和阅读区的滚动位置。视图分四块：</p>
 <ul>
 <li><strong>Sources。</strong>每个 stream 上次 sync 的相对时间，比如 <code>Synced 3m ago</code>，以及 item 数。出错时显示 <code>Sync failed</code> 和最近一次错误的原文。</li>
-<li><strong>Digests。</strong>AI on 列出每个 <code>ai = true</code> 的 tag、它的 <code>ai_since</code> 和 conversation 数。Queue 列出正在跑的 digest 和排队中的 digest。Last run 汇总最近 24 小时的运行：最近一次的开始时间、写了几份、失败几次，以及成功运行的平均耗时。还有 Threshold 阈值和 AI profile。这些来自 <code>GET /status</code> 的 <code>digest</code>：<code>{ai, threshold, running, queued, last_run: {at, written, failed, avg_ms}}</code>，<code>running</code> 和 <code>queued</code> 的每一项是 <code>{conversation_id, title, from_seq, to_seq, trigger}</code>，<code>queued</code> 按入队顺序排列，不含正在跑的。没配 <code>[digest]</code> 时是 <code>null</code>。</li>
+<li><strong>Digests。</strong>AI on 列出每个 <code>ai = true</code> 的 tag 和 group（先 tag 后 group，按 config 顺序，group 带一个 group 标记）、它的 <code>ai_since</code> 和其中的 conversation 数，来自 <code>GET /status</code> 的 <code>ai</code>：<code>[{kind, name, ai_since, conversations}]</code>。Queue 列出正在跑的 digest 和排队中的 digest。Last run 汇总最近 24 小时的运行：最近一次的开始时间、写了几份、失败几次，以及成功运行的平均耗时。还有 Threshold 阈值和 AI profile。这些来自 <code>GET /status</code> 的 <code>digest</code>：<code>{ai, threshold, running, queued, last_run: {at, written, failed, avg_ms}}</code>，<code>running</code> 和 <code>queued</code> 的每一项是 <code>{conversation_id, title, from_seq, to_seq, trigger}</code>，<code>queued</code> 按入队顺序排列，不含正在跑的。没配 <code>[digest]</code> 时是 <code>null</code>。</li>
 <li><strong>Config。</strong><code>config.toml</code> 的路径，加载时间，Reload 按钮。点 Reload 后按钮显示 <code>Reloading…</code>，daemon 在正在写的那一页提交后停下 sync，正在跑的 AI 调用被中断。成功时显示 <code>Config loaded</code> 和新的加载时间。失败时列出每个错误的文件和 config 路径，显示 <code>Sync and digests stopped</code>，灵动岛上出现琥珀色圆点。conversation 照样能读。改好后再点一次 Reload，错误就清掉。</li>
 <li><strong>Appearance。</strong>主题，三个选项 <code>System</code>、<code>Light</code>、<code>Dark</code>，选择存在 localStorage。</li>
 </ul>
@@ -943,7 +944,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 <div class="tw"><table>
 <thead><tr><th>命令</th><th>作用</th></tr></thead>
 <tbody>
-<tr><td><code>weir</code></td><td>各 tag 和 Untagged 的未读数和待完成数，各 source 的 sync 状态，config 错误</td></tr>
+<tr><td><code>weir</code></td><td>各 tag 和 Untagged 的未读数和待完成数，各 AI 范围的 <code>ai_since</code> 和 conversation 数，各 source 的 sync 状态，config 错误</td></tr>
 <tr><td><code>weir search &lt;query&gt;</code></td><td>和 UI 的搜索用同一套匹配。两者查同一张 <code>search_fts</code>，原文只搜 <code>text_new</code>，所有词都在同一个 conversation 里出现才算命中，见<a href="#fts">第 05 节</a>。可以用 <code>--tag</code>、<code>--source</code>、<code>--from</code>、<code>--since</code> 过滤</td></tr>
 <tr><td><code>weir conv &lt;id&gt;</code></td><td>一个 conversation 的 tag、各份 digest，以及没被 digest 覆盖的原文</td></tr>
 <tr><td><code>weir item &lt;seq&gt; [--full] [--raw]</code></td><td>一条 item 的原文。<code>--raw</code> 打印 rule 匹配的完整输入（<code>source</code>、<code>from</code>、<code>body</code>、<code>raw</code> 等），输出里的路径就是 rule 里要写的 JSON Pointer，例如 <code>/raw/labelIds/0</code></td></tr>
@@ -956,12 +957,15 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 </tbody></table></div>
 <p>下面是首页输出的示意，具体字段等实现时再定：</p>
 <pre><code>weir · ~/.weir · local inbox for mail and chat
-tags[5]{name,ai,unread,open}:
-  work,true,3,11
-  github,false,12,12
-  promos,false,6,6
-  lists,false,8,8
-  Untagged,false,31,31
+tags[5]{name,unread,open}:
+  work,3,11
+  github,12,12
+  promos,6,6
+  lists,8,8
+  Untagged,31,31
+ai[2]{kind,name,ai_since,conversations}:
+  tag,work,2026-10-20T07:00:00.000Z,14
+  group,bank,2026-10-20T07:00:00.000Z,1
 sources[1]{id,stream,last_sync,error}:
   personal-mail,me@example.com,2m ago,-
 help[2]:
