@@ -99,7 +99,24 @@ const boot = (
         writeConfig(base + groups);
         yield* client.reload();
       });
-    return { source, client, deliver, rows, rowOf, detail, seqsOf, configure, generating, release };
+    const settle = (id: number, seq: number) =>
+      Effect.gen(function* () {
+        yield* client.read({ params: { id }, payload: { seq } });
+        yield* client.done({ params: { id }, payload: { seq } });
+      });
+    return {
+      source,
+      client,
+      deliver,
+      rows,
+      rowOf,
+      detail,
+      seqsOf,
+      configure,
+      settle,
+      generating,
+      release,
+    };
   });
 
 const start = boot(false);
@@ -130,9 +147,10 @@ const twoReceipts = Effect.gen(function* () {
 describe("group", () => {
   it.live("a new rule collapses matching threads into one done row and hides the threads", () =>
     Effect.gen(function* () {
-      const { client, rows, rowOf, detail, configure, a, b, lunch, seqsA, seqsB, lastA, lastB } =
+      const { rows, rowOf, detail, configure, settle, a, b, lunch, seqsA, seqsB, lastA, lastB } =
         yield* twoReceipts;
-      yield* client.done({ params: { id: a }, payload: { seq: lastA } });
+      yield* settle(a, lastA);
+      yield* settle(b, lastB);
 
       yield* configure(receipts);
 
@@ -154,9 +172,31 @@ describe("group", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("a new rule keeps an unread member's items unread in the group", () =>
+    Effect.gen(function* () {
+      const { client, rowOf, detail, configure, a, lastA } = yield* twoReceipts;
+      yield* client.read({ params: { id: a }, payload: { seq: lastA } });
+      yield* client.done({ params: { id: a }, payload: { seq: lastA } });
+
+      yield* configure(receipts);
+
+      const row = yield* rowOf("Receipts");
+      expect(row).toMatchObject({ state: "unread", new: 2, items: 4 });
+      expect((yield* detail(row.id)).state).toEqual({
+        seen_seq: lastA,
+        cleared_seq: lastA,
+        muted: false,
+        state: "unread",
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.live("widening a done group to a newer thread keeps it done", () =>
     Effect.gen(function* () {
-      const { deliver, rowOf, detail, seqsOf, configure, lastB } = yield* twoReceipts;
+      const { deliver, rowOf, detail, seqsOf, configure, settle, a, b, lastA, lastB } =
+        yield* twoReceipts;
+      yield* settle(a, lastA);
+      yield* settle(b, lastB);
       yield* configure(receipts);
       const g = (yield* rowOf("Receipts")).id;
       expect((yield* detail(g)).state).toMatchObject({ cleared_seq: lastB, state: "done" });
@@ -165,6 +205,7 @@ describe("group", () => {
       const x = (yield* rowOf("Invoice X")).id;
       const lastX = lastOf(yield* seqsOf(x));
       expect(lastX).toBeGreaterThan(lastB);
+      yield* settle(x, lastX);
 
       yield* configure(group("Receipts", "receipt|invoice"));
 
@@ -180,9 +221,34 @@ describe("group", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("removing the rule returns threads with their digests and state", () =>
+  it.live("widening a done group to an unread thread resurfaces it as unread", () =>
     Effect.gen(function* () {
-      const { client, rows, rowOf, detail, configure, a, b, lunch, seqsA, lastA, lastB } =
+      const { deliver, rowOf, detail, seqsOf, configure, settle, a, b, lastA, lastB } =
+        yield* twoReceipts;
+      yield* settle(a, lastA);
+      yield* settle(b, lastB);
+      yield* configure(receipts);
+      const g = (yield* rowOf("Receipts")).id;
+
+      yield* deliver([item("x1", "tx", 6, "Invoice X"), item("x2", "tx", 7)]);
+      const seqsX = yield* seqsOf((yield* rowOf("Invoice X")).id);
+
+      yield* configure(group("Receipts", "receipt|invoice"));
+
+      const row = yield* rowOf("Receipts");
+      expect(row).toMatchObject({ id: g, state: "unread", new: seqsX.length, items: 6 });
+      expect((yield* detail(g)).state).toEqual({
+        seen_seq: lastB,
+        cleared_seq: lastB,
+        muted: false,
+        state: "unread",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("removing the rule returns threads with their digests and the group's state", () =>
+    Effect.gen(function* () {
+      const { client, rows, rowOf, detail, configure, a, b, lunch, seqsA, lastA } =
         yield* twoReceipts;
       const { digests } = yield* client.digest({ params: { id: a }, payload: {} });
       expect(digests.map(({ from_seq, to_seq }) => [from_seq, to_seq])).toEqual([
@@ -205,7 +271,7 @@ describe("group", () => {
       expect(backA.digests).toEqual(digests);
       const backB = yield* detail(b);
       expect(backB.state).toEqual({
-        seen_seq: lastB - 1,
+        seen_seq: 0,
         cleared_seq: 0,
         muted: false,
         state: "unread",
@@ -217,7 +283,9 @@ describe("group", () => {
 
   it.live("a new matching thread resurfaces the group with only its item unread", () =>
     Effect.gen(function* () {
-      const { deliver, rowOf, detail, configure, lastB } = yield* twoReceipts;
+      const { deliver, rowOf, detail, configure, settle, a, b, lastA, lastB } = yield* twoReceipts;
+      yield* settle(a, lastA);
+      yield* settle(b, lastB);
       yield* configure(receipts);
       const g = (yield* rowOf("Receipts")).id;
 
@@ -229,14 +297,49 @@ describe("group", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("a rule swap that moves the group's unread item out leaves the group done", () =>
+    Effect.gen(function* () {
+      const { deliver, rowOf, detail, seqsOf, configure, settle } = yield* start;
+      yield* deliver([
+        item("p1", "tp", 1, "Paid P"),
+        item("q1", "tq", 2, "Receipt Q"),
+        item("r1", "tr", 3, "Paid R"),
+      ]);
+      const p = (yield* rowOf("Paid P")).id;
+      const r = (yield* rowOf("Paid R")).id;
+      const lastP = lastOf(yield* seqsOf(p));
+      const lastR = lastOf(yield* seqsOf(r));
+      yield* settle(p, lastP);
+      yield* settle(r, lastR);
+      yield* configure(receipts);
+      const g = (yield* rowOf("Receipts")).id;
+      expect((yield* detail(g)).state.state).toBe("unread");
+
+      yield* configure(group("Receipts", "paid"));
+
+      expect(yield* rowOf("Receipts")).toMatchObject({ id: g, state: "done", new: 0, items: 2 });
+      expect((yield* detail(g)).state).toEqual({
+        seen_seq: lastR,
+        cleared_seq: lastR,
+        muted: false,
+        state: "done",
+      });
+      expect(yield* rowOf("Receipt Q")).toMatchObject({ state: "unread", new: 1, items: 1 });
+    }).pipe(Effect.scoped),
+  );
+
   it.live(
     "a stored thread that starts matching joins the group with only the new item unread",
     () =>
       Effect.gen(function* () {
-        const { deliver, rowOf, detail, seqsOf, configure } = yield* twoReceipts;
+        const { deliver, rowOf, detail, seqsOf, configure, settle, a, b, lastA, lastB } =
+          yield* twoReceipts;
         yield* deliver([item("d1", "td", 6, "Order D"), item("d2", "td", 7)]);
         const d = (yield* rowOf("Order D")).id;
         const lastD = lastOf(yield* seqsOf(d));
+        yield* settle(a, lastA);
+        yield* settle(b, lastB);
+        yield* settle(d, lastD);
         yield* configure(receipts);
         const g = (yield* rowOf("Receipts")).id;
         expect((yield* detail(g)).state.state).toBe("done");
