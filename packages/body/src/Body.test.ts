@@ -125,4 +125,38 @@ describe("visible text", () => {
     });
     expect(text).toBe("Your trip is booked\nLisbon");
   });
+
+  it("keeps zero-width joiners that join, and drops runs of them used as filler", () => {
+    const technologist = "\u{1F469}\u200D\u{1F4BB}";
+    const toned = "\u{1F469}\u{1F3FD}\u200D\u{1F4BB}";
+    const rainbow = "\u{1F3F3}\uFE0F\u200D\u{1F308}";
+    const persian = "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645";
+    const { text } = derive({
+      format: "html",
+      body: `<div>${technologist} ${toned} ${rainbow} ${persian}</div><div>Sale ends${"\u200c&nbsp;".repeat(6)}${"\u200c".repeat(4)}\u034f\u200c\u034f</div>`,
+      bodyNew: "",
+    });
+    expect(text).toBe(`${technologist} ${toned} ${rainbow} ${persian}\nSale ends`);
+  });
+
+  const code = "def ship():\n    if ready:\n        return True\n\n\n    return False";
+
+  it("keeps fenced markdown code exactly as written", () => {
+    const { text } = derive({
+      format: "markdown",
+      body: `Try this:\n\n\`\`\`py\n${code}\n\`\`\`\n\nThen   tell me.`,
+      bodyNew: null,
+    });
+    expect(text).toBe(`Try this:\n\n${code}\n\nThen tell me.`);
+  });
+
+  it("keeps an HTML pre block exactly as written", () => {
+    const { text, textNew } = derive({
+      format: "html",
+      body: `<p>Try   this:</p><pre>\n${code}</pre><p>Then\u00a0 tell me.</p>`,
+      bodyNew: `<pre>  ${code}\n</pre>`,
+    });
+    expect(text).toBe(`Try this:\n\n${code}\n\nThen tell me.`);
+    expect(textNew).toBe(`  ${code}\n`);
+  });
 });
