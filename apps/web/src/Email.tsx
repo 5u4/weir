@@ -20,6 +20,15 @@ export function Email({ html, title }: { html: string; title: string }) {
     const measure = () => {
       const page = frame.contentDocument;
       if (page === null) return;
+      frame.style.removeProperty("--email-w");
+      const lane = frame.clientWidth;
+      const natural = page.documentElement.scrollWidth;
+      if (natural > lane) {
+        frame.style.setProperty("--email-w", `${natural}px`);
+        frame.style.setProperty("--email-scale", String(lane / natural));
+      } else {
+        frame.style.removeProperty("--email-scale");
+      }
       const height = Math.max(
         page.documentElement.getBoundingClientRect().height,
         page.body?.scrollHeight ?? 0,
@@ -30,7 +39,7 @@ export function Email({ html, title }: { html: string; title: string }) {
     const loaded = () => {
       measure();
       observer.disconnect();
-      observer.observe(frame);
+      if (frame.parentElement !== null) observer.observe(frame.parentElement);
       const page = frame.contentDocument;
       if (page !== null) observer.observe(page.documentElement);
     };
@@ -47,7 +56,7 @@ export function Email({ html, title }: { html: string; title: string }) {
       srcDoc={emailDocument(html)}
       sandbox={emailSandbox}
       referrerPolicy="no-referrer"
-      className="block w-full border-none"
+      className="block border-none"
       ref={fit}
     />
   );

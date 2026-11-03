@@ -94,9 +94,7 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     title: headerOf(message.payload, "subject"),
     from: mailbox(headerOf(message.payload, "from") ?? ""),
     ...content(html, plain, message.labelIds ?? []),
-    link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(
-      emailAddress,
-    )}#all/${message.id}`,
+    link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,
     raw: { ...message, payload: trimPart(message.payload) },
   };
 };

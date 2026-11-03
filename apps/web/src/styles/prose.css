@@ -21,6 +21,10 @@
   }
 
   [data-email] {
+    width: var(--email-w, 100%);
     height: var(--email-h, var(--max-height-clip));
+    margin-bottom: calc(var(--email-h) * (var(--email-scale) - 1));
+    scale: var(--email-scale);
+    transform-origin: top left;
   }
 }

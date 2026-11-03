@@ -8,6 +8,8 @@ const runtime = [
   "--dx",
   "--dy",
   "--email-h",
+  "--email-scale",
+  "--email-w",
   "--g",
   "--h",
   "--i",
