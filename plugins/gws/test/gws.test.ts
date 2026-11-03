@@ -449,7 +449,7 @@ describe("gws plugin against fake-gws", () => {
     });
   });
 
-  it("returns bodyNew that parses to the scenario text's markdown tree for every message", async () => {
+  it("returns bodyNew that parses to the scenario text's markdown tree for every markdown message", async () => {
     const people: Record<string, { addr: string }> = scenarios.people;
     const expected = new Map(
       scenarios.threads.flatMap((t) =>
@@ -478,7 +478,12 @@ describe("gws plugin against fake-gws", () => {
       );
     const { items } = await syncAll(sourceFor(seeded()), null);
     expect(items.size).toBe(32);
+    const designed = [...items.values()].filter(({ format }) => format === "html");
+    expect(designed.map(({ title }) => title)).toEqual([
+      "Last call: 2 nights for the price of 1 in Lisbon",
+    ]);
     for (const item of items.values()) {
+      if (item.format === "html") continue;
       const key = `${Date.parse(item.occurredAt)} ${item.from.address}`;
       expect(tree(item.bodyNew ?? ""), key).toEqual(tree(expected.get(key) ?? ""));
     }

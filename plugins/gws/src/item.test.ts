@@ -95,3 +95,36 @@ describe("from header", () => {
     expect(itemOf(text("text/plain", "hi"), header).from).toEqual({ name, address });
   });
 });
+
+describe("body format", () => {
+  const alternative = (plain: string, html: string): MessagePart => ({
+    mimeType: "multipart/alternative",
+    filename: "",
+    parts: [text("text/plain", plain), text("text/html", html)],
+  });
+
+  it.each([
+    ["a layout table", `<table width="600"><tr><td>Your trip is booked</td></tr></table>`],
+    ["a style block", `<style>p{color:#333}</style><p>Your trip is booked</p>`],
+  ])("keeps an email built with %s as its original HTML", (_, html) => {
+    const item = itemOf(alternative("Your trip is booked", html));
+    expect(item).toMatchObject({ format: "html", body: html });
+  });
+
+  it("drops the quoted history and signature from an HTML email's new part", () => {
+    const html = `<table><tr><td>See you Friday</td></tr></table><div class="gmail_signature">Ben</div><div class="gmail_quote"><div class="gmail_attr">On Tue Ada wrote:</div>earlier plan</div>`;
+    const item = itemOf(alternative("See you Friday", html));
+    expect(item.format).toBe("html");
+    expect(item.bodyNew).toContain("See you Friday");
+    expect(item.bodyNew).not.toMatch(/Ben|earlier plan|gmail_/);
+  });
+
+  it("converts simple HTML without tables or styles to markdown", () => {
+    const item = itemOf(alternative("Ship it.", "<p>Ship <b>it</b>.</p><ul><li>today</li></ul>"));
+    expect(item).toMatchObject({ format: "markdown", body: "Ship **it**.\n\n- today" });
+  });
+
+  it("keeps plain-only mail as markdown", () => {
+    expect(itemOf(text("text/plain", "Ship it.")).format).toBe("markdown");
+  });
+});

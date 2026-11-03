@@ -43,6 +43,16 @@ describe("bun run demo", () => {
       expect(url, stdout).toBeDefined();
       const res = await fetch(new URL("status", url));
       expect(res.status).toBe(200);
+      const found = (await (await fetch(new URL("search?q=Alfama", url))).json()) as {
+        conversations: ReadonlyArray<{ id: number }>;
+      };
+      const [saltmarsh] = found.conversations;
+      expect(saltmarsh, JSON.stringify(found)).toBeDefined();
+      const detail = (await (
+        await fetch(new URL(`conversations/${saltmarsh?.id}`, url))
+      ).json()) as { items: ReadonlyArray<{ format: string; text_new: string }> };
+      expect(detail.items.map(({ format }) => format)).toEqual(["html"]);
+      expect(detail.items[0]?.text_new).toContain("Boutique hotels in Alfama");
 
       proc.kill("SIGINT");
       const exitCode = await proc.exited;
