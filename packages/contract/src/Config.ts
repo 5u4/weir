@@ -2,7 +2,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { Rule } from "./Rule.ts";
+import { groupNames, ItemRule, TagRule } from "./Rule.ts";
 
 const unitMillis = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
@@ -59,17 +59,22 @@ export const TagConfig = Schema.Struct({
     ),
   ),
   ai: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-  match: Rule,
+  match: TagRule,
 });
 export type TagConfig = typeof TagConfig.Type;
 
 export const GroupConfig = Schema.Struct({
   name: NonEmptyString,
-  match: Rule,
+  match: ItemRule,
 });
 export type GroupConfig = typeof GroupConfig.Type;
 
 export const groupKeyPrefix = "group:";
+
+export const groupKey = (name: string) => `${groupKeyPrefix}${name}`;
+
+export const groupNameOf = (key: string): string | null =>
+  key.startsWith(groupKeyPrefix) ? key.slice(groupKeyPrefix.length) : null;
 
 const duplicatesOf = (
   section: string,
@@ -109,6 +114,11 @@ export const Config = Schema.Struct({
     ...(config.digest !== undefined && !Object.hasOwn(config.ai ?? {}, config.digest.ai)
       ? [{ path: ["digest", "ai"], issue: `unknown ai profile "${config.digest.ai}"` }]
       : []),
+    ...config.tag.flatMap((tag, index) =>
+      [...new Set(groupNames(tag.match))]
+        .filter((name) => !config.group.some((group) => group.name === name))
+        .map((name) => ({ path: ["tag", index, "match"], issue: `unknown group "${name}"` })),
+    ),
   ]),
 );
 export type Config = typeof Config.Type;

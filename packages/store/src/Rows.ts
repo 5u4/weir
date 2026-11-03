@@ -64,7 +64,11 @@ export const ItemInsert = Schema.Struct(itemFields);
 export const ItemRow = Schema.Struct({ seq: Seq, ...itemFields });
 export type ItemRow = typeof ItemRow.Type;
 
-export const SourcedItemRow = Schema.Struct({ ...ItemRow.fields, sourceId: Schema.String });
+export const SourcedItemRow = Schema.Struct({
+  ...ItemRow.fields,
+  sourceId: Schema.String,
+  conversationKey: Schema.String,
+});
 export type SourcedItemRow = typeof SourcedItemRow.Type;
 
 export const ConversationRow = Schema.Struct({

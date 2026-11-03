@@ -166,7 +166,7 @@ export const getItem = Effect.fnUntraced(function* (seq: Seq) {
   const sql = yield* SqlClient.SqlClient;
   return Arr.head(
     yield* decodeSourcedItems(
-      yield* sql`SELECT item.*, conversation.source_id FROM item
+      yield* sql`SELECT item.*, conversation.source_id, conversation.key AS conversation_key FROM item
         JOIN conversation ON conversation.id = item.conversation_id
         WHERE item.seq = ${seq}`,
     ),
@@ -191,7 +191,7 @@ export const liveItems = Effect.fnUntraced(function* (query: LiveItemsQuery) {
         : sql`conversation.source_id = ${query.sourceId}
             AND coalesce(thread_id, container_id) IN ${sql.in(query.threads)}`;
   return yield* decodeSourcedItems(
-    yield* sql`SELECT item.*, conversation.source_id FROM item
+    yield* sql`SELECT item.*, conversation.source_id, conversation.key AS conversation_key FROM item
       JOIN conversation ON conversation.id = item.conversation_id
       WHERE item.deleted_at IS NULL AND ${selected}
       ORDER BY item.conversation_id, item.seq`,

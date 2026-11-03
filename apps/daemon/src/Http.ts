@@ -1,6 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { type Config, groupKeyPrefix, untagged } from "@weir/contract/Config";
+import { type Config, groupKey, groupNameOf, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
 import { backlog, type Gap, gaps } from "@weir/digest/Range";
@@ -216,9 +216,10 @@ const tagTest = Effect.fnUntraced(function* (file: string, name: string | undefi
         .map(ruleInput);
       total.conversations += 1;
       total.items += inputs.length;
+      const group = groupNameOf(conversation.key);
       let tagged = false;
       for (const hit of hits) {
-        const matched = inputs.filter((input) => match(hit.tag.match, input)).length;
+        const matched = inputs.filter((input) => match(hit.tag.match, input, group)).length;
         if (matched === 0) continue;
         tagged = true;
         hit.conversations += 1;
@@ -263,7 +264,7 @@ const groupTest = Effect.fnUntraced(function* (file: string, name: string | unde
     groups: config.group
       .filter((group) => name === undefined || group.name === name)
       .map((group) => {
-        const merged = planned.filter(({ key }) => key === `${groupKeyPrefix}${group.name}`);
+        const merged = planned.filter(({ key }) => key === groupKey(group.name));
         const sources = [...new Set(merged.map(({ conversationId }) => conversationId))].flatMap(
           (id) => conversations.get(id) ?? [],
         );
