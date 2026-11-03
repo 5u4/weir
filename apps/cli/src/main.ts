@@ -341,6 +341,7 @@ home.pipe(
     DigestInterrupted: ({ message }) => fail({ error: message }),
     DaemonExited: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
     DaemonSilent: ({ message, log }) => fail({ error: message, log, help: ["weir stop"] }),
+    DaemonTimedOut: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
     PlatformError: ({ message }) => fail({ error: message }),
     HttpClientError: ({ message, request }) =>
       Effect.gen(function* () {

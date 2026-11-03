@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import { decode } from "@toon-format/toon";
 import * as Home from "@weir/daemon/Home";
@@ -8,16 +8,20 @@ import * as Effect from "effect/Effect";
 
 const cliMain = join(import.meta.dirname, "../src/main.ts");
 
-const weir = (home: Home.WeirHome, ...args: ReadonlyArray<string>) =>
+const run = (cwd: string, weirHome: string, args: ReadonlyArray<string>) =>
   Effect.promise(async () => {
     const proc = Bun.spawn([process.execPath, cliMain, ...args], {
-      env: { ...process.env, WEIR_HOME: home.root },
+      cwd,
+      env: { ...process.env, WEIR_HOME: weirHome },
       stdout: "pipe",
       stderr: "pipe",
     });
     const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     return { exitCode, output: decode(stdout) as Record<string, unknown> };
   });
+
+const weir = (home: Home.WeirHome, ...args: ReadonlyArray<string>) =>
+  run(process.cwd(), home.root, args);
 
 const alive = (pid: unknown) => {
   try {
@@ -97,6 +101,24 @@ describe("weir start and stop", () => {
       expect(exitCode).toBe(0);
       expect(output.daemon).toBe("started");
       expect(alive(output.pid)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("start and stop resolve a relative WEIR_HOME against the caller's cwd", () =>
+    Effect.gen(function* () {
+      const { home } = yield* makeHome((port) => `port = ${port}\n`);
+      const relative = (...args: ReadonlyArray<string>) =>
+        run(dirname(home.root), basename(home.root), args);
+      const started = yield* relative("start");
+      expect(started.exitCode).toBe(0);
+      expect(started.output.daemon).toBe("started");
+      const pid = started.output.pid;
+      expect(alive(pid)).toBe(true);
+
+      const stopped = yield* relative("stop");
+      expect(stopped.exitCode).toBe(0);
+      expect(stopped.output).toMatchObject({ daemon: "stopped", pid });
+      expect(alive(pid)).toBe(false);
     }).pipe(Effect.scoped),
   );
 });

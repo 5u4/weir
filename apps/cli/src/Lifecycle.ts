@@ -40,6 +40,14 @@ export class DaemonSilent extends Schema.TaggedError<DaemonSilent>()("DaemonSile
   }
 }
 
+export class DaemonTimedOut extends Schema.TaggedError<DaemonTimedOut>()("DaemonTimedOut", {
+  log: Schema.Array(Schema.String),
+}) {
+  override get message() {
+    return `weir daemon did not come up within ${startTimeout} and was stopped`;
+  }
+}
+
 export const url = (port: number) => `http://127.0.0.1:${port}`;
 
 const readDaemonFile = (home: Home.WeirHome) =>
@@ -109,6 +117,7 @@ export const start = (home: Home.WeirHome) =>
         fileURLToPath(import.meta.resolve("@weir/daemon/main")),
       ],
       cwd: home.root,
+      env: { ...process.env, WEIR_HOME: home.root },
       stdio: ["ignore", "ignore", "ignore"],
       detached: true,
     });
@@ -131,9 +140,17 @@ export const start = (home: Home.WeirHome) =>
       Effect.timeoutOrElse({
         duration: startTimeout,
         orElse: () =>
-          Effect.flatMap(
-            logSince(home, offset),
-            (log) => new DaemonSilent({ pid: child.pid, log }),
+          Effect.sync(() => child.kill("SIGTERM")).pipe(
+            Effect.andThen(Effect.promise(() => child.exited)),
+            Effect.timeoutOrElse({
+              duration: stopTimeout,
+              orElse: () =>
+                Effect.sync(() => child.kill("SIGKILL")).pipe(
+                  Effect.andThen(Effect.promise(() => child.exited)),
+                ),
+            }),
+            Effect.andThen(logSince(home, offset)),
+            Effect.flatMap((log) => new DaemonTimedOut({ log })),
           ),
       }),
     );

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import * as Config from "effect/Config";
 import * as Schema from "effect/Schema";
 import { ProcessIdentity } from "./ProcessIdentity.ts";
@@ -22,7 +23,7 @@ export const make = (root: string): WeirHome => ({
 
 export const fromEnv = Config.NonEmptyString("WEIR_HOME").pipe(
   Config.orElse(() => Config.NonEmptyString("HOME").pipe(Config.map((home) => `${home}/.weir`))),
-  Config.map(make),
+  Config.map((root) => make(resolve(root))),
 );
 
 export const DaemonFile = Schema.Struct({

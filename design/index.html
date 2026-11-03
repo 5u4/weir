@@ -925,7 +925,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 
 <h2 id="cli"><span class="n">11</span>weir CLI 是 agent 唯一的入口</h2>
 <p><code>weir</code> 是一个 CLI，调用本机的 HTTP API。它遵循 AXI 的原则：不带参数直接运行就显示当前状态，长正文默认截断并提示 <code>--full</code>，每次输出后附上 <code>help[]</code>，列出下一步可以运行的命令。输出格式是 TOON。</p>
-<p><code>weir</code> 只通过 <code>$WEIR_HOME/daemon.json</code> 找到 daemon 的端口，不读 <code>config.toml</code>。没设 <code>WEIR_HOME</code> 时用 <code>~/.weir</code>。所以 <code>config.toml</code> 写坏了，<code>weir</code>、<code>search</code> 这些读命令和 <code>reload</code> 照样连得上 daemon，<code>reload</code> 返回 config 错误。连不上 daemon 时，CLI 输出一个 <code>error</code> 字段，退出码 1，错误里写出 <code>daemon.json</code> 的路径：</p>
+<p><code>weir</code> 只通过 <code>$WEIR_HOME/daemon.json</code> 找到 daemon 的端口，不读 <code>config.toml</code>。没设 <code>WEIR_HOME</code> 时用 <code>~/.weir</code>。<code>WEIR_HOME</code> 是相对路径时，按当前目录解析成绝对路径，<code>weir start</code> 把这个绝对路径传给 daemon。所以 <code>config.toml</code> 写坏了，<code>weir</code>、<code>search</code> 这些读命令和 <code>reload</code> 照样连得上 daemon，<code>reload</code> 返回 config 错误。连不上 daemon 时，CLI 输出一个 <code>error</code> 字段，退出码 1，错误里写出 <code>daemon.json</code> 的路径：</p>
 <ul>
 <li>文件读不到，报 daemon 没在运行，提示运行 <code>weir start</code>。</li>
 <li>文件不是带整数 <code>port</code>、<code>pid</code> 和非空 <code>started</code> 的 JSON，报文件无效，提示运行 <code>weir start</code>。</li>
@@ -933,7 +933,7 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 </ul>
 <p><code>weir start</code> 和 <code>weir stop</code> 管 daemon 进程。重复运行不出错：第二次 <code>start</code> 报 <code>running</code>，第二次 <code>stop</code> 报 <code>not running</code>，退出码都是 0。</p>
 <ul>
-<li><code>weir start</code> 先看 <code>daemon.json</code>。里面的进程还活着，并且 1 秒内应答 HTTP，就报 <code>running</code>，不再启动。进程活着却不应答，报错，提示 <code>weir stop</code>。文件不存在、无效，或者指向的进程已经不在，就在后台启动 daemon 后返回，daemon 不随 CLI 退出。daemon 的 stdout 和 stderr 追加写进 <code>$WEIR_HOME/daemon.log</code>。CLI 最多等 20 秒，等到新进程写好 <code>daemon.json</code> 并应答，输出 <code>started</code>、pid、地址和日志路径。daemon 中途退出，比如 config 校验失败，CLI 报出 daemon 的退出码，<code>log[]</code> 里是这次启动新写的日志，最多 20 行，CLI 自己的退出码是 1。20 秒内没应答，同样报错并附上日志。</li>
+<li><code>weir start</code> 先看 <code>daemon.json</code>。里面的进程还活着，并且 1 秒内应答 HTTP，就报 <code>running</code>，不再启动。进程活着却不应答，报错，提示 <code>weir stop</code>。文件不存在、无效，或者指向的进程已经不在，就在后台启动 daemon 后返回，daemon 不随 CLI 退出。daemon 的 stdout 和 stderr 追加写进 <code>$WEIR_HOME/daemon.log</code>。CLI 最多等 20 秒，等到新进程写好 <code>daemon.json</code> 并应答，输出 <code>started</code>、pid、地址和日志路径。daemon 中途退出，比如 config 校验失败，CLI 报出 daemon 的退出码，<code>log[]</code> 里是这次启动新写的日志，最多 20 行，CLI 自己的退出码是 1。20 秒内没应答，CLI 先停掉这个进程：发 SIGTERM，最多等 10 秒，还没退出就发 SIGKILL。然后报错，附上日志，提示 <code>weir start</code>。这样不会留下一个没写进 <code>daemon.json</code>、<code>weir stop</code> 找不到的 daemon。</li>
 <li><code>weir stop</code> 给 daemon 发 SIGTERM，最多等 10 秒，还没退出就发 SIGKILL。之后 <code>daemon.json</code> 如果还指向已经退出的进程，就删掉它。没有 daemon 在跑时报 <code>not running</code>。</li>
 </ul>
 <div class="tw"><table>
