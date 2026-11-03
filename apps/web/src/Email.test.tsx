@@ -48,24 +48,46 @@ describe("Email", () => {
 
 class Tag {
   readonly localName: string;
-  target: string | undefined;
-  rel: string;
-  constructor(localName: string, target?: string, rel = "") {
+  readonly attributes: Map<string, string>;
+  constructor(localName: string, attributes: Record<string, string> = {}) {
     this.localName = localName;
-    this.target = target;
-    this.rel = rel;
+    this.attributes = new Map(Object.entries(attributes));
+  }
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
+  }
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, value);
+  }
+  get target() {
+    return this.getAttribute("target") ?? "";
+  }
+  set target(value: string) {
+    this.setAttribute("target", value);
+  }
+  get rel() {
+    return this.getAttribute("rel") ?? "";
+  }
+  set rel(value: string) {
+    this.setAttribute("rel", value);
   }
   matches(selectors: string) {
     return selectors.split(",").some((selector) => {
       const [, name, attr] = selector.trim().match(/^([a-z]*)(?:\[([a-z]+)\])?$/) ?? [];
       return (
         (name === "" || name === this.localName) &&
-        (attr === undefined || this[attr as "target"] !== undefined)
+        (attr === undefined || this.attributes.has(attr))
       );
     });
   }
   closest(selectors: string) {
     return this.matches(selectors) ? this : null;
+  }
+}
+
+class SvgLink extends Tag {
+  override get target(): never {
+    return { baseVal: this.getAttribute("target") ?? "" } as never;
   }
 }
 
@@ -139,13 +161,14 @@ describe("emailFrame", () => {
 
   it("opens every link in a new tab with no handle back to weir, whatever the email asked for", () => {
     const tags = [
-      new Tag("a", "_self", "opener"),
-      new Tag("a", "_top"),
-      new Tag("area", "inbox", "opener nofollow"),
-      new Tag("a", undefined, "opener"),
+      new Tag("a", { target: "_self", rel: "opener" }),
+      new Tag("a", { target: "_top" }),
+      new SvgLink("a", { target: "_self" }),
+      new Tag("area", { target: "inbox", rel: "opener nofollow" }),
+      new Tag("a", { rel: "opener" }),
     ];
     new Frame(new Page(tags)).dispatchEvent(new Event("load"));
-    expect(tags.map((tag) => [tag.target, tag.rel])).toEqual(
+    expect(tags.map((tag) => [tag.getAttribute("target"), tag.getAttribute("rel")])).toEqual(
       tags.map(() => ["_blank", "noopener noreferrer"]),
     );
   });

@@ -25,9 +25,9 @@ export const emailFrame = (frame: HTMLIFrameElement) => {
     const page = frame.contentDocument;
     if (page === null) return;
     observer.observe(page.documentElement);
-    for (const link of page.querySelectorAll<HTMLAnchorElement | HTMLAreaElement>("a, area")) {
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
+    for (const link of page.querySelectorAll("a, area")) {
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
     }
     for (const type of ["focus", "blur"]) {
       page.defaultView?.addEventListener(type, () =>
