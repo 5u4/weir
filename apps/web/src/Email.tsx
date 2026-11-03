@@ -25,10 +25,14 @@ export const emailFrame = (frame: HTMLIFrameElement) => {
     const page = frame.contentDocument;
     if (page === null) return;
     observer.observe(page.documentElement);
-    for (const link of page.querySelectorAll<HTMLAnchorElement | HTMLAreaElement>(
-      "a[target], area[target]",
-    )) {
+    for (const link of page.querySelectorAll<HTMLAnchorElement | HTMLAreaElement>("a, area")) {
       link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+    for (const type of ["focus", "blur"]) {
+      page.defaultView?.addEventListener(type, () =>
+        frame.ownerDocument.defaultView?.dispatchEvent(new FocusEvent(type)),
+      );
     }
     page.addEventListener("wheel", (event) => frame.dispatchEvent(new WheelEvent("wheel", event)), {
       passive: true,

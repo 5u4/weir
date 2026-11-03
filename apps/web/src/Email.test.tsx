@@ -49,9 +49,11 @@ describe("Email", () => {
 class Tag {
   readonly localName: string;
   target: string | undefined;
-  constructor(localName: string, target?: string) {
+  rel: string;
+  constructor(localName: string, target?: string, rel = "") {
     this.localName = localName;
     this.target = target;
+    this.rel = rel;
   }
   matches(selectors: string) {
     return selectors.split(",").some((selector) => {
@@ -135,15 +137,17 @@ describe("emailFrame", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens every link in a new tab, whatever target the email gave it", () => {
+  it("opens every link in a new tab with no handle back to weir, whatever the email asked for", () => {
     const tags = [
-      new Tag("a", "_self"),
+      new Tag("a", "_self", "opener"),
       new Tag("a", "_top"),
-      new Tag("area", "inbox"),
-      new Tag("a"),
+      new Tag("area", "inbox", "opener nofollow"),
+      new Tag("a", undefined, "opener"),
     ];
     new Frame(new Page(tags)).dispatchEvent(new Event("load"));
-    expect(tags.map((tag) => tag.target)).toEqual(["_blank", "_blank", "_blank", undefined]);
+    expect(tags.map((tag) => [tag.target, tag.rel])).toEqual(
+      tags.map(() => ["_blank", "noopener noreferrer"]),
+    );
   });
 
   it("hands reading input inside the email to the iframe as bubbling events", () => {
