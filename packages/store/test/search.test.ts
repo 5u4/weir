@@ -3,15 +3,15 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import { type SearchQuery, search } from "../src/Read.ts";
-import { softDeleteItems, upsertStream, writeItems } from "../src/Write.ts";
-import { mailStream, rawItem, storeLayer } from "./fixtures.ts";
+import { softDeleteItems, upsertStream } from "../src/Write.ts";
+import { mailStream, rawItem, storeLayer, writeRaw } from "./fixtures.ts";
 
 const matches = (query: SearchQuery) =>
   search(query).pipe(Effect.map((conversations) => new Set(conversations.map(({ id }) => id))));
 
 const writeBodies = Effect.fnUntraced(function* (bodies: ReadonlyArray<string>) {
   const { stream } = yield* upsertStream("mail", mailStream);
-  const written = yield* writeItems(
+  const written = yield* writeRaw(
     stream,
     bodies.map((body, index) => rawItem(`m${index}`, { bodyNew: body })),
   );
@@ -57,7 +57,7 @@ describe("search", () => {
   it.effect("requires every term somewhere in the same conversation", () =>
     Effect.gen(function* () {
       const { stream } = yield* upsertStream("mail", mailStream);
-      const [both] = yield* writeItems(stream, [
+      const [both] = yield* writeRaw(stream, [
         rawItem("a", { threadId: "both", bodyNew: "idempotency keys" }),
         rawItem("b", { threadId: "both", bodyNew: "backfill job" }),
         rawItem("c", { threadId: "one", bodyNew: "idempotency only" }),
@@ -72,7 +72,7 @@ describe("search", () => {
     Effect.gen(function* () {
       const { stream } = yield* upsertStream("mail", mailStream);
       const item = rawItem("m1", { bodyNew: "migration plan" });
-      const [written] = yield* writeItems(stream, [item]);
+      const [written] = yield* writeRaw(stream, [item]);
 
       expect((yield* softDeleteItems(stream.id, ["m1"])).conversationIds).toEqual([
         written?.conversationId,
@@ -80,7 +80,7 @@ describe("search", () => {
       expect(yield* matches({ query: "migration" })).toEqual(new Set());
       expect(yield* matches({ query: "" })).toEqual(new Set());
 
-      yield* writeItems(stream, [item]);
+      yield* writeRaw(stream, [item]);
       expect(yield* matches({ query: "migration" })).toEqual(new Set([written?.conversationId]));
     }).pipe(Effect.provide(storeLayer())),
   );
@@ -88,7 +88,7 @@ describe("search", () => {
   it.effect("indexes only the new text, not quoted history", () =>
     Effect.gen(function* () {
       const { stream } = yield* upsertStream("mail", mailStream);
-      const [reply] = yield* writeItems(stream, [
+      const [reply] = yield* writeRaw(stream, [
         rawItem("m1", { body: "fresh reply\n\n> Northwind cutover", bodyNew: "fresh reply" }),
       ]);
       expect(yield* matches({ query: "Northwind" })).toEqual(new Set());
@@ -99,7 +99,7 @@ describe("search", () => {
   it.effect("renaming a stream reindexes its live items under the new name", () =>
     Effect.gen(function* () {
       const { stream } = yield* upsertStream("mail", mailStream);
-      const [live] = yield* writeItems(stream, [
+      const [live] = yield* writeRaw(stream, [
         rawItem("live", { threadId: "live", bodyNew: "status report" }),
         rawItem("gone", { threadId: "gone", bodyNew: "status report" }),
       ]);
@@ -115,7 +115,7 @@ describe("search", () => {
   it.effect("orders results by their newest matching item, not their newest item", () =>
     Effect.gen(function* () {
       const { stream } = yield* upsertStream("mail", mailStream);
-      const [olderMatch, , newerMatch] = yield* writeItems(stream, [
+      const [olderMatch, , newerMatch] = yield* writeRaw(stream, [
         rawItem("a1", {
           threadId: "a",
           bodyNew: "invoice due",
@@ -153,7 +153,7 @@ describe("search", () => {
         ...mailStream,
         id: "home@example.com",
       });
-      const [ada, bob] = yield* writeItems(work, [
+      const [ada, bob] = yield* writeRaw(work, [
         rawItem("ada", {
           bodyNew: "status report",
           from: { name: "Ada Lovelace", address: "ada@example.com" },
@@ -165,7 +165,7 @@ describe("search", () => {
           occurredAt: "2026-10-28T09:00:00Z",
         }),
       ]);
-      const [carol] = yield* writeItems(home, [
+      const [carol] = yield* writeRaw(home, [
         rawItem("carol", {
           bodyNew: "status report",
           from: { name: "Carol", address: "carol@home.example" },

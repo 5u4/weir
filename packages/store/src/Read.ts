@@ -322,7 +322,7 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
         last.from_name AS last_from_name,
         last.from_address AS last_from_address,
         last.from_me AS last_from_me,
-        last.body_new AS last_body_new,
+        last.text_new AS last_text_new,
         (SELECT CASE WHEN digest.to_seq >= c.last_seq THEN digest.headline END FROM digest
           WHERE digest.conversation_id = c.id ORDER BY digest.from_seq DESC, digest.id DESC LIMIT 1)
           AS covering_headline
@@ -409,7 +409,7 @@ const decodeItemsLite = Schema.decodeUnknownEffect(Schema.Array(ItemLiteRow));
 export const itemsLite = Effect.fnUntraced(function* (conversationId: ConversationId) {
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeItemsLite(
-    yield* sql`SELECT seq, occurred_at, length(body_new) AS chars FROM item
+    yield* sql`SELECT seq, occurred_at, length(text_new) AS chars FROM item
       WHERE conversation_id = ${conversationId} AND deleted_at IS NULL ORDER BY seq`,
   );
 });
@@ -477,7 +477,7 @@ export const HitItem = Schema.Struct({
   seq: Seq,
   fromName: Schema.String,
   fromAddress: Schema.String,
-  bodyNew: Schema.String,
+  textNew: Schema.String,
   streamName: Schema.String,
 });
 export type HitItem = typeof HitItem.Type;
@@ -490,7 +490,7 @@ export const hitItems = Effect.fnUntraced(function* (
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeHitItems(
     yield* sql`SELECT item.conversation_id, item.seq, item.from_name, item.from_address,
-        item.body_new, stream.name AS stream_name
+        item.text_new, stream.name AS stream_name
       FROM item JOIN stream ON stream.id = item.stream_id
       WHERE item.deleted_at IS NULL AND ${sql.in("item.conversation_id", conversationIds)}
       ORDER BY item.conversation_id, item.occurred_at DESC, item.seq DESC`,

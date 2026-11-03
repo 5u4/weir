@@ -45,7 +45,7 @@ match = { type = "eq", target = "/fromMe", is = true }
 `;
 
 const item = (externalId: string, title: string, chars: number, minute: number): RawItem => {
-  const text = "word ".repeat(Math.ceil(chars / 5)).slice(0, chars);
+  const text = `${"word ".repeat(Math.ceil(chars / 5)).slice(0, chars - 1)}.`;
   return rawItem(externalId, {
     threadId: title,
     title,
@@ -338,6 +338,28 @@ describe("status", () => {
 });
 
 describe("manual digest", () => {
+  it.live("sends an HTML email to the AI as its visible text", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, calls } = yield* start();
+      const html = `<html><head><style>td{color:#600}</style></head><body><table><tr><td>Fare</td><td>CAD 42</td></tr></table></body></html>`;
+      yield* deliver([
+        rawItem("h1", {
+          threadId: "List news",
+          title: "List news",
+          occurredAt: "2030-01-01T09:01:00Z",
+          format: "html",
+          body: html,
+          bodyNew: html,
+        }),
+      ]);
+      const id = yield* conversationOf("List news");
+      yield* client.digest({ params: { id }, payload: {} });
+      expect(calls().flatMap(({ input }) => input.items.map(({ body_new }) => body_new))).toEqual([
+        "Fare CAD 42",
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("fills gaps, rejects covered or unknown targets, and redo replaces the row", () =>
     Effect.gen(function* () {
       const { client, deliver, conversationOf, detail, home, reconfigure } = yield* start();

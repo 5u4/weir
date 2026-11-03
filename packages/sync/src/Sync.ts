@@ -1,4 +1,3 @@
-import { derive } from "@weir/body/Body";
 import { type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { ConversationId, StreamRow } from "@weir/store/Rows";
@@ -51,17 +50,15 @@ const writePage = Effect.fnUntraced(function* (
 ) {
   const deleted = yield* Write.softDeleteItems(stream.id, page.deletions);
   const removed = new Set(page.deletions);
-  const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
-  const { keys, moved } = yield* joinThreads(stream, upserts, deleted.threads, groups);
+  const drafts = page.upserts
+    .filter(({ externalId }) => !removed.has(externalId))
+    .map((item) => Write.draft(stream, item));
+  const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
-    upserts.map((item) => {
-      const thread = item.threadId ?? item.containerId;
-      return {
-        ...item,
-        bodyNew: derive({ format: "markdown", body: item.body, bodyNew: item.bodyNew }).bodyNew,
-        key: keys.get(thread) ?? thread,
-      };
+    drafts.map((draft) => {
+      const thread = draft.threadId ?? draft.containerId;
+      return { ...draft, key: keys.get(thread) ?? thread };
     }),
   );
   const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds]);

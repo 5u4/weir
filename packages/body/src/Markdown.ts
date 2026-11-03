@@ -252,12 +252,3 @@ export const hastParsingHtml = (parse: (html: string) => Array<ElementContent>) 
   const parsing = pipeline((_, node: Mdast.Html) => parse(node.value));
   return (markdown: string): Root => parsing.runSync(parsing.parse(markdown)) as Root;
 };
-
-const textLeaves = (node: RootContent): ReadonlyArray<string> =>
-  node.type === "text"
-    ? [node.value]
-    : node.type === "element"
-      ? node.children.flatMap(textLeaves)
-      : [];
-
-export const leaves = (tree: Root): ReadonlyArray<string> => tree.children.flatMap(textLeaves);

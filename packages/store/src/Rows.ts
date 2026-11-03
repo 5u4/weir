@@ -1,5 +1,5 @@
 import { Topic, Trigger } from "@weir/contract/Digest";
-import { RowParty, StreamDescriptor } from "@weir/contract/Source";
+import { BodyFormat, RowParty, StreamDescriptor } from "@weir/contract/Source";
 import * as Schema from "effect/Schema";
 
 export const UtcIso = Schema.String.check(
@@ -52,8 +52,10 @@ const itemFields = {
   fromName: Schema.String,
   fromAddress: Schema.String,
   fromMe: Schema.BooleanFromBit,
-  body: Schema.String,
+  format: BodyFormat,
   bodyNew: Schema.String,
+  text: Schema.String,
+  textNew: Schema.String,
   link: Schema.NullOr(Schema.String),
   raw: Schema.fromJsonString(Schema.Unknown),
   deletedAt: Schema.NullOr(UtcIso),
@@ -114,7 +116,7 @@ export const ListedConversationRow = Schema.Struct({
   lastFromName: Schema.String,
   lastFromAddress: Schema.String,
   lastFromMe: Schema.BooleanFromBit,
-  lastBodyNew: Schema.String,
+  lastTextNew: Schema.String,
   coveringHeadline: Schema.NullOr(Schema.String),
 });
 export type ListedConversationRow = typeof ListedConversationRow.Type;

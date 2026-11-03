@@ -1,6 +1,5 @@
 import { type GroupConfig, groupKey } from "@weir/contract/Config";
 import type { RuleInput } from "@weir/contract/Rule";
-import type { RawItem } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { SourcedItemRow, StreamRow } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
@@ -12,7 +11,7 @@ export type Groups = ReadonlyArray<Pick<GroupConfig, "name" | "match">>;
 
 const regroupBatch = 100;
 
-const threadOf = (item: Pick<RawItem, "threadId" | "containerId">) =>
+const threadOf = (item: Pick<Write.ItemDraft, "threadId" | "containerId">) =>
   item.threadId ?? item.containerId;
 
 const keysOf = (groups: Groups, inputs: ReadonlyMap<string, ReadonlyArray<RuleInput>>) =>
@@ -36,16 +35,15 @@ const keyOf = (keys: ReadonlyMap<string, string>, item: SourcedItemRow) =>
 
 export const joinThreads = Effect.fnUntraced(function* (
   stream: StreamRow,
-  upserts: ReadonlyArray<RawItem>,
+  drafts: ReadonlyArray<Write.ItemDraft>,
   deletedThreads: ReadonlyArray<string>,
   groups: Groups,
 ) {
-  const items = [...new Map(upserts.map((item) => [item.externalId, item])).values()];
+  const items = [...new Map(drafts.map((item) => [item.externalId, item])).values()];
   const threads = [...new Set([...items.map(threadOf), ...deletedThreads])];
   if (groups.length === 0 || threads.length === 0) {
     return { keys: new Map<string, string>(), moved: [] };
   }
-  const me = new Set(stream.me.map((address) => address.toLowerCase()));
   const paged = new Set(items.map(({ externalId }) => externalId));
   const stored = yield* Read.liveItems({ sourceId: stream.sourceId, threads });
   const inputs = new Map<string, Array<RuleInput>>();
@@ -53,20 +51,7 @@ export const joinThreads = Effect.fnUntraced(function* (
     if (item.streamId === stream.id && paged.has(item.externalId)) continue;
     collect(inputs, threadOf(item), ruleInput(item));
   }
-  for (const item of items) {
-    const address = item.from.address.toLowerCase();
-    collect(inputs, threadOf(item), {
-      source: stream.sourceId,
-      threadId: item.threadId,
-      containerId: item.containerId,
-      containerName: item.containerName,
-      title: item.title,
-      from: { name: item.from.name, address },
-      fromMe: me.has(address),
-      body: item.body,
-      raw: item.raw,
-    });
-  }
+  for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
   const keys = keysOf(groups, inputs);
   const moved = yield* Write.moveItems(
     stream.sourceId,

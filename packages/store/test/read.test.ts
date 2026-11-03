@@ -2,9 +2,9 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Statement from "effect/sql/Statement";
-import { conversations, unreadSenders } from "../src/Read.ts";
-import { upsertStream, writeItems } from "../src/Write.ts";
-import { mailStream, rawItem, storeLayer } from "./fixtures.ts";
+import { conversations, itemsLite, unreadSenders } from "../src/Read.ts";
+import { upsertStream } from "../src/Write.ts";
+import { mailStream, rawItem, storeLayer, writeRaw } from "./fixtures.ts";
 
 interface PlanRow {
   readonly id: number;
@@ -13,6 +13,19 @@ interface PlanRow {
 }
 
 describe("read", () => {
+  it.effect("an HTML item's backlog chars count its visible text, not its markup", () =>
+    Effect.gen(function* () {
+      const { stream } = yield* upsertStream("mail", mailStream);
+      const html = `<html><head><style>td{padding:24px}</style></head><body><table width="600"><tr><td>Seat 14A</td></tr></table></body></html>`;
+      const [written] = yield* writeRaw(stream, [
+        rawItem("h1", { format: "html", body: html, bodyNew: html }),
+      ]);
+      if (written === undefined) return expect.unreachable();
+      const lite = yield* itemsLite(written.conversationId);
+      expect(lite.map(({ chars }) => chars)).toEqual(["Seat 14A".length]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("the latest-digest lookup for list rows searches an index without sorting", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -42,10 +55,10 @@ describe("read", () => {
       const ann = { name: "Ann", address: "ann@example.com" };
       const bob = { name: "Bob", address: "bob@example.com" };
       const { stream } = yield* upsertStream("mail", mailStream);
-      yield* writeItems(stream, [
+      yield* writeRaw(stream, [
         rawItem("m1", { threadId: "t", from: ann, occurredAt: "2026-10-28T09:05:00Z" }),
       ]);
-      yield* writeItems(stream, [
+      yield* writeRaw(stream, [
         rawItem("m2", { threadId: "t", from: bob, occurredAt: "2026-10-28T09:01:00Z" }),
       ]);
 

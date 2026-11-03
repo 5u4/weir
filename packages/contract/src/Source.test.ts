@@ -14,6 +14,7 @@ const item = {
   occurredAt: "2026-10-28T09:15:00+02:00",
   title: "Hello",
   from: { name: "Ada", address: "ada@example.com" },
+  format: "markdown",
   body: "Hi there",
   bodyNew: null,
   link: null,
@@ -32,6 +33,19 @@ describe("RawItem", () => {
   it("requires nullable keys to be present", () => {
     const { bodyNew: _, ...withoutBodyNew } = item;
     expect(() => decodeRawItem(withoutBodyNew)).toThrow();
+  });
+
+  it("decodes an HTML item whose new part the plugin separated", () => {
+    const html = { ...item, format: "html", body: "<table></table>", bodyNew: "<table></table>" };
+    expect(decodeRawItem(html)).toEqual(html);
+  });
+
+  it.each([
+    ["without format", { ...item, format: undefined }],
+    ["with an unknown format", { ...item, format: "rtf" }],
+    ["in HTML without a separated new part", { ...item, format: "html", bodyNew: null }],
+  ])("rejects an item %s", (_name, invalid) => {
+    expect(() => decodeRawItem(invalid)).toThrow();
   });
 
   it.each([

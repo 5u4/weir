@@ -1,13 +1,8 @@
+import type { BodyFormat, ItemBody } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
 import { fromHtml } from "hast-util-from-html";
 import { toText } from "hast-util-to-text";
 import { hastParsingHtml, type Root } from "./Markdown.ts";
-
-export type Content =
-  | { readonly format: "markdown"; readonly body: string; readonly bodyNew: string | null }
-  | { readonly format: "html"; readonly body: string; readonly bodyNew: string };
-
-export type BodyFormat = Content["format"];
 
 export interface Derived {
   readonly bodyNew: string;
@@ -50,7 +45,7 @@ const visibleText = (tree: Root) =>
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
 
-export const derive = (content: Content): Derived => {
+export const derive = (content: ItemBody): Derived => {
   const tree = trees[content.format];
   const bodyNew = content.bodyNew ?? stripQuoted(content.body);
   return {

@@ -30,7 +30,20 @@ export type Party = typeof Party.Type;
 export const RowParty = Schema.Struct({ ...Party.fields, me: Schema.Boolean });
 export type RowParty = typeof RowParty.Type;
 
-export const RawItem = Schema.Struct({
+export const BodyFormat = Schema.Literals(["markdown", "html"]);
+export type BodyFormat = typeof BodyFormat.Type;
+
+export const ItemBody = Schema.Union([
+  Schema.Struct({
+    format: Schema.Literal("markdown"),
+    body: Schema.String,
+    bodyNew: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({ format: Schema.Literal("html"), body: Schema.String, bodyNew: Schema.String }),
+]);
+export type ItemBody = typeof ItemBody.Type;
+
+const itemFields = {
   externalId: Schema.String,
   threadId: Schema.NullOr(Schema.String),
   containerId: Schema.String,
@@ -38,11 +51,13 @@ export const RawItem = Schema.Struct({
   occurredAt: IsoDateTimeWithOffset,
   title: Schema.NullOr(Schema.String),
   from: Party,
-  body: Schema.String,
-  bodyNew: Schema.NullOr(Schema.String),
   link: Schema.NullOr(Schema.String),
   raw: Schema.Unknown,
-});
+};
+
+export const RawItem = Schema.Union(
+  ItemBody.members.map((body) => Schema.Struct({ ...itemFields, ...body.fields })),
+);
 export type RawItem = typeof RawItem.Type;
 
 export const StreamDescriptor = Schema.Struct({

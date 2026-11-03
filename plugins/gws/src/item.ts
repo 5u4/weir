@@ -69,6 +69,7 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     occurredAt: new Date(Number(message.internalDate)).toISOString(),
     title: headerOf(message.payload, "subject"),
     from: mailbox(headerOf(message.payload, "from") ?? ""),
+    format: "markdown",
     body: html === null ? plainBody(plain) : htmlBody(html).trim(),
     bodyNew: html === null ? plainNew(plain) : htmlBodyNew(html).trim(),
     link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,

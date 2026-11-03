@@ -8,6 +8,7 @@
     "./Markdown": "./src/Markdown.ts"
   },
   "dependencies": {
+    "@weir/contract": "workspace:*",
     "effect": "catalog:",
     "hast-util-from-html": "2.0.3",
     "hast-util-to-text": "4.0.3",

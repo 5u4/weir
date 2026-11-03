@@ -580,15 +580,27 @@ describe("reads", () => {
           source: "mail",
           tags: ["Finance", "Sent"],
         });
-        expect(conversation.items.map(({ from_me, body_new }) => [from_me, body_new])).toEqual([
-          [false, "Please review the invoice batch."],
-          [true, "Approved."],
+        expect(
+          conversation.items.map(({ from_me, format, body_new, text_new }) => [
+            from_me,
+            format,
+            body_new,
+            text_new,
+          ]),
+        ).toEqual([
+          [
+            false,
+            "markdown",
+            "Please review the invoice batch.",
+            "Please review the invoice batch.",
+          ],
+          [true, "markdown", "Approved.", "Approved."],
         ]);
 
         const first = conversation.items[0];
         if (first === undefined) throw new Error("conversation without items");
         const item = yield* client.item({ params: { seq: first.seq } });
-        expect(item.body).toContain("> old quoted text");
+        expect(item.text).toBe("Please review the invoice batch.\n\nold quoted text");
         expect(item.input).toMatchObject({ source: "mail", raw: { labelIds: ["INBOX"] } });
         expect(matchItem({ type: "eq", target: "/raw/labelIds/0", is: "INBOX" }, item.input)).toBe(
           true,
@@ -699,7 +711,7 @@ match = { type = "eq", target = "/source", is = "mail" }
               conversations.flatMap(({ hits }) => hits.filter(({ field }) => field === "body")),
             ),
           );
-      for (const q of ["Lamport", "months", "mergeClocks", "<b>raw", "tombstones"]) {
+      for (const q of ["Lamport", "months", "mergeClocks", "raw", "tombstones"]) {
         const [line, ...rest] = yield* bodyLines(q);
         expect(rest, q).toEqual([]);
         expect(
@@ -710,6 +722,7 @@ match = { type = "eq", target = "/source", is = "mail" }
       }
       for (const q of [
         "lamport-primer",
+        "<b>raw",
         "utm_campaign",
         "banner.png",
         "robin.gif",

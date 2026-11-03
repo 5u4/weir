@@ -1,6 +1,5 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { hast, leaves } from "@weir/body/Markdown";
 import { type Config, groupKey, groupNameOf, untagged } from "@weir/contract/Config";
 import type { Digest } from "@weir/contract/Digest";
 import type * as Digester from "@weir/digest/Digester";
@@ -285,23 +284,13 @@ const previewLength = 160;
 
 const preview = ({
   coveringHeadline,
-  lastBodyNew,
+  lastTextNew,
   lastFromName,
   lastFromAddress,
   lastFromMe,
 }: ListedConversationRow) => {
   if (coveringHeadline !== null) return coveringHeadline;
-  const plain = lastBodyNew
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi, "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/[#>*_`|~]+/g, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-  const text = [...plain].slice(0, previewLength).join("");
+  const text = [...lastTextNew.replace(/\s+/gu, " ").trim()].slice(0, previewLength).join("");
   const named = lastFromName.trim() === "" ? (lastFromAddress.split("@")[0] ?? "") : lastFromName;
   const who = lastFromMe ? "Me" : (named.trim().split(/\s+/u)[0] ?? "");
   return `${who}: ${text === "" ? "(no text)" : text}`;
@@ -364,12 +353,7 @@ const hitLines = (
     if (itemLines.length === hitLinesPerConversation) break;
     if (coveredByTopic.has(item.seq)) continue;
     const fields = [
-      [
-        "body",
-        item.bodyNew.search(pattern) === -1
-          ? ""
-          : leaves(hast(item.bodyNew)).join(" ").replace(/\s+/gu, " ").trim(),
-      ],
+      ["body", item.textNew.replace(/\s+/gu, " ").trim()],
       ["from", senderLabel(item.fromName, item.fromAddress)],
       ["source", item.streamName],
     ] as const;
@@ -620,7 +604,9 @@ const weirHandlers = HttpApiBuilder.group(
                       from: { name: item.fromName, address: item.fromAddress },
                       from_me: item.fromMe,
                       title: item.title,
+                      format: item.format,
                       body_new: item.bodyNew,
+                      text_new: item.textNew,
                       stream,
                     },
                   ];
@@ -665,8 +651,7 @@ const weirHandlers = HttpApiBuilder.group(
             from: { name: item.fromName, address: item.fromAddress },
             from_me: item.fromMe,
             link: item.link,
-            body: item.body,
-            body_new: item.bodyNew,
+            text: item.text,
             input: ruleInput(item),
             deleted_at: item.deletedAt === null ? null : DateTime.formatIso(item.deletedAt),
           };

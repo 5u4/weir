@@ -634,7 +634,8 @@ describe("list rows", () => {
         const fromWrite = (yield* client.read({ params: { id }, payload: { seq: s1 } })).preview;
         return [fromList, fromSearch, fromWrite];
       });
-      const lastMessage = "Ann: See the spec at quoted";
+      const lastMessage =
+        "Ann: See **the** [spec](https://x.example/spec) ![diagram](https://x.example/a.png) at https://x.example/raw quoted";
 
       expect(yield* previews).toEqual([lastMessage, lastMessage, lastMessage]);
 
@@ -647,25 +648,49 @@ describe("list rows", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.live("an empty plain body previews as no text, long bodies cut at 160 code points", () =>
+  it.live("an HTML email previews its visible words, never its CSS or tags", () =>
     Effect.gen(function* () {
       const { listed, deliver, conversationOf } = yield* start;
+      const html = `<html><head><title>Receipt</title><style>.hero{font-size:60px}</style></head><body><table class="hero"><tr><td>Your trip</td><td>is booked</td></tr></table></body></html>`;
       yield* deliver([
-        item("n1", "blank", 1, { title: "Blank", from: ann, bodyNew: "" }),
-        item("n2", "link", 2, {
-          title: "Link only",
-          from: { name: "", address: "zed.q@x.example" },
-          bodyNew: "https://x.example/only ![x](https://x.example/x.png)",
+        item("h1", "trip", 1, {
+          title: "Trip",
+          from: ann,
+          format: "html",
+          body: html,
+          bodyNew: html,
         }),
-        item("n3", "long", 3, { title: "Long", from: bob, bodyNew: "😀".repeat(200) }),
       ]);
-      const rows = yield* listed(untagged);
-      const previewOf = (title: string) =>
-        conversationOf(title).pipe(Effect.map((id) => rows.find((row) => row.id === id)?.preview));
-
-      expect(yield* previewOf("Blank")).toBe("Ann: (no text)");
-      expect(yield* previewOf("Link only")).toBe("zed.q: (no text)");
-      expect(yield* previewOf("Long")).toBe(`Bob: ${"😀".repeat(160)}`);
+      const id = yield* conversationOf("Trip");
+      expect((yield* listed(untagged)).find((row) => row.id === id)?.preview).toBe(
+        "Ann: Your trip is booked",
+      );
     }).pipe(Effect.scoped),
+  );
+
+  it.live(
+    "an empty body previews as no text, a bare link as its text, long bodies cut at 160 code points",
+    () =>
+      Effect.gen(function* () {
+        const { listed, deliver, conversationOf } = yield* start;
+        yield* deliver([
+          item("n1", "blank", 1, { title: "Blank", from: ann, bodyNew: "" }),
+          item("n2", "link", 2, {
+            title: "Link only",
+            from: { name: "", address: "zed.q@x.example" },
+            bodyNew: "https://x.example/only ![x](https://x.example/x.png)",
+          }),
+          item("n3", "long", 3, { title: "Long", from: bob, bodyNew: "😀".repeat(200) }),
+        ]);
+        const rows = yield* listed(untagged);
+        const previewOf = (title: string) =>
+          conversationOf(title).pipe(
+            Effect.map((id) => rows.find((row) => row.id === id)?.preview),
+          );
+
+        expect(yield* previewOf("Blank")).toBe("Ann: (no text)");
+        expect(yield* previewOf("Link only")).toBe("zed.q: https://x.example/only");
+        expect(yield* previewOf("Long")).toBe(`Bob: ${"😀".repeat(160)}`);
+      }).pipe(Effect.scoped),
   );
 });

@@ -504,7 +504,9 @@ it("a Digest from here that lands earlier chunks keeps its failure on the first 
     from: { name: "Ada", address: "ada@example.com" },
     from_me: false,
     title: null,
+    format: "markdown",
     body_new: `message ${seq}`,
+    text_new: `message ${seq}`,
     stream: "robin.ellis@example.com",
   });
   const items = [1, 2, 3, 4].map(item);

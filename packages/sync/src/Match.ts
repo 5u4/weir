@@ -2,7 +2,21 @@ import { type ItemRule, type RuleInput, TagRule } from "@weir/contract/Rule";
 import type { SourcedItemRow } from "@weir/store/Rows";
 import * as JsonPointer from "effect/JsonPointer";
 
-export const ruleInput = (item: SourcedItemRow): RuleInput => ({
+export type RuleSource = Pick<
+  SourcedItemRow,
+  | "sourceId"
+  | "threadId"
+  | "containerId"
+  | "containerName"
+  | "title"
+  | "fromName"
+  | "fromAddress"
+  | "fromMe"
+  | "text"
+  | "raw"
+>;
+
+export const ruleInput = (item: RuleSource): RuleInput => ({
   source: item.sourceId,
   threadId: item.threadId,
   containerId: item.containerId,
@@ -10,7 +24,7 @@ export const ruleInput = (item: SourcedItemRow): RuleInput => ({
   title: item.title,
   from: { name: item.fromName, address: item.fromAddress.toLowerCase() },
   fromMe: item.fromMe,
-  body: item.body,
+  body: item.text,
   raw: item.raw,
 });
 
