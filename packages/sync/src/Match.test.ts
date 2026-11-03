@@ -1,9 +1,9 @@
-import { Rule } from "@weir/contract/Rule";
+import { TagRule } from "@weir/contract/Rule";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vitest";
 import { match } from "./Match.ts";
 
-const decodeRule = Schema.decodeUnknownSync(Rule, { onExcessProperty: "error" });
+const decodeRule = Schema.decodeUnknownSync(TagRule, { onExcessProperty: "error" });
 
 const input = {
   source: "personal-mail",
@@ -26,7 +26,7 @@ const input = {
   },
 };
 
-const matches = (rule: unknown, root: unknown = input) => match(decodeRule(rule), root);
+const matches = (rule: unknown, root: unknown = input) => match(decodeRule(rule), root, null);
 
 describe("match pointers", () => {
   it.each([

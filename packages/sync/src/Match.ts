@@ -1,4 +1,4 @@
-import { Rule, type RuleInput } from "@weir/contract/Rule";
+import { type ItemRule, type RuleInput, TagRule } from "@weir/contract/Rule";
 import type { SourcedItemRow } from "@weir/store/Rows";
 import * as JsonPointer from "effect/JsonPointer";
 
@@ -29,11 +29,11 @@ const resolve = (root: unknown, pointer: string): unknown => {
   return current;
 };
 
-export const match = (rule: Rule, root: unknown): boolean =>
-  Rule.match(rule, {
-    and: ({ rules }) => rules.every((inner) => match(inner, root)),
-    or: ({ rules }) => rules.some((inner) => match(inner, root)),
-    not: ({ rule: inner }) => !match(inner, root),
+export const match = (rule: TagRule, root: unknown, group: string | null): boolean =>
+  TagRule.match(rule, {
+    and: ({ rules }) => rules.every((inner) => match(inner, root, group)),
+    or: ({ rules }) => rules.some((inner) => match(inner, root, group)),
+    not: ({ rule: inner }) => !match(inner, root, group),
     eq: ({ target, is }) => resolve(root, target) === is,
     regex: ({ target, regex, flags }) => {
       const value = resolve(root, target);
@@ -42,10 +42,13 @@ export const match = (rule: Rule, root: unknown): boolean =>
     exists: ({ target }) => resolve(root, target) !== undefined,
     some: ({ target, rule: inner }) => {
       const value = resolve(root, target);
-      return Array.isArray(value) && value.some((element) => match(inner, element));
+      return Array.isArray(value) && value.some((element) => match(inner, element, group));
     },
     every: ({ target, rule: inner }) => {
       const value = resolve(root, target);
-      return Array.isArray(value) && value.every((element) => match(inner, element));
+      return Array.isArray(value) && value.every((element) => match(inner, element, group));
     },
+    group: ({ name }) => group === name,
   });
+
+export const matchItem = (rule: ItemRule, root: unknown) => match(rule, root, null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import type { Rule } from "@weir/contract/Rule";
+import type { ItemRule } from "@weir/contract/Rule";
 import type { Source } from "@weir/contract/Source";
 import { conversations, search } from "@weir/store/Read";
 import { ConversationId } from "@weir/store/Rows";
@@ -7,12 +7,13 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
+import { type Groups, regroupAll } from "../src/Groups.ts";
 import { syncSource, syncStream } from "../src/Sync.ts";
 import { recomputeAllTags, type Tags } from "../src/Tags.ts";
 import { mailStream, page, rawItem, type Step, scriptedSource, storeLayer } from "./fixtures.ts";
 
-const github: Rule = { type: "regex", target: "/from/address", regex: "@github\\.com$" };
-const urgent: Rule = {
+const github: ItemRule = { type: "regex", target: "/from/address", regex: "@github\\.com$" };
+const urgent: ItemRule = {
   type: "some",
   target: "/raw/labelIds",
   rule: { type: "eq", target: "", is: "URGENT" },
@@ -490,6 +491,73 @@ describe("syncStream tags", () => {
         { name: "everything", match: { type: "exists", target: "/source" } },
       ]);
       expect(yield* tagsByThread).toEqual(["t1:everything", "t2:everything", "t2:urgent"]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+});
+
+describe("tags matching a group", () => {
+  const deploy: ItemRule = { type: "regex", target: "/title", regex: "^Deploy" };
+  const githubFirst: Groups = [
+    { name: "github", match: github },
+    { name: "deploys", match: deploy },
+  ];
+  const groupTags: Tags = [
+    { name: "in-deploys", match: { type: "group", name: "deploys" } },
+    { name: "outside-github", match: { type: "not", rule: { type: "group", name: "github" } } },
+    {
+      name: "urgent-deploys",
+      match: { type: "and", rules: [{ type: "group", name: "deploys" }, urgent] },
+    },
+  ];
+
+  it.effect("tags the conversation a group produced, not every thread its rule matches", () =>
+    Effect.gen(function* () {
+      yield* syncStream(
+        "mail",
+        scriptedSource(
+          new Map([
+            [
+              null,
+              page({
+                cursor: "c1",
+                upserts: [
+                  rawItem("a1", { threadId: "t1", title: "Deploy failed", from: fromGithub }),
+                  rawItem("b1", {
+                    threadId: "t2",
+                    title: "Deploy done",
+                    raw: { labelIds: ["URGENT"] },
+                  }),
+                  rawItem("c1", { threadId: "t3", raw: { labelIds: ["URGENT"] } }),
+                ],
+              }),
+            ],
+          ]),
+        ).source,
+        mailStream,
+        groupTags,
+        githubFirst,
+        ignoreWritten,
+      );
+      expect(yield* tagsByThread).toEqual([
+        "group:deploys:in-deploys",
+        "group:deploys:outside-github",
+        "group:deploys:urgent-deploys",
+        "t3:outside-github",
+      ]);
+
+      yield* regroupAll([{ name: "deploys", match: deploy }]);
+      yield* recomputeAllTags(groupTags);
+      expect(yield* tagsByThread).toEqual([
+        "group:deploys:in-deploys",
+        "group:deploys:outside-github",
+        "group:deploys:urgent-deploys",
+        "t3:outside-github",
+      ]);
+      const sql = yield* SqlClient.SqlClient;
+      const [moved] = yield* sql<{ key: string }>`SELECT conversation.key FROM item
+        JOIN conversation ON conversation.id = item.conversation_id
+        WHERE item.external_id = 'a1'`;
+      expect(moved?.key).toBe("group:deploys");
     }).pipe(Effect.provide(storeLayer())),
   );
 });

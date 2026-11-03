@@ -10,7 +10,7 @@ import {
 } from "@weir/fixtures";
 import { gws } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
-import { match } from "@weir/sync/Match";
+import { matchItem } from "@weir/sync/Match";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -586,7 +586,7 @@ describe("reads", () => {
         const item = yield* client.item({ params: { seq: first.seq } });
         expect(item.body).toContain("> old quoted text");
         expect(item.input).toMatchObject({ source: "mail", raw: { labelIds: ["INBOX"] } });
-        expect(match({ type: "eq", target: "/raw/labelIds/0", is: "INBOX" }, item.input)).toBe(
+        expect(matchItem({ type: "eq", target: "/raw/labelIds/0", is: "INBOX" }, item.input)).toBe(
           true,
         );
         expect((yield* Effect.flip(client.item({ params: { seq: 9999 } })))._tag).toBe("NotFound");

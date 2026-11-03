@@ -1,4 +1,4 @@
-import type { TagConfig } from "@weir/contract/Config";
+import { groupNameOf, type TagConfig } from "@weir/contract/Config";
 import type { RuleInput } from "@weir/contract/Rule";
 import * as Read from "@weir/store/Read";
 import type { ConversationId, ConversationTagRow, Seq, SourcedItemRow } from "@weir/store/Rows";
@@ -13,15 +13,22 @@ export type Tags = ReadonlyArray<Pick<TagConfig, "name" | "match">>;
 const recomputeBatch = 100;
 
 const tagRows = (tags: Tags, items: ReadonlyArray<SourcedItemRow>): Array<ConversationTagRow> => {
-  const inputs = new Map<ConversationId, Array<RuleInput>>();
+  const conversations = new Map<
+    ConversationId,
+    { readonly group: string | null; readonly inputs: Array<RuleInput> }
+  >();
   for (const item of items) {
-    const conversationInputs = inputs.get(item.conversationId);
-    if (conversationInputs === undefined) inputs.set(item.conversationId, [ruleInput(item)]);
-    else conversationInputs.push(ruleInput(item));
+    const conversation = conversations.get(item.conversationId);
+    if (conversation === undefined) {
+      conversations.set(item.conversationId, {
+        group: groupNameOf(item.conversationKey),
+        inputs: [ruleInput(item)],
+      });
+    } else conversation.inputs.push(ruleInput(item));
   }
-  return [...inputs].flatMap(([conversationId, conversationInputs]) =>
+  return [...conversations].flatMap(([conversationId, { group, inputs }]) =>
     tags
-      .filter((tag) => conversationInputs.some((input) => match(tag.match, input)))
+      .filter((tag) => inputs.some((input) => match(tag.match, input, group)))
       .map(({ name }) => ({ conversationId, tag: name })),
   );
 };

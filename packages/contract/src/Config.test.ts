@@ -125,7 +125,40 @@ describe("Config", () => {
       { ...specExample, digest: { ...(specExample.digest as object), ai: "missing" } },
       '["digest"]["ai"]',
     ],
+    [
+      {
+        group: [{ name: "deploys", match: { type: "group", name: "deploys" } }],
+      },
+      '["group"][0]["match"]',
+    ],
   ])("rejects an invalid value and reports its path %#", (input, path) => {
     expect(failure(input)).toContain(`at ${path}`);
+  });
+
+  it("decodes a tag matching a group the config declares", () => {
+    const match = {
+      type: "or",
+      rules: [{ type: "not", rule: { type: "group", name: "deploys" } }],
+    };
+    const config = decode({
+      group: [{ name: "deploys", match: { type: "exists", target: "/title" } }],
+      tag: [{ name: "ops", match }],
+    });
+    expect(config.tag[0]?.match).toEqual(match);
+  });
+
+  it("rejects a tag matching a group the config does not declare", () => {
+    expect(
+      failure({
+        group: [{ name: "deploys", match: { type: "exists", target: "/title" } }],
+        tag: [
+          { name: "ops", match: { type: "group", name: "deploys" } },
+          {
+            name: "builds",
+            match: { type: "some", target: "/raw/x", rule: { type: "group", name: "builds" } },
+          },
+        ],
+      }),
+    ).toMatch(/unknown group "builds"\n\s+at \["tag"\]\[1\]\["match"\]/);
   });
 });
