@@ -141,7 +141,7 @@ ol.trace > li > strong:first-child { display: block; }
 <tr><td><code>container_id</code></td><td>消息在哪里说的。Gmail 是邮箱地址，Teams 是一个 chat 或频道。</td></tr>
 <tr><td><code>conversation</code></td><td>同一个 source 里 <code>thread_id ?? container_id</code> 相同的 item；thread 里有 item 命中某条 <code>[[group]]</code> 时，是命中同一条 group 的所有 thread。sync 时按结构和 config 定下，不调用 AI。是 UI 和 digest 处理的基本单位。</td></tr>
 <tr><td><code>tag</code></td><td>用户在 config 里定义的标签，比如 <code>work</code>。由 rule 算出，一个 conversation 可以带多个 tag。没有内置 tag。</td></tr>
-<tr><td><code>rule</code></td><td>tag 的匹配条件，对单条 item 求值。conversation 里任意一条 item 命中，conversation 就带这个 tag。</td></tr>
+<tr><td><code>rule</code></td><td>匹配条件，对单条 item 求值。<code>[[group]]</code> 用 ItemRule，thread 里任意一条 item 命中，整个 thread 并进这个 group。<code>[[tag]]</code> 用 TagRule，conversation 里任意一条 item 命中，conversation 就带这个 tag；TagRule 还能按名字匹配 conversation 所属的 group。</td></tr>
 <tr><td><code>Untagged</code></td><td>一个 tag 都没命中的 conversation 所在的视图。它不是 tag，config 里不写。config 里一个 tag 都没有时，所有 conversation 都在这里。</td></tr>
 <tr><td>AI profile</td><td>config 里一个有名字的 AI CLI 命令。<code>[digest] ai</code> 按名字引用它。</td></tr>
 <tr><td><code>digest</code></td><td>AI 对一个 conversation 里一段连续 seq 写的摘要，由一句 headline 和若干 topic 组成。写好就不变，同一个 conversation 的 digest 互不重叠。</td></tr>
@@ -467,7 +467,7 @@ flowchart TD
 <h3 id="assign-sync">conversation 的 key 只看结构</h3>
 <ul>
 <li>key 是 source 加上 <code>thread_id ?? container_id</code>。有 <code>thread_id</code> 就按 thread 分，没有就按 container 分。</li>
-<li>config 里的 <code>[[group]]</code> 有 <code>name</code> 和 <code>match</code>，<code>match</code> 是和 tag 一样的 Rule，group 名不能重复。thread 里任意一条 item 命中时，整个 thread 的 key 变成 <code>group:&lt;name&gt;</code>，几条 group 都命中时取 config 里写在前面的。匹配按整个 thread 算，和 tag 的「任意一条命中」一致，回复过的一张收据不会被拆开。sync 写一页时，先软删除这一页的 deletions，再用这一页 upsert 的 item（同一个 external id 只取最后一个版本）和这些 thread 剩下的已存 item 算出 key，被删 item 所在的 thread 也重算，把 key 变了的已存 item 整体移过去，再写这一页。stream 的 <code>me</code> 变了、改了 item 的 <code>from_me</code> 时，这些 item 所在的 thread 也重算 key。</li>
+<li>config 里的 <code>[[group]]</code> 有 <code>name</code> 和 <code>match</code>，<code>match</code> 是 ItemRule，也就是 tag 的 Rule 去掉 <code>group</code>，group 名不能重复。thread 里任意一条 item 命中时，整个 thread 的 key 变成 <code>group:&lt;name&gt;</code>，几条 group 都命中时取 config 里写在前面的。匹配按整个 thread 算，和 tag 的「任意一条命中」一致，回复过的一张收据不会被拆开。sync 写一页时，先软删除这一页的 deletions，再用这一页 upsert 的 item（同一个 external id 只取最后一个版本）和这些 thread 剩下的已存 item 算出 key，被删 item 所在的 thread 也重算，把 key 变了的已存 item 整体移过去，再写这一页。stream 的 <code>me</code> 变了、改了 item 的 <code>from_me</code> 时，这些 item 所在的 thread 也重算 key。</li>
 <li>reload 时按新 config 重算每个 thread 的 key，key 变了的 item 移到新的 conversation，<code>search_fts</code> 里 item 行的 <code>conversation_id</code> 跟着改，然后重算 conversation 和 tag。原来的 thread conversation 行不删：它的 digest 和状态留在原处，里面没有 item 时列表不显示，规则去掉后 item 回来，digest 和状态也就回来了。digest 不迁移，group conversation 从没有 digest 开始；归组期间，搜索命中旧 thread digest 的词不会带出 group 行。</li>
 <li>移动时，收到 item 的 conversation 的 <code>seen_seq</code> 和 <code>cleared_seq</code> 分别判断：移动前它已经追上 <code>last_seq</code>（没有状态、<code>last_seq</code> 为空都按 0 算），就推到移动后的 <code>last_seq</code>，否则不动。所以新加的 group 是已读、已完成，只有之后来的新邮件让它重新出现；本来没追上的 conversation 继续未读。已知的局限：一个 conversation 只有一个水位，表示不了中间的空洞。thread 在归组前已完成、group 收到一封新的未读邮件后去掉规则，这封邮件会在 thread 里显示为已完成，扩大规则时同理。group conversation 的 digest 按 seq 区间记录：移进来的 item 落在它某条 digest 的 <code>[from_seq, to_seq]</code> 里时，删掉这条 digest 和它的 <code>search_fts</code> 行，之后重新生成。thread conversation 不受影响，按整个 thread 匹配，它的 item 要么都在、要么都不在，digest 区间一直准确。没有记录哪些 item 曾属于 group，所以去掉规则再加回来时，group 原来的 digest 会被删掉、重新生成，不会恢复。</li>
 <li>AI 调用期间，sync 也可能把 item 移进正在生成的区间（新邮件让一个已存的 thread 开始命中规则），这时还没有 digest 可删。reload 会先中断 AI 调用，不会遇到这种情况。所以写 digest 的事务里再读一遍区间内的 live item：有一条不在 AI 读到的 item 里，就不写这份 digest，只记下这次运行，这段区间留给下一次 digest。AI 调用期间离开区间的 item，比如被删除的，不影响写入。一个范围切成几块时，某块这样不写，这次计划就停下，后面的块不再调用：后面的块写入会把 <code>floor</code> 推过这段区间，它就再也不会被规划。这次移动触发的自动 digest 等这次计划结束后，从最后写好的那份之后重新规划；手动请求返回已写好的段，再点一次 Digest now 接着写。</li>
@@ -727,8 +727,8 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
 </ul>
 
 <h3 id="rule">Rule 是一个递归的判别联合</h3>
-<p>每个 tag 的 <code>match</code> 是一个 Rule。Rule 用 Effect Schema 定义，按 <code>type</code> 区分：</p>
-<pre><code><span class="k">type</span> Rule =
+<p><code>[[group]]</code> 的 <code>match</code> 是 ItemRule，<code>[[tag]]</code> 的 <code>match</code> 是 TagRule。两者用 Effect Schema 定义，按 <code>type</code> 区分，共用同一组变体，只是递归各自指向自己，TagRule 多一个 <code>group</code>：</p>
+<pre><code><span class="k">type</span> Rule =  <span class="c">// ItemRule, or TagRule with the group variant</span>
   | { type: <span class="s">"and"</span>; rules: Rule[] }
   | { type: <span class="s">"or"</span>; rules: Rule[] }
   | { type: <span class="s">"not"</span>; rule: Rule }
@@ -736,13 +736,15 @@ match = { type = <span class="s">"regex"</span>, target = <span class="s">"/from
   | { type: <span class="s">"regex"</span>; target: Pointer; regex: string; flags?: string }
   | { type: <span class="s">"exists"</span>; target: Pointer }
   | { type: <span class="s">"some"</span>; target: Pointer; rule: Rule }   <span class="c">// rule runs with each array element as root</span>
-  | { type: <span class="s">"every"</span>; target: Pointer; rule: Rule }</code></pre>
+  | { type: <span class="s">"every"</span>; target: Pointer; rule: Rule }
+  | { type: <span class="s">"group"</span>; name: string }  <span class="c">// TagRule only</span></code></pre>
 <ul>
-<li>Schema 是 <code>Schema.Struct</code> 组成的 <code>Schema.Union</code>，递归用 <code>Schema.suspend</code>，再用 <code>Schema.toTaggedUnion("type")</code> 得到穷尽的 <code>Rule.match</code>。解码时开 <code>onExcessProperty: "error"</code>，拼错的字段直接报错，不静默忽略。</li>
-<li>匹配是一个纯函数 <code>match(rule, input) =&gt; boolean</code>，输入是一条 item 的 <code>{ source, threadId, containerId, containerName, title, from: { name, address }, fromMe, body, raw }</code>。<code>source</code> 是 config 里 <code>[[source]]</code> 的 <code>id</code>，比如 <code>personal-mail</code>。</li>
+<li>Schema 是 <code>Schema.Struct</code> 组成的 <code>Schema.Union</code>，递归用 <code>Schema.suspend</code>，再用 <code>Schema.toTaggedUnion("type")</code> 得到穷尽的 <code>ItemRule.match</code> 和 <code>TagRule.match</code>。解码时开 <code>onExcessProperty: "error"</code>，拼错的字段直接报错，不静默忽略。</li>
+<li>匹配是一个纯函数 <code>match(rule, input, group) =&gt; boolean</code>，<code>group</code> 是 item 所在 conversation 的 group 名，从 key <code>group:&lt;name&gt;</code> 取出，不在 group 里时为空；分组时用 <code>matchItem(rule, input)</code>，不带 group。输入是一条 item 的 <code>{ source, threadId, containerId, containerName, title, from: { name, address }, fromMe, body, raw }</code>。<code>source</code> 是 config 里 <code>[[source]]</code> 的 <code>id</code>，比如 <code>personal-mail</code>。</li>
 <li><code>target</code> 是 RFC 6901 的 JSON Pointer。<code>""</code> 指整个输入，<code>/a/b</code> 逐层取值。键里的 <code>/</code> 写成 <code>~1</code>，<code>~</code> 写成 <code>~0</code>。<code>@odata.type</code> 这种键可以直接写。</li>
 <li>路径不存在就不匹配。<code>eq</code>、<code>regex</code>、<code>exists</code>、<code>some</code> 都是 false。<code>every</code> 的目标不存在或者不是数组时也是 false。</li>
 <li><code>some</code> 和 <code>every</code> 把数组的每个元素当成新的根，里面的 <code>target</code> 从元素算起。上面 <code>lists</code> 的例子就是这样找邮件头。</li>
+<li><code>group</code> 不读 pointer：conversation 的 key 是 <code>group:&lt;name&gt;</code> 时，它对这个 conversation 的每条 item 都为 true，否则为 false。所以它能和 <code>and</code>、<code>or</code>、<code>not</code> 组合，在 <code>some</code>、<code>every</code> 里也照样成立。一个 thread 同时命中几条 group 的规则时，只属于写在前面的那条，<code>group</code> 看的是归组结果，不是重新跑 group 的规则。tag 引用了 config 里没有的 group 名，校验会报 <code>unknown group</code> 和 tag 的路径；group 的 <code>match</code> 里写 <code>group</code> 解码失败。<code>weir-axi tag test</code> 用上次 reload 存下的归组。</li>
 <li>以后再加的操作见<a href="#later">第 14 节</a>，包括数值比较、glob、对整个 conversation 的量词，以及「我以前给这个人写过信」这类跨 item 的历史条件。</li>
 </ul>
 <div class="callout warn"><span class="t">TOML 的一个坑</span>

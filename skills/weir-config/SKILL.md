@@ -25,6 +25,10 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 - Setting `ai = true` on a tag starts AI work from now (`ai_since`). Renaming the tag resets it.
 - Tags have no `color`.
 - A per-source view is a tag matching `/source`.
+- `{ type = "group", name = "..." }` in a tag matches every item of the conversation that group produced. It reads no pointer, so inside `some` or `every` it still tests the conversation's group, not the element.
+- A tag naming a group that is not a `[[group]]` in the same file fails reload.
+- `[[group]]` rules cannot use `group`.
+- `tag test` sees groups as of the last reload: add a new group and reload before testing a tag that references it.
 
 ## Examples
 
@@ -41,6 +45,19 @@ match = { type = "some", target = "/raw/payload/headers", rule = { type = "and",
 [[group]]
 name = "Northbank alerts"
 match = { type = "regex", target = "/from/address", regex = '@northbank\.example$', flags = "i" }
+```
+
+```toml
+[[group]]
+name = "Deploys"
+match = { type = "regex", target = "/title", regex = '^Deploy ' }
+
+[[tag]]
+name = "Ops"
+match = { type = "or", rules = [
+  { type = "group", name = "Deploys" },
+  { type = "regex", target = "/from/address", regex = '@pager\.example$', flags = "i" },
+] }
 ```
 
 A full tested config lives at `packages/fixtures/config.toml` in the weir repo.
