@@ -503,3 +503,27 @@ describe("reveal", () => {
     expect(reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "from" })).toBe(closedUi);
   });
 });
+
+describe("fold strip", () => {
+  const faces = (spoofed: boolean) => {
+    const of = detail(
+      [
+        item(1, { ...rachel, verified: !spoofed }, "Wire the deposit today."),
+        item(2, rachel, "Cutover runbook is in the shared drive."),
+      ],
+      [digest(3, 1, 2, "Runbook", [{ title: "Runbook", body: "Rachel wrote.", seqs: [1, 2] }])],
+    );
+    const ui = reveal(closedUi, of, { _tag: "Topic", key: topicKey(of.digests[0] as Digest, 0) });
+    const markup = rendered(of, ui, { pattern: null, hits: new Map(), current: null });
+    return [...markup.matchAll(/ src="(\/faces\?[^"]*)"/g)].map(([, src]) => src);
+  };
+
+  it("asks for a brand logo only when every folded message from the sender is verified", () => {
+    expect(faces(false)).toEqual([
+      "/faces?source=gmail&amp;address=rachel.gomez%40northwind.example&amp;verified=1",
+    ]);
+    expect(faces(true)).toEqual([
+      "/faces?source=gmail&amp;address=rachel.gomez%40northwind.example",
+    ]);
+  });
+});

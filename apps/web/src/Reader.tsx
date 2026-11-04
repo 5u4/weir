@@ -712,6 +712,11 @@ function Originals({
   solo: boolean;
 }) {
   const who = [...new Map(fold.items.map((item) => [item.from_me || item.from.address, item]))];
+  const spoofed = new Set(
+    fold.items
+      .filter((item) => !item.from.verified)
+      .map((item) => item.from_me || item.from.address),
+  );
   const cellClass = solo ? "col-start-1" : "col-start-2";
   return (
     <>
@@ -727,7 +732,7 @@ function Originals({
               key={String(key)}
               source={source}
               address={item.from.address}
-              verified={item.from.verified}
+              verified={!spoofed.has(key)}
               mark={item.from_me ? "Me" : monogram(item.from)}
               className={index > 0 ? "-ml-1.5 shadow-halo-island" : "shadow-halo-island"}
             />
