@@ -1428,6 +1428,11 @@ function PlanStrip({ id }: { id: ConversationId }) {
   );
 }
 
+const dockIcons = {
+  Plan: "M3 4.5h10v8.5H3zM3 7h10M5.5 3v3M10.5 3v3",
+  MarkUnread: "M2.5 4.5h11v8h-11zM2.5 4.5L8 9l5.5-4.5",
+};
+
 function Dock({ id }: { id: ConversationId }) {
   const shown = useAtomValue(dock(id));
   const [current, navigate] = useAtom(route);
@@ -1464,6 +1469,8 @@ function Dock({ id }: { id: ConversationId }) {
           type="button"
           className={`${dockItemClass} inline-flex font-semibold active:scale-press ${action === "Done" || (action === "Restore" && state !== "planned") ? "bg-capbg px-5 text-cap-1 hover:bg-primary-hover" : "px-4 text-ink hover:bg-hover max-wide:px-3.5"}`}
           aria-keyshortcuts={dockKeys[action]}
+          aria-label={action in dockIcons ? dockLabels[action] : undefined}
+          title={action in dockIcons ? dockLabels[action] : undefined}
           aria-expanded={action === "Plan" ? Option.isSome(plan) : undefined}
           onClick={() => {
             if (action === "MarkUnread") unread(null);
@@ -1471,7 +1478,22 @@ function Dock({ id }: { id: ConversationId }) {
             else run({ act: action, target });
           }}
         >
-          {action === "Restore" && state === "planned" ? "Back to inbox" : dockLabels[action]}
+          {action === "Plan" || action === "MarkUnread" ? (
+            <>
+              <span className="max-wide:hidden">{dockLabels[action]}</span>
+              <svg
+                className={`hidden size-4.5 stroke-1.6 ${iconClass} max-wide:block`}
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <path d={dockIcons[action]} />
+              </svg>
+            </>
+          ) : action === "Restore" && state === "planned" ? (
+            "Back to inbox"
+          ) : (
+            dockLabels[action]
+          )}
           {dockKeys[action] !== undefined && (
             <kbd
               className="rounded-sm px-1 py-0.5 font-sans text-2xs leading-none font-semibold opacity-muted shadow-ring-current max-wide:hidden"
