@@ -11,8 +11,6 @@ export type Parsed<A> =
   | { readonly _tag: "Bad"; readonly why: string };
 
 const dayMs = 86_400_000;
-const minuteMs = 60_000;
-const dayMinutes = 1440;
 export const slotMinutes = 30;
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -115,11 +113,25 @@ export const dueFlag = (due: string, today: string) => {
   };
 };
 
-export const todayOf = (anchor: Today, elapsedMs: number): Today => {
-  const total = anchor.minute + Math.floor(Math.max(0, elapsedMs) / minuteMs);
+export type Clock = { readonly epoch_ms: number; readonly zone: string };
+
+export const todayOf = (clock: Clock, elapsedMs: number): Today => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: clock.zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(clock.epoch_ms + Math.max(0, elapsedMs))
+      .map(({ type, value }) => [type, value]),
+  );
   return {
-    date: addDays(anchor.date, Math.floor(total / dayMinutes)),
-    minute: total % dayMinutes,
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minute: Number(parts.hour) * 60 + Number(parts.minute),
   };
 };
 
@@ -258,7 +270,13 @@ export const parseWhen = (text: string, now: Today): Parsed<Dated> | null => {
   });
   take(/\b(tomorrow|tmrw|tmr)\b/, () => setDate(addDays(today, 1)));
   take(/\b(next |this )?(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/, (m) => {
-    const ahead = ((weekdayIndex[part(m, 2)] ?? 0) - weekdayOf(today) + 7) % 7;
+    const wanted = weekdayIndex[part(m, 2)] ?? 0;
+    if (date !== null) {
+      if (weekdayOf(date) !== wanted)
+        bad = `${monthDay(date, today)} is a ${weekdays[weekdayOf(date)]}.`;
+      return;
+    }
+    const ahead = (wanted - weekdayOf(today) + 7) % 7;
     if (m[1] === "this ") return setDate(addDays(today, ahead));
     const next = ahead === 0 ? 7 : ahead;
     setDate(

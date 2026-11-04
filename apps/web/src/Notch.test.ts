@@ -26,7 +26,7 @@ const counts = (
   untagged: view(...untagged),
   cleared,
   planned: { count: 0, dues: [] },
-  now: { date: "2026-10-25", minute: 540 },
+  now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
 });
 
 const widgetText = ({ kind, name, count }: Widget) => {
@@ -102,7 +102,7 @@ describe("notch sentence", () => {
       untagged: view(0),
       cleared: 0,
       planned: { count: 0, dues: [] },
-      now: { date: "2026-10-25", minute: 540 },
+      now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
     });
     expect(main._tag === "Updates" && main.clause[0]?.widget).toEqual({
       kind: "updates",

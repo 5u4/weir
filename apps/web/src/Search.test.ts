@@ -55,7 +55,7 @@ const daemon = vi.hoisted(() => {
         untagged: { unread: 0, open: 0, senders: [] },
         cleared: 0,
         planned: { count: 0, dues: [] },
-        now: { date: "2026-10-25", minute: 540 },
+        now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
       });
     }
     if (url.pathname === "/search") {

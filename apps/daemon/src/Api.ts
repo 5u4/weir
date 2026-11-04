@@ -369,10 +369,7 @@ export const Counts = Schema.Struct({
   untagged: Schema.Struct(viewSummary),
   cleared: Schema.Int,
   planned: Schema.Struct({ count: Schema.Int, dues: Schema.Array(CalendarDate) }),
-  now: Schema.Struct({
-    date: CalendarDate,
-    minute: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1439 })),
-  }),
+  now: Schema.Struct({ epoch_ms: Schema.Int, zone: Schema.String }),
 });
 export type Counts = typeof Counts.Type;
 

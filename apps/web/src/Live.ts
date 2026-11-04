@@ -22,7 +22,7 @@ export const refetches = (event: Event, open: Option.Option<number>): Refetch =>
     case "digest":
       return {
         status: true,
-        counts: false,
+        counts: event.status === "done",
         list: event.status === "done",
         conversation: Option.contains(open, event.conversation_id),
       };

@@ -50,7 +50,7 @@ import {
   shown,
   type Target,
 } from "./Rows.ts";
-import { type Plan, type Today, todayOf } from "./When.ts";
+import { type Plan, planText, type Today, todayOf } from "./When.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -315,7 +315,7 @@ export const runDigest = Weir.runtime
           return;
         }
         const release = land(outcome.digests.map((digest) => digest.id));
-        yield* Reactivity.invalidate(["list"]);
+        yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [id] });
         yield* Effect.ignore(get.result(conversation(id), { suspendOnWaiting: true }));
         settle(Digest.idle);
@@ -510,6 +510,12 @@ export const dismiss = Weir.runtime
             ),
           ),
         );
+        if (dismissal.act === "Plan") {
+          const date = Option.map(get.registry.get(today), ({ date }) => date);
+          if (Option.isSome(date)) {
+            get.registry.set(toast, Option.some(planText(dismissal.plan, date.value)));
+          }
+        }
         yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [target.id] });
         yield* Effect.ignore(

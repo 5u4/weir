@@ -262,7 +262,7 @@ describe("views and counts", () => {
       const workOnly = yield* conversationOf("Work only");
 
       const { now, ...counts } = yield* client.counts();
-      expect(now.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(now.zone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
       expect(counts).toEqual({
         unread: 3,
         tags: [
@@ -909,7 +909,13 @@ describe("plan and due", () => {
 
       const before = yield* client.counts();
       expect(before.planned).toEqual({ count: 0, dues: [] });
-      expect(before.now).toEqual({ date: "2026-10-25", minute: 540 });
+      expect(
+        new Intl.DateTimeFormat("sv-SE", {
+          timeZone: before.now.zone,
+          dateStyle: "short",
+          timeStyle: "short",
+        }).format(before.now.epoch_ms),
+      ).toBe("2026-10-25 09:00");
 
       const planned = yield* client.plan({
         params: { id: northwind },

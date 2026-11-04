@@ -51,6 +51,7 @@ describe("typed plan times from Sun Oct 25, 09:00", () => {
     ["10/20/2026", "That's already behind you. It's 09:00 on Sun Oct 25."],
     ["today 8am", "That's already behind you. It's 09:00 on Sun Oct 25."],
     ["soonish", "Can't read “soonish” yet. Try thu 3pm, nov 12, next mon 9:30 or in 2 weeks."],
+    ["fri nov 12", "Nov 12 is a Thu."],
   ])("rejects %s", (text, why) => {
     expect(parseWhen(text, sunday)).toEqual({ _tag: "Bad", why });
   });
@@ -59,6 +60,14 @@ describe("typed plan times from Sun Oct 25, 09:00", () => {
 describe("typed due dates", () => {
   it("takes a date", () => {
     expect(parseDue("nov 12", sunday)).toEqual({
+      _tag: "Ok",
+      value: "2026-11-12",
+      preview: "Thu Nov 12",
+    });
+  });
+
+  it("keeps an explicit date its weekday agrees with", () => {
+    expect(parseDue("Thu Nov 12", sunday)).toEqual({
       _tag: "Ok",
       value: "2026-11-12",
       preview: "Thu Nov 12",
@@ -74,14 +83,26 @@ describe("typed due dates", () => {
 });
 
 describe("today from the daemon's clock", () => {
+  const at = (iso: string) => ({ epoch_ms: Date.parse(iso), zone: "America/Los_Angeles" });
+
   it("advances by wall time since the anchor arrived", () => {
-    expect(todayOf(sunday, 90 * 60_000)).toEqual({ date: "2026-10-25", minute: 10 * 60 + 30 });
+    expect(todayOf(at("2026-10-25T09:00:00-07:00"), 90 * 60_000)).toEqual({
+      date: "2026-10-25",
+      minute: 10 * 60 + 30,
+    });
   });
 
   it("rolls over at local midnight", () => {
-    expect(todayOf({ date: "2026-10-25", minute: 23 * 60 + 59 }, 2 * 60_000)).toEqual({
+    expect(todayOf(at("2026-10-25T23:59:00-07:00"), 2 * 60_000)).toEqual({
       date: "2026-10-26",
       minute: 1,
+    });
+  });
+
+  it("keeps the 25-hour day when clocks fall back", () => {
+    expect(todayOf(at("2026-11-01T00:00:00-07:00"), 24 * 60 * 60_000)).toEqual({
+      date: "2026-11-01",
+      minute: 23 * 60,
     });
   });
 });

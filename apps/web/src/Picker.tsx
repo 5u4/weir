@@ -26,7 +26,6 @@ import {
   monthTitle,
   parseDue,
   parseWhen,
-  planText,
   slotMinutes,
   type Today,
 } from "./When.ts";
@@ -178,6 +177,11 @@ const minuteOf = (value: string) => {
     : hours * 60 + minutes;
 };
 
+const grab = (element: HTMLElement | null) => element?.focus({ preventScroll: true });
+
+const enter = (element: HTMLElement | null) =>
+  grab(element?.querySelector<HTMLElement>("button:enabled, input:enabled") ?? null);
+
 export function Picker({ id }: { id: ConversationId }) {
   const [open, setOpen] = useAtom(picker);
   const shown = useAtomValue(dock(id));
@@ -185,7 +189,6 @@ export function Picker({ id }: { id: ConversationId }) {
   const current = useAtomValue(today);
   const run = useAtomSet(dismiss);
   const writeDue = useAtomSet(setDue);
-  const say = useAtomSet(toast);
   const [text, setText] = useState("");
   const [step, setStep] = useState<Step>(list);
   const [active, setActive] = useState(0);
@@ -211,7 +214,6 @@ export function Picker({ id }: { id: ConversationId }) {
   };
   const commitPlan = (plan: Planned) => {
     close();
-    say(Option.some(planText(plan, now.date)));
     run({ act: "Plan", target, plan });
   };
   const commitDue = (next: DueOverride) => {
@@ -349,7 +351,7 @@ export function Picker({ id }: { id: ConversationId }) {
           <label className={fieldClass}>
             <CalendarIcon className="size-4" />
             <input
-              ref={(input) => input?.focus({ preventScroll: true })}
+              ref={grab}
               type="text"
               className="min-w-0 flex-1 border-none bg-transparent p-0 font-sans text-base text-ink outline-none placeholder:text-ink-4"
               spellCheck={false}
@@ -375,17 +377,19 @@ export function Picker({ id }: { id: ConversationId }) {
         </>
       )}
       {step._tag === "Month" && (
-        <Month
-          month={step.month}
-          now={now}
-          onMonth={(month) => setStep({ _tag: "Month", month })}
-          onDay={(date) =>
-            tab === "plan" ? setStep({ _tag: "Time", date }) : commitDue({ _tag: "Date", date })
-          }
-        />
+        <div ref={enter}>
+          <Month
+            month={step.month}
+            now={now}
+            onMonth={(month) => setStep({ _tag: "Month", month })}
+            onDay={(date) =>
+              tab === "plan" ? setStep({ _tag: "Time", date }) : commitDue({ _tag: "Date", date })
+            }
+          />
+        </div>
       )}
       {step._tag === "Time" && (
-        <div className="grid gap-1">
+        <div className="grid gap-1" ref={enter}>
           <button
             type="button"
             className={choiceClass(false)}

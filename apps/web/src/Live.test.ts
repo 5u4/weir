@@ -45,10 +45,10 @@ describe("refetches per event", () => {
     });
   });
 
-  it("a finished digest refetches the list, status and its open conversation", () => {
+  it("a finished digest refetches counts, the list, status and its open conversation", () => {
     expect(refetches(digest(5, "done"), Option.some(5))).toEqual({
       status: true,
-      counts: false,
+      counts: true,
       list: true,
       conversation: true,
     });

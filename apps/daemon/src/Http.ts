@@ -418,7 +418,6 @@ const counts = Effect.fnUntraced(function* (config: Config) {
   const totals = yield* Read.stateTotals();
   const plannedDues = yield* Read.plannedDues();
   const now = yield* DateTime.nowInCurrentZone;
-  const { hour, minute } = DateTime.toParts(now);
   const summaryOf = (tag: string | null) => {
     const count = tagCounts.find((candidate) => candidate.tag === tag);
     return {
@@ -439,8 +438,8 @@ const counts = Effect.fnUntraced(function* (config: Config) {
       dues: plannedDues.flatMap(({ due }) => (due === null ? [] : [due])),
     },
     now: {
-      date: DateTime.formatIsoDate(now),
-      minute: hour * 60 + minute,
+      epoch_ms: DateTime.toEpochMillis(now),
+      zone: DateTime.zoneToString(now.zone),
     },
   } satisfies Counts;
 });
