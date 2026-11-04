@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Link } from "./Link.tsx";
 import { dueFlagClass } from "./ListClasses.ts";
+import { overdue } from "./Notch.ts";
 import {
   type Block,
   carriedLabel,
@@ -235,6 +236,16 @@ function Flags({ row, date }: { row: PlannedRow; date: string }) {
   );
 }
 
+function Late({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="text-warn">
+      <span className={softClass}>, </span>
+      {count} overdue
+    </span>
+  );
+}
+
 export function PlanCard({
   row,
   to,
@@ -344,6 +355,10 @@ function DayHeading({
 }) {
   const on = datedOn(rows, date, at.date);
   const carried = on.filter((row) => row.plan.date < at.date).length;
+  const late = overdue(
+    { dues: on.flatMap((row) => (row.due === null ? [] : [row.due.date])) },
+    at.date,
+  );
   return (
     <header className="px-1 pt-2 pb-4">
       <p className={eyebrowClass}>{relative(date, at.date)}</p>
@@ -362,6 +377,7 @@ function DayHeading({
                 <span className={softClass}> carried over</span>
               </>
             )}
+            <Late count={late} />
             <span className={softClass}>.</span>
           </>
         )}
@@ -378,10 +394,11 @@ function DayHeading({
   );
 }
 
-function PlanBlock({
+export function PlanBlock({
   block,
   at,
   date,
+  today,
   selected,
   hands,
   inPlace,
@@ -389,6 +406,7 @@ function PlanBlock({
   block: Block;
   at: Route;
   date: string;
+  today: string;
   selected: boolean;
   hands: Hands;
   inPlace: boolean;
@@ -396,6 +414,7 @@ function PlanBlock({
   const { row, start, minutes, solid, from, lane, lanes } = block;
   const lift = lifted(hands, row.id, inPlace);
   const short = minutes < 45;
+  const due = row.due === null ? null : dueFlag(row.due.date, today);
   return (
     <article
       data-k={row.id}
@@ -443,6 +462,13 @@ function PlanBlock({
             className={`flex-none self-start rounded-full px-1.5 font-semibold ${solid ? "bg-cap-hover text-cap-1" : "bg-hover text-ink-2"}`}
           >
             {row.new} new
+          </span>
+        )}
+        {due !== null && (
+          <span
+            className={`flex-none self-start rounded-full px-1.5 font-semibold ${due.over ? (solid ? "bg-cap-hover text-warn-cap" : "bg-hover text-warn") : solid ? "bg-cap-hover text-cap-2" : "bg-hover text-ink-3"}`}
+          >
+            {due.text}
           </span>
         )}
       </Link>
@@ -530,6 +556,7 @@ function DayTimeline({
             block={block}
             at={at}
             date={date}
+            today={current.date}
             selected={open === block.row.id}
             hands={hands}
             inPlace={inPlace && drag?.row.id === block.row.id}
@@ -567,7 +594,12 @@ function MonthHeading({
   month: string;
   now: Today;
 }) {
-  const count = inMonth(rows, month, at.date).length;
+  const shownRows = inMonth(rows, month, at.date);
+  const count = shownRows.length;
+  const late = overdue(
+    { dues: shownRows.flatMap((row) => (row.due === null ? [] : [row.due.date])) },
+    at.date,
+  );
   return (
     <header className="px-1 pt-2 pb-4">
       <p className={eyebrowClass}>
@@ -580,7 +612,9 @@ function MonthHeading({
         ) : (
           <>
             {count}
-            <span className={softClass}> planned.</span>
+            <span className={softClass}> planned</span>
+            <Late count={late} />
+            <span className={softClass}>.</span>
           </>
         )}
       </h1>
@@ -602,6 +636,8 @@ function MonthChip({
   selected: boolean;
 }) {
   const solid = row.plan._tag === "Slot" && row.plan.date >= date;
+  const due = row.due === null ? null : dueFlag(row.due.date, date);
+  const label = due === null ? undefined : `${row.title}, ${due.text}`;
   return (
     <li
       className={`min-w-0 overflow-hidden rounded-md select-none data-dragging:elevation-float ${solid ? "bg-capbg text-cap-1" : "border border-dashed border-ink-4 bg-island text-ink"} ${selected ? "shadow-ring-thick-ink" : ""}`}
@@ -614,6 +650,7 @@ function MonthChip({
         to={openRoute(at, row.id)}
         current={selected}
         className={`flex h-5 min-w-0 items-center gap-1 px-1.5 text-2xs font-semibold no-underline max-wide:px-1 ${solid ? "text-cap-1" : "text-ink"}`}
+        description={label}
       >
         {solid && row.plan._tag === "Slot" && (
           <time className="flex-none text-cap-2 tabular-nums max-wide:hidden">
@@ -621,6 +658,12 @@ function MonthChip({
           </time>
         )}
         <span className="min-w-0 truncate">{row.title}</span>
+        {due?.over === true && (
+          <span
+            aria-label={due.text}
+            className={`size-1.5 flex-none rounded-circle ${solid ? "bg-warn-cap" : "bg-warn"}`}
+          />
+        )}
         {row.new > 0 && (
           <span className="size-1.5 flex-none rounded-circle bg-ok" aria-label={`${row.new} new`} />
         )}

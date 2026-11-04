@@ -114,7 +114,7 @@ export const sentence = (counts: Counts): Sentence => {
   };
 };
 
-export const overdue = (planned: Counts["planned"], today: string) =>
+export const overdue = (planned: { readonly dues: ReadonlyArray<string> }, today: string) =>
   planned.dues.filter((due) => due < today).length;
 
 export type AlertClause = {

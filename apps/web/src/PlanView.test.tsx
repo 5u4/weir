@@ -3,7 +3,7 @@ import * as Option from "effect/Option";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { plannedRows } from "./PlanLayout.ts";
-import { PlanCard } from "./PlanView.tsx";
+import { PlanBlock, PlanCard } from "./PlanView.tsx";
 import { home } from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
@@ -57,5 +57,52 @@ describe("plan card", () => {
 
   it("shows no new count when everything is read", () => {
     expect(text(0)).not.toContain("new");
+  });
+});
+
+const block = (due: string) => {
+  const [card] = plannedRows(
+    [
+      {
+        ...row(0),
+        plan: { _tag: "Slot", date: "2026-10-26", start: 600, minutes: 60 },
+        due: { date: due, by: { _tag: "User" } },
+      },
+    ],
+    new Map(),
+  );
+  if (card === undefined || card.plan._tag !== "Slot") throw new Error("expected a slot row");
+  return renderToStaticMarkup(
+    <PlanBlock
+      block={{
+        row: { ...card, plan: card.plan },
+        start: 600,
+        minutes: 60,
+        solid: true,
+        from: null,
+        lane: 0,
+        lanes: 1,
+      }}
+      at={{ ...home, mode: "plan", conversation: Option.none() }}
+      date="2026-10-26"
+      today="2026-10-26"
+      selected={false}
+      hands={{ drag: null, grab: () => {} }}
+      inPlace={false}
+    />,
+  );
+};
+
+describe("plan block", () => {
+  it("flags a past due date in the warn style", () => {
+    const flag = /<span class="([^"]*)">Due [^<]*<\/span>/.exec(block("2026-10-23"));
+    expect(flag?.[0]).toContain("Due Oct 23 · 3 days over");
+    expect(flag?.[1]).toContain("text-warn");
+  });
+
+  it("shows a future due date without the warn style", () => {
+    const flag = /<span class="([^"]*)">Due [^<]*<\/span>/.exec(block("2026-10-30"));
+    expect(flag?.[0]).toContain("Due Oct 30");
+    expect(flag?.[1]).not.toContain("warn");
   });
 });
