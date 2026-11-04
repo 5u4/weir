@@ -1,11 +1,19 @@
 import { derive } from "@weir/body/Body";
 import { groupKeyPrefix, groupNameOf } from "@weir/contract/Config";
-import type { BodyFormat, RawItem, StreamDescriptor, SyncPage } from "@weir/contract/Source";
+import type {
+  BodyFormat,
+  RawItem,
+  SeriesOccurrences,
+  StreamDescriptor,
+  SyncPage,
+} from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
+import { type EventDraft, type EventPriors, eventDraft, utcOf } from "./Events.ts";
 import * as Read from "./Read.ts";
 import {
   AiKind,
@@ -19,6 +27,8 @@ import {
   DigestRow,
   DigestRunInsert,
   type DueOverride,
+  EventDetailRow,
+  EventOccurrenceRow,
   ItemInsert,
   type Plan,
   Seq,
@@ -48,6 +58,8 @@ export interface ItemDraft {
   readonly textNew: string;
   readonly link: string | null;
   readonly raw: unknown;
+  readonly event: EventDraft | null;
+  readonly refresh: Seq | null;
   readonly [drafted]: true;
 }
 
@@ -56,6 +68,7 @@ export type StoredItem = ItemDraft & { readonly key: string };
 export interface ItemMove {
   readonly seq: Seq;
   readonly key: string;
+  readonly quiet: boolean;
 }
 
 export interface WrittenItem {
@@ -64,6 +77,8 @@ export interface WrittenItem {
   readonly previousConversationId: ConversationId | null;
   readonly inserted: boolean;
   readonly conversationWasRead: boolean;
+  readonly conversationWasDone: boolean;
+  readonly conversationWasNew: boolean;
 }
 
 const decodeStreamIds = Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ id: StreamId })));
@@ -96,18 +111,40 @@ const decodeBounds = Schema.decodeUnknownEffect(
     Schema.Struct({ minUnseen: Schema.NullOr(Seq), minUncleared: Schema.NullOr(Seq) }),
   ]),
 );
+const decodeSettled = Schema.decodeUnknownEffect(
+  Schema.Tuple([Schema.Struct({ settled: Schema.BooleanFromBit })]),
+);
 const decodeWatermarks = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ seenSeq: Seq, clearedSeq: Seq })]),
 );
 const encodeTags = Schema.encodeEffect(Schema.Array(ConversationTagRow));
 const encodeStates = Schema.encodeEffect(Schema.Array(ConversationStateRow));
 const encodeAiStates = Schema.encodeEffect(Schema.Array(AiStateRow));
+const decodeConversationStates = Schema.decodeUnknownEffect(
+  Schema.Array(
+    Schema.Struct({
+      id: ConversationId,
+      unread: Schema.BooleanFromBit,
+      done: Schema.BooleanFromBit,
+    }),
+  ),
+);
+const encodeEventDetail = Schema.encodeEffect(EventDetailRow);
+const encodeOccurrences = Schema.encodeEffect(Schema.Array(EventOccurrenceRow));
 
 const ownAddresses = (stream: StreamRow) =>
   new Set(stream.me.map((address) => address.toLowerCase()));
 
-export const draft = (stream: StreamRow, item: RawItem): ItemDraft =>
-  ({
+export const draft = (
+  stream: StreamRow,
+  item: RawItem,
+  priors: EventPriors,
+  live: boolean,
+): ItemDraft | null => {
+  const derived = derive(item);
+  const outcome = item.event === undefined ? null : eventDraft(item.event, priors, live);
+  if (item.event !== undefined && outcome === null) return null;
+  return {
     sourceId: stream.sourceId,
     externalId: item.externalId,
     threadId: item.threadId,
@@ -119,10 +156,13 @@ export const draft = (stream: StreamRow, item: RawItem): ItemDraft =>
     fromAddress: item.from.address,
     fromMe: ownAddresses(stream).has(item.from.address.toLowerCase()),
     format: item.format,
-    ...derive(item),
+    ...derived,
     link: item.link,
     raw: item.raw,
-  }) as ItemDraft;
+    event: outcome?.event ?? null,
+    refresh: outcome?._tag === "Refresh" ? outcome.itemSeq : null,
+  } as ItemDraft;
+};
 
 const indexItems = Effect.fnUntraced(function* (items: Statement.Fragment) {
   const sql = yield* SqlClient.SqlClient;
@@ -234,6 +274,7 @@ export const moveItems = Effect.fnUntraced(function* (
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       const keyOf = new Map(moves.map(({ seq, key }) => [seq, key]));
+      const quiet = new Set(moves.filter((move) => move.quiet).map(({ seq }) => seq));
       const current = yield* decodeMoveRefs(
         yield* sql`SELECT item.seq, item.conversation_id, conversation.key FROM item
           JOIN conversation ON conversation.id = item.conversation_id
@@ -258,6 +299,12 @@ export const moveItems = Effect.fnUntraced(function* (
               ON CONFLICT (source_id, key) DO UPDATE SET key = excluded.key
               RETURNING id`,
           );
+          const [{ settled }] = yield* decodeSettled(
+            yield* sql`SELECT EXISTS (SELECT 1 FROM item
+                WHERE conversation_id = ${target.id} AND deleted_at IS NULL
+                  AND NOT ${sql.in("seq", moving)}) AS settled`,
+          );
+          const counted = settled ? seqs.filter((seq) => !quiet.has(seq)) : seqs;
           const [bounds] = yield* decodeBounds(
             yield* sql`SELECT
                 min(CASE WHEN item.seq > coalesce(s.seen_seq, 0) THEN item.seq END) AS min_unseen,
@@ -265,7 +312,7 @@ export const moveItems = Effect.fnUntraced(function* (
               FROM item LEFT JOIN conversation_state s ON s.conversation_id = item.conversation_id
               WHERE item.deleted_at IS NULL
                 AND ((item.conversation_id = ${target.id} AND NOT ${sql.in("item.seq", moving)})
-                  OR ${sql.in("item.seq", seqs)})`,
+                  OR ${sql.in("item.seq", counted)})`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
           if (groupNameOf(key) !== null) {
@@ -322,18 +369,20 @@ export const writeItems = Effect.fnUntraced(function* (
   const latest = [...new Map(items.map((item) => [item.externalId, item])).values()];
   return yield* sql.withTransaction(
     Effect.gen(function* () {
-      const unreadBefore = new Set(
-        (yield* decodeConversationIds(
-          yield* sql`SELECT c.id FROM conversation c
+      const before = new Map(
+        (yield* decodeConversationStates(
+          yield* sql`SELECT c.id,
+              c.last_seq > coalesce(s.seen_seq, 0) AS unread,
+              c.last_seq <= coalesce(s.cleared_seq, 0) AS done
+            FROM conversation c
             LEFT JOIN conversation_state s ON s.conversation_id = c.id
             WHERE c.source_id = ${stream.sourceId}
               AND ${sql.in(
                 "c.key",
                 latest.map(({ key }) => key),
               )}
-              AND c.last_seq > coalesce(s.seen_seq, 0)
               AND EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)`,
-        )).map(({ id }) => id),
+        )).map(({ id, ...state }) => [id, state]),
       );
       const touched = new Set<ConversationId>();
       const written = yield* Effect.forEach(latest, (item) =>
@@ -393,6 +442,24 @@ export const writeItems = Effect.fnUntraced(function* (
                 deleted_at = excluded.deleted_at
               RETURNING seq`,
           );
+          if (item.event !== null) {
+            const detail = yield* encodeEventDetail({ itemSeq: seq, ...item.event });
+            yield* sql`INSERT INTO event_detail ${sql.insert(detail)}
+              ON CONFLICT (item_seq) DO UPDATE SET
+                event_id = excluded.event_id,
+                series_id = excluded.series_id,
+                recurring = excluded.recurring,
+                start_at = excluded.start_at,
+                end_at = excluded.end_at,
+                start_utc = excluded.start_utc,
+                end_utc = excluded.end_utc,
+                all_day = excluded.all_day,
+                time_zone = excluded.time_zone,
+                location = excluded.location,
+                attendees = excluded.attendees,
+                status = excluded.status,
+                change = excluded.change`;
+          }
           const previousConversationId = prior[0]?.conversationId ?? null;
           touched.add(conversationId);
           if (previousConversationId !== null) touched.add(previousConversationId);
@@ -401,7 +468,9 @@ export const writeItems = Effect.fnUntraced(function* (
             conversationId,
             previousConversationId,
             inserted: prior.length === 0,
-            conversationWasRead: !unreadBefore.has(conversationId),
+            conversationWasRead: !(before.get(conversationId)?.unread ?? false),
+            conversationWasDone: before.get(conversationId)?.done ?? false,
+            conversationWasNew: !before.has(conversationId),
           } satisfies WrittenItem;
         }),
       );
@@ -415,6 +484,48 @@ export const writeItems = Effect.fnUntraced(function* (
       return written;
     }),
   );
+});
+
+const RefreshedItem = ItemInsert.mapFields((fields) =>
+  Struct.pick(fields, [
+    "syncedAt",
+    "title",
+    "fromName",
+    "fromAddress",
+    "fromMe",
+    "format",
+    "bodyNew",
+    "text",
+    "textNew",
+    "link",
+    "raw",
+  ]),
+);
+const RefreshedEvent = EventDetailRow.mapFields((fields) =>
+  Struct.omit(fields, ["itemSeq", "change"]),
+);
+
+export const refreshItems = Effect.fnUntraced(function* (items: ReadonlyArray<ItemDraft>) {
+  const sql = yield* SqlClient.SqlClient;
+  const syncedAt = yield* DateTime.now;
+  const seqs = yield* Effect.forEach(items, (item) =>
+    Effect.gen(function* () {
+      if (item.refresh === null || item.event === null) return [];
+      const row = yield* Schema.encodeEffect(RefreshedItem)({ ...item, syncedAt });
+      const detail = yield* Schema.encodeEffect(RefreshedEvent)(item.event);
+      yield* sql`UPDATE item SET ${sql.update(row)} WHERE seq = ${item.refresh}`;
+      yield* sql`UPDATE event_detail SET ${sql.update(detail)} WHERE item_seq = ${item.refresh}`;
+      return [item.refresh];
+    }),
+  ).pipe(Effect.map((nested) => nested.flat()));
+  if (seqs.length === 0) return [];
+  yield* indexItems(sql.in("item.seq", seqs));
+  const conversations = yield* decodeConversationIds(
+    yield* sql`SELECT DISTINCT conversation_id AS id FROM item WHERE ${sql.in("seq", seqs)}`,
+  );
+  const ids = conversations.map(({ id }) => id);
+  yield* recomputeConversations(ids);
+  return ids;
 });
 
 export const softDeleteItems = Effect.fnUntraced(function* (
@@ -478,6 +589,54 @@ export const advanceSeenSeq = Effect.fnUntraced(function* (
   yield* sql`INSERT INTO conversation_state ${sql.insert(rows)}
     ON CONFLICT (conversation_id) DO UPDATE SET
       seen_seq = max(conversation_state.seen_seq, excluded.seen_seq)`;
+});
+
+export const advanceClearedSeq = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+) {
+  if (conversationIds.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`INSERT INTO conversation_state (conversation_id, seen_seq, cleared_seq, muted)
+    SELECT id, last_seq, last_seq, 0 FROM conversation WHERE ${sql.in("id", conversationIds)}
+    ON CONFLICT (conversation_id) DO UPDATE SET
+      cleared_seq = max(conversation_state.cleared_seq, excluded.cleared_seq)`;
+});
+
+export const replaceOccurrences = Effect.fnUntraced(function* (
+  sourceId: string,
+  series: ReadonlyArray<SeriesOccurrences>,
+) {
+  if (series.length === 0) return;
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM event_occurrence WHERE source_id = ${sourceId}
+    AND ${sql.in(
+      "series_id",
+      series.map(({ seriesId }) => seriesId),
+    )}`;
+  const rows = yield* encodeOccurrences(
+    series.flatMap(({ seriesId, occurrences }) =>
+      occurrences.map((occurrence) => ({
+        sourceId,
+        seriesId,
+        eventId: occurrence.eventId,
+        startAt: occurrence.start,
+        endAt: occurrence.end,
+        startUtc: utcOf(occurrence.start, occurrence.allDay),
+        endUtc: utcOf(occurrence.end, occurrence.allDay),
+        allDay: occurrence.allDay,
+        status: occurrence.status,
+      })),
+    ),
+  );
+  if (rows.length === 0) return;
+  yield* sql`INSERT INTO event_occurrence ${sql.insert(rows)}
+    ON CONFLICT (source_id, series_id, event_id) DO UPDATE SET
+      start_at = excluded.start_at,
+      end_at = excluded.end_at,
+      start_utc = excluded.start_utc,
+      end_utc = excluded.end_utc,
+      all_day = excluded.all_day,
+      status = excluded.status`;
 });
 
 export type StateChange =
@@ -657,6 +816,7 @@ export const writeDigest = Effect.fnUntraced(function* (
       yield* recordDigestRun(run);
       const inRange = yield* sql<{ readonly seq: Seq }>`SELECT seq FROM item
         WHERE conversation_id = ${digest.conversationId} AND deleted_at IS NULL
+          AND kind IS NOT 'event'
           AND seq BETWEEN ${digest.fromSeq} AND ${digest.toSeq}`;
       if (inRange.some(({ seq }) => !readSeqs.has(seq)))
         return { _tag: "Stale" } satisfies DigestWrite;

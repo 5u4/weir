@@ -68,8 +68,10 @@ const makeDate = (year: number, month: number, day: number) =>
 
 export const clock = (minute: number) => `${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`;
 
+export const monthName = (date: string) => monthNames[Number(date.slice(5, 7)) - 1];
+
 export const monthDay = (date: string, today: string) =>
-  `${monthNames[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}${date.slice(0, 4) === today.slice(0, 4) ? "" : ` ${date.slice(0, 4)}`}`;
+  `${monthName(date)} ${Number(date.slice(8, 10))}${date.slice(0, 4) === today.slice(0, 4) ? "" : ` ${date.slice(0, 4)}`}`;
 
 export const dayName = (date: string, today: string) =>
   `${weekdays[weekdayOf(date)]} ${monthDay(date, today)}`;
@@ -119,24 +121,43 @@ export const dueFlag = (due: string, today: string) => {
 
 export type Clock = { readonly epoch_ms: number; readonly zone: string };
 
-export const todayOf = (clock: Clock, elapsedMs: number): Today => {
+const zoneFormats = new Map<string, Intl.DateTimeFormat>();
+
+const zoneFormat = (zone: string) => {
+  const known = zoneFormats.get(zone);
+  if (known !== undefined) return known;
+  const format = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  zoneFormats.set(zone, format);
+  return format;
+};
+
+export const zonedAt = (epochMs: number, zone: string): Today => {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: clock.zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    })
-      .formatToParts(clock.epoch_ms + Math.max(0, elapsedMs))
+    zoneFormat(zone)
+      .formatToParts(epochMs)
       .map(({ type, value }) => [type, value]),
   );
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
     minute: Number(parts.hour) * 60 + Number(parts.minute),
   };
+};
+
+export const todayOf = (clock: Clock, elapsedMs: number): Today =>
+  zonedAt(clock.epoch_ms + Math.max(0, elapsedMs), clock.zone);
+
+export const span = (minutes: number) => {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours === 0 ? `${rest}m` : rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 };
 
 export const monthOf = (date: string) => date.slice(0, 7);

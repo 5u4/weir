@@ -47,12 +47,15 @@ describe("store items", () => {
         previousConversationId: null,
         inserted: true,
         conversationWasRead: true,
+        conversationWasDone: false,
+        conversationWasNew: true,
       });
       expect(second).toEqual({
         ...first,
         previousConversationId: first.conversationId,
         inserted: false,
         conversationWasRead: false,
+        conversationWasNew: false,
       });
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{ seq: number; textNew: string }>`SELECT seq, text_new FROM item`;

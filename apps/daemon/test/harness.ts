@@ -218,6 +218,35 @@ export const mailStream: StreamDescriptor = {
   openLabel: "Open",
 };
 
+export const calendarStream: StreamDescriptor = {
+  id: "calendar/primary",
+  kind: "event",
+  name: "Calendar",
+  me: ["me@example.com"],
+  openLabel: "Open in Calendar",
+};
+
+export const eventItem = (
+  externalId: string,
+  overrides: Partial<RawItem> & { readonly title: string; readonly threadId: string },
+): RawItem =>
+  rawItem(externalId, {
+    containerId: "primary",
+    containerName: "Calendar",
+    event: {
+      eventId: externalId,
+      seriesId: null,
+      recurring: false,
+      time: { start: "2030-01-02T10:00:00Z", end: "2030-01-02T11:00:00Z", allDay: false },
+      timeZone: null,
+      location: null,
+      attendees: [],
+      status: "confirmed",
+      originalStart: null,
+    },
+    ...overrides,
+  });
+
 export const rawItem = (externalId: string, overrides: Partial<RawItem>): RawItem => ({
   externalId,
   threadId: null,
@@ -238,6 +267,7 @@ export interface FakeSource {
   streams: () => Promise<ReadonlyArray<StreamDescriptor>>;
   items: ReadonlyArray<RawItem>;
   pending: Array<RawItem>;
+  pendingEvents: Array<RawItem>;
   pendingDeletions: Array<string>;
   syncCalls: number;
   failingStreams: Set<string>;
@@ -247,6 +277,7 @@ export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
   streams: async () => [mailStream],
   items,
   pending: [],
+  pendingEvents: [],
   pendingDeletions: [],
   syncCalls: 0,
   failingStreams: new Set(),
@@ -260,6 +291,16 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
     sync: async (streamId, cursor) => {
       state.syncCalls += 1;
       if (state.failingStreams.has(streamId)) throw new Error(`${streamId} is unreachable`);
+      if (streamId === calendarStream.id) {
+        return {
+          upserts: cursor === null ? [] : state.pendingEvents.splice(0),
+          deletions: [],
+          cursor: "done",
+          more: false,
+          kind: cursor === null ? "backfill" : "live",
+          backfill: "done",
+        };
+      }
       return {
         upserts: cursor === null ? state.items : state.pending.splice(0),
         deletions: cursor === null ? [] : state.pendingDeletions.splice(0),

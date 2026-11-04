@@ -27,6 +27,8 @@ const daemon = vi.hoisted(() => {
     body_new: body,
     text_new: body,
     stream: "robin.ellis@example.com",
+    kind: "message",
+    event: null,
     raw: null,
     deleted_at: null,
   });

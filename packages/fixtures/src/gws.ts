@@ -1,3 +1,4 @@
+import { localParts, type StoredEvent, zonedTime } from "./calendar.ts";
 import type { Message } from "./gmail.ts";
 import {
   HISTORY_FIELDS,
@@ -233,9 +234,129 @@ const listSendAs = (mailbox: Mailbox, p: Params) => {
   return { sendAs: mailbox.sendAs };
 };
 
+const calendarOf = (mailbox: Mailbox, p: Params) => {
+  if (p.calendarId === undefined)
+    throw validation("Required path parameter 'calendarId' is missing");
+  if (p.calendarId !== "primary" && p.calendarId !== mailbox.emailAddress) throw notFound();
+  return mailbox.calendar;
+};
+
+const timeParam = (p: Params, name: string) => {
+  const raw = p[name];
+  if (raw === undefined) return undefined;
+  const ms = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+  if (Number.isNaN(ms)) throw invalidArgument(`Invalid ${name}: ${String(raw)}`);
+  return ms;
+};
+
+const boundsOf = (event: Pick<StoredEvent, "start" | "end">) => ({
+  start: Date.parse(event.start.dateTime ?? `${event.start.date}T00:00:00Z`),
+  end: Date.parse(event.end.dateTime ?? `${event.end.date}T00:00:00Z`),
+});
+
+const wire = ({ version: _, ...event }: StoredEvent) => event;
+
+const listEvents = (mailbox: Mailbox, p: Params) => {
+  const calendar = calendarOf(mailbox, p);
+  if (boolParam(p, "singleEvents")) {
+    throw validation("fake-gws supports only singleEvents=false");
+  }
+  const all = Object.values(calendar.events).sort((a, b) => a.version - b.version);
+  let matching: StoredEvent[];
+  if (p.syncToken !== undefined) {
+    if (p.timeMin !== undefined) {
+      throw invalidArgument("syncToken cannot be used together with timeMin");
+    }
+    const token = typeof p.syncToken === "string" ? Number(p.syncToken) : Number.NaN;
+    if (!Number.isInteger(token) || token < 0 || token > calendar.version) {
+      throw new GwsError("api", 410, "fullSyncRequired", "Sync token is no longer valid.");
+    }
+    matching = all.filter((event) => event.version > token);
+  } else {
+    const timeMin = timeParam(p, "timeMin") ?? Number.NEGATIVE_INFINITY;
+    matching = all.filter(
+      (event) =>
+        event.status !== "cancelled" &&
+        (event.recurrence !== undefined || boundsOf(event).end > timeMin),
+    );
+  }
+  const size = Math.min(intParam(p, "maxResults", 250, 2500), mailbox.pageSize);
+  const { items, nextPageToken } = page(matching, p, size);
+  return {
+    kind: "calendar#events",
+    summary: mailbox.emailAddress,
+    timeZone: calendar.timeZone,
+    items: items.map(wire),
+    ...(nextPageToken ? { nextPageToken } : { nextSyncToken: String(calendar.version) }),
+  };
+};
+
+const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+const DAY_MS = 86_400_000;
+
+const listInstances = (mailbox: Mailbox, p: Params) => {
+  const calendar = calendarOf(mailbox, p);
+  if (typeof p.eventId !== "string")
+    throw validation("Required path parameter 'eventId' is missing");
+  const master = calendar.events[p.eventId];
+  if (master === undefined || master.recurrence === undefined) throw notFound();
+  if (master.status === "cancelled") {
+    throw new GwsError("api", 410, "deleted", "Resource has been deleted");
+  }
+  const timeMin = timeParam(p, "timeMin");
+  const timeMax = timeParam(p, "timeMax");
+  if (timeMin === undefined || timeMax === undefined) {
+    throw validation("fake-gws needs timeMin and timeMax to expand a recurring event");
+  }
+  const rule = /^RRULE:FREQ=WEEKLY;BYDAY=([A-Z,]+)$/.exec(master.recurrence[0] ?? "");
+  if (rule === null || master.start.dateTime === undefined || master.end.dateTime === undefined) {
+    throw validation(
+      `fake-gws supports only timed FREQ=WEEKLY;BYDAY rules, got ${master.recurrence}`,
+    );
+  }
+  const days = new Set(rule[1]?.split(","));
+  const zone = master.start.timeZone ?? calendar.timeZone;
+  const first = localParts(master.start.dateTime, zone);
+  const endClock = localParts(master.end.dateTime, zone).clock;
+  const instances: Array<Omit<StoredEvent, "version">> = [];
+  for (let day = Date.parse(`${first.date}T00:00:00Z`); day <= timeMax + DAY_MS; day += DAY_MS) {
+    if (!days.has(WEEKDAYS[new Date(day).getUTCDay()] ?? "")) continue;
+    const date = new Date(day).toISOString().slice(0, 10);
+    const original = zonedTime(date, first.clock, zone);
+    const id = `${master.id}_${new Date(original.utcMs).toISOString().replace(/[-:]|\.\d{3}/g, "")}`;
+    const exception = calendar.events[id];
+    const { version: _, recurrence: __, ...shared } = master;
+    const instance =
+      exception === undefined
+        ? {
+            ...shared,
+            id,
+            recurringEventId: master.id,
+            originalStartTime: { dateTime: original.dateTime, timeZone: zone },
+            start: { dateTime: original.dateTime, timeZone: zone },
+            end: { dateTime: zonedTime(date, endClock, zone).dateTime, timeZone: zone },
+          }
+        : wire(exception);
+    if (instance.status === "cancelled") continue;
+    const bounds = boundsOf(instance);
+    if (bounds.end > timeMin && bounds.start < timeMax) instances.push(instance);
+  }
+  const size = Math.min(intParam(p, "maxResults", 250, 2500), mailbox.pageSize);
+  const { items, nextPageToken } = page(instances, p, size);
+  return {
+    kind: "calendar#events",
+    summary: mailbox.emailAddress,
+    timeZone: calendar.timeZone,
+    items,
+    ...(nextPageToken ? { nextPageToken } : {}),
+  };
+};
+
+const PAGE_LIMIT = 10;
+
 const COMMANDS: Record<
   string,
-  { params: string[]; run: (mailbox: Mailbox, p: Params) => unknown }
+  { params: string[]; run: (mailbox: Mailbox, p: Params) => unknown; pageAll?: true }
 > = {
   "gmail users threads list": {
     params: ["userId", "labelIds", "q", "maxResults", "pageToken", "includeSpamTrash"],
@@ -249,12 +370,22 @@ const COMMANDS: Record<
   },
   "gmail users getProfile": { params: ["userId"], run: getProfile },
   "gmail users settings sendAs list": { params: ["userId"], run: listSendAs },
+  "calendar events list": {
+    params: ["calendarId", "singleEvents", "maxResults", "syncToken", "timeMin", "pageToken"],
+    run: listEvents,
+  },
+  "calendar events instances": {
+    params: ["calendarId", "eventId", "timeMin", "timeMax", "maxResults", "pageToken"],
+    run: listInstances,
+    pageAll: true,
+  },
 };
 
 const parseArgs = (args: string[]) => {
   const words: string[] = [];
   let params: Params = {};
   let mailboxDir: string | undefined;
+  let pageAll = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? "";
     if (arg === "--mailbox" && i === 0) {
@@ -276,13 +407,15 @@ const parseArgs = (args: string[]) => {
         throw validation("Invalid --params JSON: expected an object");
       }
       params = parsed as Params;
+    } else if (arg === "--page-all") {
+      pageAll = true;
     } else if (arg.startsWith("-")) {
       throw validation(`error: fake-gws does not support '${arg}'`);
     } else {
       words.push(arg);
     }
   }
-  return { command: words.join(" "), params, mailboxDir };
+  return { command: words.join(" "), params, mailboxDir, pageAll };
 };
 
 export const runGws = (
@@ -307,11 +440,14 @@ export const runGws = (
       : {}),
   });
   try {
-    const { command, params, mailboxDir } = parseArgs(args);
+    const { command, params, mailboxDir, pageAll } = parseArgs(args);
     const method = command.replace(/^gmail users /, "");
     if (mailboxDir !== undefined) called = { mailboxDir, command: method, params };
     const spec = COMMANDS[command];
     if (!spec) throw validation(`error: fake-gws does not support the command '${command}'`);
+    if (pageAll && !spec.pageAll) {
+      throw validation(`error: fake-gws does not support '--page-all' for '${command}'`);
+    }
     const unsupported = Object.keys(params).filter((k) => !spec.params.includes(k));
     if (unsupported.length) {
       throw validation(
@@ -333,7 +469,18 @@ export const runGws = (
         "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user' of service 'gmail.googleapis.com'",
       );
     }
-    return finish(`${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`, "", 0);
+    if (!pageAll) {
+      return finish(`${JSON.stringify(spec.run(mailbox, params), null, 2)}\n`, "", 0);
+    }
+    const lines: string[] = [];
+    let pageParams = params;
+    while (lines.length < PAGE_LIMIT) {
+      const result = spec.run(mailbox, pageParams) as { nextPageToken?: string };
+      lines.push(JSON.stringify(result));
+      if (result.nextPageToken === undefined) break;
+      pageParams = { ...params, pageToken: result.nextPageToken };
+    }
+    return finish(`${lines.join("\n")}\n`, "", 0);
   } catch (e) {
     if (!(e instanceof GwsError)) throw e;
     const body = { error: { code: e.code, message: e.message, reason: e.reason } };

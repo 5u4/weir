@@ -25,6 +25,8 @@ const item = (seq: number, minute: number, from = ada, from_me = false): ItemSum
   body_new: `message ${seq}`,
   text_new: `message ${seq}`,
   stream: "robin.ellis@example.com",
+  kind: "message",
+  event: null,
 });
 
 const digest = (id: number, from_seq: number, to_seq: number, seqs = [from_seq]): Digest => ({
@@ -116,6 +118,70 @@ describe("reader blocks", () => {
       "Tail(1)",
       "last-read(1)",
       "Ada Lovelace[12]",
+    ]);
+  });
+
+  it("a trailing run of only meetings has no Not digested line; one mail brings it back", () => {
+    const meeting = (seq: number, minute: number) => ({
+      ...item(seq, minute),
+      kind: "event" as const,
+    });
+    const digested = [item(10, 30, robin, true), item(11, 31)];
+    for (const [tail, expected] of [
+      [[meeting(12, 32), meeting(13, 33)], []],
+      [[meeting(12, 32), item(13, 33)], ["Tail(2)"]],
+    ] as const) {
+      const blocks = reader(
+        detail([...digested, ...tail], [digest(1, 10, 11, [10, 11])]),
+        99,
+        closedUi,
+        null,
+      );
+      expect(shape(blocks).filter((tag) => tag.startsWith("Tail"))).toEqual(expected);
+    }
+  });
+
+  it("a meeting inside a digest range stays visible outside the digest, in seq order", () => {
+    const meeting = (seq: number, minute: number) => ({
+      ...item(seq, minute),
+      kind: "event" as const,
+    });
+    const card = detail(
+      [item(10, 30), meeting(11, 31), item(12, 32), item(13, 33)],
+      [digest(1, 10, 12, [10, 11, 12])],
+    );
+    const blocks = reader(card, 0, closedUi, null);
+    expect(shape(blocks)).toEqual([
+      "all-new(4)",
+      "DigestCard(1)",
+      "Ada Lovelace[11]",
+      "Tail(1)",
+      "Ada Lovelace[13]",
+    ]);
+    const digested = blocks.find((block) => block._tag === "DigestCard");
+    expect(digested?._tag === "DigestCard" && digested.items.map(({ seq }) => seq)).toEqual([
+      10, 12,
+    ]);
+    expect(
+      digested?._tag === "DigestCard" && digested.topics[0]?.items.map(({ seq }) => seq),
+    ).toEqual([10, 12]);
+
+    const items = [1, 2, 3, 4, 5, 6].flatMap((seq) => [
+      item(seq * 2, seq * 5),
+      ...(seq === 1 ? [meeting(3, 6)] : []),
+    ]);
+    const folded = detail(
+      items,
+      [1, 2, 3, 4, 5, 6].map((seq) => digest(seq, seq * 2, seq * 2 + 1)),
+    );
+    expect(shape(reader(folded, 99, closedUi, null))).toEqual([
+      "EarlierFold(1)",
+      "Ada Lovelace[3]",
+      "EarlierFold(2)",
+      "DigestRow(3)",
+      "DigestRow(4)",
+      "DigestRow(5)",
+      "DigestRow(6)",
     ]);
   });
 

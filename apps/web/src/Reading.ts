@@ -214,7 +214,11 @@ export const dock = Atom.family((id: ConversationId) =>
               ? "planned"
               : "read";
     return Option.some({
-      actions: dockActions({ state, read: get(reading(id)).seen >= last }),
+      actions: dockActions({
+        state,
+        read: get(reading(id)).seen >= last,
+        eventOnly: detail.value.items.every((item) => item.kind === "event"),
+      }),
       state,
       target: { id, last_seq: last, cleared_seq: detail.value.state.cleared_seq },
       open: detail.value.open,
@@ -233,6 +237,10 @@ export const pins = Atom.family((_: ConversationId) =>
 export const headerFold = Atom.family((_: ConversationId) =>
   Atom.make(false).pipe(Atom.setIdleTTL(0)),
 );
+
+export const focusedItem = Atom.make(
+  Option.none<{ readonly conversation: ConversationId; readonly seq: number }>(),
+).pipe(Atom.keepAlive);
 
 const openArticle = ".reader .r-scroll:not([hidden]) > article";
 

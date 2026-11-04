@@ -1,6 +1,7 @@
 import type { SourceConfig } from "@weir/contract/Config";
 import type { Source, SourcePlugin } from "@weir/contract/Source";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
@@ -34,6 +35,8 @@ export const loadSources = Effect.fnUntraced(function* (
 ) {
   const issues: Array<ConfigIssue> = [];
   const loaded: Array<ScheduledSource> = [];
+  const clock = yield* Clock.Clock;
+  const host = { now: () => clock.currentTimeMillisUnsafe() };
   for (const [index, config] of sources.entries()) {
     const plugin = Object.hasOwn(registry, config.plugin) ? registry[config.plugin] : undefined;
     if (plugin === undefined) {
@@ -62,7 +65,11 @@ export const loadSources = Effect.fnUntraced(function* (
       }
       continue;
     }
-    loaded.push({ id: config.id, every: config.sync_every, source: plugin.create(result.value) });
+    loaded.push({
+      id: config.id,
+      every: config.sync_every,
+      source: plugin.create(result.value, host),
+    });
   }
   if (issues.length > 0) {
     return yield* new ConfigError({

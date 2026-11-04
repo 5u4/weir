@@ -12,6 +12,8 @@ import {
   DigestId,
   type DigestRow,
   type DigestRunRow,
+  type EventChange,
+  type EventDetailRow,
   type ListedConversationRow,
   Seq,
 } from "@weir/store/Rows";
@@ -41,8 +43,11 @@ import {
   type DigestGap,
   DigestInterrupted,
   type DigestRun,
+  type EventChange as EventChangeJson,
+  type EventDetail,
   type GroupTest,
   type Line,
+  type Meetings,
   NotFound,
   type Row,
   type SearchResult,
@@ -98,6 +103,75 @@ const runJson = (run: DigestRunRow): DigestRun => ({
   ok: run.ok,
   error: run.error,
   log_path: run.logPath,
+});
+
+const changeJson = (change: EventChange | null): EventChangeJson | null => {
+  if (change === null) return null;
+  switch (change._tag) {
+    case "Moved":
+      return { _tag: "Moved", from_start: change.fromStart, from_end: change.fromEnd };
+    case "Relocated":
+      return { _tag: "Relocated", from_location: change.fromLocation };
+    default:
+      return change;
+  }
+};
+
+const eventJson = (detail: EventDetailRow | undefined): EventDetail | null =>
+  detail === undefined
+    ? null
+    : {
+        event_id: detail.eventId,
+        series_id: detail.seriesId,
+        start: detail.startAt,
+        end: detail.endAt,
+        all_day: detail.allDay,
+        location: detail.location,
+        attendees: detail.attendees,
+        status: detail.status,
+        change: changeJson(detail.change),
+        recurring: detail.recurring,
+      };
+
+const meetings = Effect.fnUntraced(function* (from: string, to: string) {
+  const timeZone = yield* DateTime.CurrentTimeZone;
+  const dayStart = (date: string) =>
+    DateTime.toUtc(
+      DateTime.makeZonedUnsafe(`${date}T00:00:00`, { timeZone, adjustForTimeZone: true }),
+    );
+  const dayAfter = DateTime.formatIsoDateUtc(
+    DateTime.add(DateTime.makeUnsafe(`${to}T00:00:00Z`), { days: 1 }),
+  );
+  const start = dayStart(from);
+  const end = dayStart(dayAfter);
+  const found = yield* Read.meetings(
+    DateTime.subtract(start, { days: 1 }),
+    DateTime.add(end, { days: 1 }),
+  );
+  return {
+    meetings: found
+      .filter((meeting) =>
+        meeting.allDay
+          ? meeting.startAt < dayAfter && meeting.endAt > from
+          : DateTime.isLessThan(meeting.startUtc, end) &&
+            (DateTime.isGreaterThan(meeting.endUtc, start) ||
+              DateTime.isGreaterThanOrEqualTo(meeting.startUtc, start)),
+      )
+      .map((meeting) => ({
+        conversation_id: meeting.conversationId,
+        item_seq: meeting.itemSeq,
+        event_id: meeting.eventId,
+        series_id: meeting.seriesId,
+        title: meeting.title,
+        start: meeting.startAt,
+        end: meeting.endAt,
+        all_day: meeting.allDay,
+        location: meeting.location,
+        status: meeting.status,
+        change: changeJson(meeting.change),
+        recurring: meeting.recurring,
+      })),
+  } satisfies Meetings;
 });
 
 const status = Effect.fnUntraced(function* (
@@ -477,6 +551,12 @@ const viewHandlers = HttpApiBuilder.group(
           Effect.provide(DateTime.layerCurrentZoneLocal),
           Effect.orDie,
         ),
+      meetings: ({ query: { from, to } }) =>
+        meetings(from, to).pipe(
+          withSql,
+          Effect.provide(DateTime.layerCurrentZoneLocal),
+          Effect.orDie,
+        ),
     });
   }),
 );
@@ -596,6 +676,11 @@ const weirHandlers = HttpApiBuilder.group(
           const lastRun = yield* Read.lastDigestRun(conversation.id);
           const lite = yield* Read.itemsLite(conversation.id);
           const open = yield* Read.openTarget(conversation.id);
+          const events = new Map(
+            (yield* Read.eventDetails(
+              items.filter(({ kind }) => kind === "event").map(({ seq }) => seq),
+            )).map((detail) => [detail.itemSeq, detail]),
+          );
           const streams = new Map(
             (yield* Read.hitItems([conversation.id])).map((item) => [item.seq, item.streamName]),
           );
@@ -622,6 +707,7 @@ const weirHandlers = HttpApiBuilder.group(
                 : [
                     {
                       seq: item.seq,
+                      kind: item.kind,
                       occurred_at: DateTime.formatIso(item.occurredAt),
                       from: { name: item.fromName, address: item.fromAddress },
                       from_me: item.fromMe,
@@ -630,6 +716,7 @@ const weirHandlers = HttpApiBuilder.group(
                       body_new: item.bodyNew,
                       text_new: item.textNew,
                       stream,
+                      event: eventJson(events.get(item.seq)),
                     },
                   ];
             }),

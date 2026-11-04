@@ -50,10 +50,18 @@ const writePage = Effect.fnUntraced(function* (
 ) {
   const deleted = yield* Write.softDeleteItems(stream.id, page.deletions);
   const removed = new Set(page.deletions);
-  const drafts = page.upserts
-    .filter(({ externalId }) => !removed.has(externalId))
-    .map((item) => Write.draft(stream, item));
-  const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
+  const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
+  const priors = yield* Read.priorEvents(
+    stream,
+    upserts.flatMap(({ event }) => (event === undefined ? [] : [event])),
+  );
+  const drafted = upserts.flatMap((item) => {
+    const draft = Write.draft(stream, item, priors, page.kind === "live");
+    return draft === null ? [] : [draft];
+  });
+  const refreshed = yield* Write.refreshItems(drafted.filter(({ refresh }) => refresh !== null));
+  const drafts = drafted.filter(({ refresh }) => refresh === null);
+  const { keys, moved } = yield* joinThreads(stream, drafted, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
     drafts.map((draft) => {
@@ -61,7 +69,7 @@ const writePage = Effect.fnUntraced(function* (
       return { ...draft, key: keys.get(thread) ?? thread };
     }),
   );
-  const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds]);
+  const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds, ...refreshed]);
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -81,7 +89,25 @@ const writePage = Effect.fnUntraced(function* (
     yield* Write.advanceSeenSeq(
       written.filter(({ inserted, conversationWasRead }) => inserted && conversationWasRead),
     );
+    if (stream.kind === "event") {
+      const fresh = yield* Read.eventOnly([
+        ...new Set(
+          written
+            .filter(({ conversationWasNew }) => conversationWasNew)
+            .map(({ conversationId }) => conversationId),
+        ),
+      ]);
+      yield* Write.advanceClearedSeq([
+        ...new Set([
+          ...written
+            .filter(({ conversationWasDone }) => conversationWasDone)
+            .map(({ conversationId }) => conversationId),
+          ...fresh,
+        ]),
+      ]);
+    }
   }
+  yield* Write.replaceOccurrences(stream.sourceId, page.occurrences ?? []);
   yield* Write.saveCursor(stream.id, page.cursor, page.backfill);
   return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });

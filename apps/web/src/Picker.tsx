@@ -2,17 +2,21 @@ import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { type KeyboardEvent, useState } from "react";
+import { busyOn, freeGaps, laterToday, packStart } from "./PlanLayout.ts";
 import { dock } from "./Reading.ts";
 import { type ConversationId, route } from "./Route.ts";
 import {
   conversation,
   type DueOverride,
+  daySpans,
   dismiss,
   type PickerTab,
   picker,
+  planRows,
   setDue,
   toast,
   today,
+  todaySpans,
 } from "./Weir.ts";
 import {
   addDays,
@@ -27,6 +31,7 @@ import {
   parseDue,
   parseWhen,
   slotMinutes,
+  span,
   type Today,
 } from "./When.ts";
 
@@ -179,6 +184,50 @@ const minuteOf = (value: string) => {
 
 const grab = (element: HTMLElement | null) => element?.focus({ preventScroll: true });
 
+const shownGaps = 5;
+
+function Gaps({
+  id,
+  date,
+  now,
+  pick,
+}: {
+  id: ConversationId;
+  date: string;
+  now: Today;
+  pick: (plan: Planned) => void;
+}) {
+  const spans = useAtomValue(daySpans(date));
+  const rows = useAtomValue(planRows);
+  const gaps = Option.match(AsyncResult.value(spans), {
+    onNone: () => [],
+    onSome: (known) => freeGaps(busyOn(rows, known, date, now.date, id), packStart(date, now)),
+  });
+  return (
+    <Choices
+      choices={[
+        {
+          label: "Any time",
+          sub: "That day, no set time",
+          pick: () => pick({ _tag: "Day", date }),
+        },
+        ...gaps.slice(0, shownGaps).map((gap) => ({
+          label: `${clock(gap.start)}–${clock(gap.end)}`,
+          sub: `${span(gap.end - gap.start)} free`,
+          pick: () =>
+            pick({
+              _tag: "Slot",
+              date,
+              start: gap.start,
+              minutes: Math.min(slotMinutes, gap.end - gap.start),
+            }),
+        })),
+      ]}
+      active={-1}
+    />
+  );
+}
+
 const enter = (element: HTMLElement | null) =>
   grab(element?.querySelector<HTMLElement>("button:enabled, input:enabled") ?? null);
 
@@ -187,6 +236,8 @@ export function Picker({ id }: { id: ConversationId }) {
   const shown = useAtomValue(dock(id));
   const detail = useAtomValue(conversation(id));
   const current = useAtomValue(today);
+  const rows = useAtomValue(planRows);
+  const spansToday = useAtomValue(todaySpans);
   const run = useAtomSet(dismiss);
   const writeDue = useAtomSet(setDue);
   const [text, setText] = useState("");
@@ -221,6 +272,13 @@ export function Picker({ id }: { id: ConversationId }) {
     writeDue({ id, due: next });
   };
   const tomorrow = addDays(now.date, 1);
+  const later = Option.match(AsyncResult.value(spansToday), {
+    onNone: () => ({
+      plan: { _tag: "Day", date: now.date } satisfies Planned,
+      preview: "Today · no set time",
+    }),
+    onSome: (known) => laterToday(busyOn(rows, known, now.date, now.date, id), now),
+  });
   const pickDay: Choice = {
     label: "Pick a day",
     sub: tab === "plan" ? "Any date, then a time if you like" : "Any date ahead",
@@ -233,8 +291,8 @@ export function Picker({ id }: { id: ConversationId }) {
       ? [
           {
             label: "Later today",
-            sub: "Today · any time",
-            pick: () => commitPlan({ _tag: "Day", date: now.date }),
+            sub: later.preview,
+            pick: () => commitPlan(later.plan),
           },
           {
             label: "Tomorrow",
@@ -399,16 +457,7 @@ export function Picker({ id }: { id: ConversationId }) {
               ‹ {dayName(step.date, now.date)}
             </span>
           </button>
-          <Choices
-            choices={[
-              {
-                label: "Any time",
-                sub: "That day, no set time",
-                pick: () => commitPlan({ _tag: "Day", date: step.date }),
-              },
-            ]}
-            active={-1}
-          />
+          <Gaps id={id} date={step.date} now={now} pick={commitPlan} />
           <form
             className="flex items-center gap-2 px-1.5 pb-1"
             onSubmit={(event) => {

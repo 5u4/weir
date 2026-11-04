@@ -53,9 +53,14 @@ export const joinThreads = Effect.fnUntraced(function* (
   }
   for (const item of items) collect(inputs, threadOf(item), ruleInput(item));
   const keys = keysOf(groups, inputs);
+  const quiet = new Set(items.filter(({ refresh }) => refresh !== null).map(threadOf));
   const moved = yield* Write.moveItems(
     stream.sourceId,
-    stored.map((item) => ({ seq: item.seq, key: keyOf(keys, item) })),
+    stored.map((item) => ({
+      seq: item.seq,
+      key: keyOf(keys, item),
+      quiet: quiet.has(threadOf(item)),
+    })),
   );
   return { keys, moved };
 });
@@ -84,7 +89,7 @@ export const regroupThreads = Effect.fnUntraced(function* (
   const planned = yield* planThreads(sourceId, threads, groups);
   return yield* Write.moveItems(
     sourceId,
-    planned.map(({ seq, key }) => ({ seq, key })),
+    planned.map(({ seq, key }) => ({ seq, key, quiet: false })),
   );
 });
 

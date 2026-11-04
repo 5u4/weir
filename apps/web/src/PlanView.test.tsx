@@ -7,8 +7,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { plannedRows } from "./PlanLayout.ts";
 import { PlanBlock, PlanCard, PlanView } from "./PlanView.tsx";
-import { home } from "./Route.ts";
-import { planList, today } from "./Weir.ts";
+import { home, route, type Scale } from "./Route.ts";
+import { meetings, planList, today, zone } from "./Weir.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
@@ -79,6 +79,7 @@ const block = (due: string) => {
   return renderToStaticMarkup(
     <PlanBlock
       block={{
+        _tag: "Plan",
         row: { ...card, plan: card.plan },
         start: 600,
         minutes: 60,
@@ -118,6 +119,7 @@ describe("plan view", () => {
         initialValues={[
           [planList, AsyncResult.failure(Cause.fail("unreachable"))],
           [today, Option.some({ date: "2026-10-26", minute: 600 })],
+          [zone, Option.some("America/Los_Angeles")],
         ]}
       >
         <PlanView />
@@ -129,4 +131,30 @@ describe("plan view", () => {
     expect(markup).not.toContain("Nothing planned");
     expect(markup).not.toContain("Tray");
   });
+
+  it.each([
+    ["day", "2026-10-26/2026-10-26"],
+    ["month", "2026-09-28/2026-11-08"],
+  ] as const satisfies ReadonlyArray<readonly [Scale, string]>)(
+    "the %s view says meetings failed instead of showing a day with none",
+    (scale, range) => {
+      const markup = renderToStaticMarkup(
+        <RegistryProvider
+          initialValues={[
+            [route, { ...home, mode: "plan", scale }],
+            [planList, AsyncResult.success({ seq: 1, conversations: [] })],
+            [meetings(range), AsyncResult.failure(Cause.fail("unreachable"))],
+            [today, Option.some({ date: "2026-10-26", minute: 600 })],
+            [zone, Option.some("America/Los_Angeles")],
+          ]}
+        >
+          <PlanView />
+        </RegistryProvider>,
+      )
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&#x27;/g, "'");
+      expect(markup).toContain("Can't load meetings.");
+      expect(markup).not.toContain("Can't load plans.");
+    },
+  );
 });

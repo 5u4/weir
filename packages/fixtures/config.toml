@@ -18,6 +18,7 @@ sync_every = "5m"
 command = ["fake-gws"]
 backfill = "newer_than:30d"
 labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]
+calendar = "primary"
 
 [[tag]]
 name = "Me"
@@ -67,3 +68,11 @@ match = { type = "some", target = "/raw/labelIds", rule = { type = "eq", target 
 [[group]]
 name = "Northbank alerts"
 match = { type = "regex", target = "/from/address", regex = "@northbank\\.example$", flags = "i" }
+
+[[group]]
+name = "Northwind migration"
+match = { type = "regex", target = "/title", regex = "Northwind|Go-live" }
+
+[[group]]
+name = "Mom's 60th"
+match = { type = "regex", target = "/title", regex = "^Mom's 60th" }

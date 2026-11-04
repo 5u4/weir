@@ -1,10 +1,11 @@
-import type { RawItem, Source, SourcePlugin, SyncPage } from "@weir/contract/Source";
+import type { RawItem, Source, SourceHost, SourcePlugin, SyncPage } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Equivalence from "effect/Equivalence";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
+import { calendarPrefix, calendarSync } from "./calendar.ts";
 import {
   abortableSleep,
   type Gws,
@@ -29,6 +30,7 @@ const GwsConfig = Schema.Struct({
   ),
   backfill: Schema.String,
   labels: LabelIds.pipe(Schema.withDecodingDefaultKey(Effect.succeed(["INBOX", "SENT"] as const))),
+  calendar: Schema.optionalKey(Schema.String),
 });
 export type GwsConfig = typeof GwsConfig.Type;
 
@@ -166,8 +168,9 @@ const emit = (
 });
 
 export const createSource = (
-  { command, backfill, labels: labelNames }: GwsConfig,
+  { command, backfill, labels: labelNames, calendar }: GwsConfig,
   sleep: Sleep,
+  host: SourceHost,
 ): Source => {
   const cli: Gws = { command, sleep };
   const listingPage = async (
@@ -326,19 +329,31 @@ export const createSource = (
   return {
     streams: async () => {
       const [profile, sendAs] = await Promise.all([getProfile(cli), listSendAs(cli)]);
+      const me = [
+        ...new Set([
+          profile.emailAddress,
+          ...(sendAs.sendAs ?? []).map((alias) => alias.sendAsEmail),
+        ]),
+      ];
       return [
         {
           id: profile.emailAddress,
           kind: "message" as const,
           name: profile.emailAddress,
-          me: [
-            ...new Set([
-              profile.emailAddress,
-              ...(sendAs.sendAs ?? []).map((alias) => alias.sendAsEmail),
-            ]),
-          ],
+          me,
           openLabel: "Gmail",
         },
+        ...(calendar === undefined
+          ? []
+          : [
+              {
+                id: `${calendarPrefix}${calendar}`,
+                kind: "event" as const,
+                name: "Calendar",
+                me,
+                openLabel: "Google Calendar",
+              },
+            ]),
       ];
     },
     sync: async (
@@ -346,6 +361,9 @@ export const createSource = (
       cursor: string | null,
       signal: AbortSignal,
     ): Promise<SyncPage> => {
+      if (calendar !== undefined && streamId === `${calendarPrefix}${calendar}`) {
+        return calendarSync(cli, calendar, host.now(), cursor, signal);
+      }
       const position = cursor === null ? null : decodeCursor(cursor);
       const recordedAt = Effect.runSync(Clock.currentTimeMillis);
       const [profile, labels] = await Promise.all([
@@ -377,5 +395,5 @@ export const createSource = (
 export const gws: SourcePlugin<GwsConfig> = {
   id: "gws",
   configSchema: Schema.toStandardSchemaV1(GwsConfig),
-  create: (config) => createSource(config, abortableSleep),
+  create: (config, host) => createSource(config, abortableSleep, host),
 };

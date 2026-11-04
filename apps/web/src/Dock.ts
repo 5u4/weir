@@ -3,11 +3,15 @@ import type { Mode } from "./Route.ts";
 
 export type DockAction = "Done" | "Plan" | "Restore" | "MarkUnread" | "Mute";
 
-export type Standing = { readonly state: Row["state"]; readonly read: boolean };
+export type Standing = {
+  readonly state: Row["state"];
+  readonly read: boolean;
+  readonly eventOnly: boolean;
+};
 
-export const dockActions = ({ state, read }: Standing): ReadonlyArray<DockAction> => [
+export const dockActions = ({ state, read, eventOnly }: Standing): ReadonlyArray<DockAction> => [
   state === "done" || state === "muted" ? "Restore" : "Done",
-  ...(state === "muted" ? [] : (["Plan"] as const)),
+  ...(state === "muted" || eventOnly ? [] : (["Plan"] as const)),
   ...(state === "planned" ? (["Restore"] as const) : []),
   ...(read ? (["MarkUnread"] as const) : []),
   ...(state === "muted" ? [] : (["Mute"] as const)),

@@ -1,10 +1,12 @@
 import { CalendarDate } from "@weir/contract/Digest";
+import type { RawEvent } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
 import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import { type EventPriors, noPriors } from "./Events.ts";
 import {
   AiStateRow,
   ConversationId,
@@ -13,9 +15,12 @@ import {
   type DigestId,
   DigestRow,
   DigestRunRow,
+  EventDetailRow,
+  EventOccurrenceRow,
   ItemLiteRow,
   ItemRow,
   ListedConversationRow,
+  MeetingRow,
   Seq,
   SourcedItemRow,
   StreamId,
@@ -458,7 +463,8 @@ export const itemsLite = Effect.fnUntraced(function* (conversationId: Conversati
   const sql = yield* SqlClient.SqlClient;
   return yield* decodeItemsLite(
     yield* sql`SELECT seq, occurred_at, length(text_new) AS chars FROM item
-      WHERE conversation_id = ${conversationId} AND deleted_at IS NULL ORDER BY seq`,
+      WHERE conversation_id = ${conversationId} AND deleted_at IS NULL AND kind IS NOT 'event'
+      ORDER BY seq`,
   );
 });
 
@@ -548,4 +554,123 @@ export const maxSeq = Effect.fnUntraced(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [{ seq }] = yield* decodeMaxSeq(yield* sql`SELECT coalesce(max(seq), 0) AS seq FROM item`);
   return seq;
+});
+
+const decodeEventDetails = Schema.decodeUnknownEffect(Schema.Array(EventDetailRow));
+
+export const eventDetails = Effect.fnUntraced(function* (seqs: ReadonlyArray<Seq>) {
+  if (seqs.length === 0) return [];
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodeEventDetails(
+    yield* sql`SELECT * FROM event_detail WHERE ${sql.in("item_seq", seqs)} ORDER BY item_seq`,
+  );
+});
+
+const decodeOccurrences = Schema.decodeUnknownEffect(Schema.Array(EventOccurrenceRow));
+
+export const priorEvents = Effect.fnUntraced(function* (
+  stream: StreamRow,
+  events: ReadonlyArray<RawEvent>,
+) {
+  if (events.length === 0) return noPriors;
+  const sql = yield* SqlClient.SqlClient;
+  const ids = [
+    ...new Set(
+      events.flatMap(({ eventId, seriesId }) =>
+        seriesId === null ? [eventId] : [eventId, seriesId],
+      ),
+    ),
+  ];
+  const details = yield* decodeEventDetails(
+    yield* sql`SELECT event_detail.* FROM event_detail
+      JOIN item ON item.seq = event_detail.item_seq
+      WHERE item.stream_id = ${stream.id} AND item.deleted_at IS NULL
+        AND ${sql.in("event_detail.event_id", ids)}
+      ORDER BY event_detail.item_seq`,
+  );
+  const cancelled = events.filter(({ status }) => status === "cancelled");
+  const occurrences =
+    cancelled.length === 0
+      ? []
+      : yield* decodeOccurrences(
+          yield* sql`SELECT * FROM event_occurrence WHERE source_id = ${stream.sourceId}
+            AND ${sql.in(
+              "event_id",
+              cancelled.map(({ eventId }) => eventId),
+            )}`,
+        );
+  return {
+    details: new Map(details.map((row) => [row.eventId, row])),
+    occurrences: new Map(occurrences.map((row) => [row.eventId, row])),
+  } satisfies EventPriors;
+});
+
+export const eventOnly = Effect.fnUntraced(function* (
+  conversationIds: ReadonlyArray<ConversationId>,
+) {
+  if (conversationIds.length === 0) return [];
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* decodeConversationIds(
+    yield* sql`SELECT id FROM conversation c WHERE ${sql.in("c.id", conversationIds)}
+      AND NOT EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id
+        AND item.deleted_at IS NULL AND item.kind IS NOT 'event')
+      ORDER BY id`,
+  );
+  return rows.map(({ id }) => id);
+});
+
+const decodeMeetings = Schema.decodeUnknownEffect(Schema.Array(MeetingRow));
+
+export const meetings = Effect.fnUntraced(function* (from: DateTime.Utc, to: DateTime.Utc) {
+  const sql = yield* SqlClient.SqlClient;
+  const start = yield* Schema.encodeEffect(UtcIso)(from);
+  const end = yield* Schema.encodeEffect(UtcIso)(to);
+  return yield* decodeMeetings(
+    yield* sql`WITH live AS (
+        SELECT event_detail.*, item.conversation_id, item.title, conversation.source_id,
+          row_number() OVER (PARTITION BY conversation.source_id, event_detail.event_id
+            ORDER BY event_detail.item_seq DESC) AS position
+        FROM event_detail
+        JOIN item ON item.seq = event_detail.item_seq AND item.deleted_at IS NULL
+        JOIN conversation ON conversation.id = item.conversation_id
+      ),
+      latest AS (SELECT * FROM live WHERE position = 1),
+      series AS (
+        SELECT source_id, series_id, max(item_seq) AS item_seq FROM live
+        WHERE series_id IS NOT NULL GROUP BY source_id, series_id
+      )
+      SELECT conversation_id, item_seq, event_id, series_id,
+        coalesce(title, (SELECT titled.title FROM live titled
+          WHERE titled.source_id = latest.source_id AND titled.event_id = latest.event_id
+            AND titled.title IS NOT NULL ORDER BY titled.item_seq DESC LIMIT 1), '') AS title,
+        start_at, end_at, start_utc, end_utc, all_day, location, status, change, 0 AS recurring
+      FROM latest
+      WHERE series_id IS NULL AND end_utc >= ${start} AND start_utc <= ${end}
+      UNION ALL
+      SELECT coalesce(exception.conversation_id, master.conversation_id, series_item.conversation_id)
+          AS conversation_id,
+        coalesce(exception.item_seq, master.item_seq, series.item_seq) AS item_seq,
+        occurrence.event_id,
+        occurrence.series_id,
+        coalesce(exception.title, master.title, series_item.title, '') AS title,
+        occurrence.start_at, occurrence.end_at, occurrence.start_utc, occurrence.end_utc,
+        occurrence.all_day,
+        CASE WHEN exception.event_id IS NOT NULL THEN exception.location ELSE master.location END
+          AS location,
+        occurrence.status, coalesce(exception.change, 'null') AS change, 1 AS recurring
+      FROM event_occurrence occurrence
+      JOIN series ON series.source_id = occurrence.source_id
+        AND series.series_id = occurrence.series_id
+      JOIN item series_item ON series_item.seq = series.item_seq
+      LEFT JOIN latest exception ON exception.source_id = occurrence.source_id
+        AND exception.series_id = occurrence.series_id
+        AND exception.event_id = occurrence.event_id
+      LEFT JOIN latest master ON master.source_id = occurrence.source_id
+        AND master.event_id = occurrence.series_id
+      WHERE occurrence.status = 'confirmed'
+        AND coalesce(exception.status, 'confirmed') = 'confirmed'
+        AND coalesce(master.status, 'confirmed') = 'confirmed'
+        AND occurrence.end_utc >= ${start} AND occurrence.start_utc <= ${end}
+      ORDER BY start_utc, item_seq`,
+  );
 });

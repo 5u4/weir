@@ -1,11 +1,19 @@
-import type { Row } from "@weir/daemon/Api";
+import type { Meeting, Row } from "@weir/daemon/Api";
 import { describe, expect, it } from "vitest";
 import {
+  allDayOn,
+  busyOn,
   carriedLabel,
-  dayBlocks,
+  freeGaps,
+  gridRange,
+  laterToday,
+  type MeetingSpan,
+  meetingSpans,
   monthEntries,
   monthGrid,
+  monthMeetings,
   movedStart,
+  placeDayPlans,
   plannedRows,
   resizedMinutes,
   scrollMinute,
@@ -47,16 +55,47 @@ const now = { date: monday, minute: 9 * 60 + 12 };
 const none = new Map() as Intents;
 const planned = (rows: ReadonlyArray<Row>, intents = none) => plannedRows(rows, intents);
 const ids = (rows: ReadonlyArray<{ readonly id: number }>) => rows.map(({ id }) => id);
-const placed = (rows: ReadonlyArray<Row>, date = monday, clock = now) =>
-  dayBlocks(planned(rows), date, clock).map((block) => ({
-    id: block.row.id,
+const placed = (
+  rows: ReadonlyArray<Row>,
+  date = monday,
+  clock = now,
+  spans: ReadonlyArray<MeetingSpan> = [],
+) =>
+  placeDayPlans(planned(rows), spans, date, clock).map((block) => ({
+    id: block._tag === "Plan" ? block.row.id : block.meeting.event_id,
     start: block.start,
     minutes: block.minutes,
-    solid: block.solid,
-    from: block.from,
+    solid: block._tag === "Plan" ? block.solid : true,
+    from: block._tag === "Plan" ? block.from : null,
     lane: block.lane,
     lanes: block.lanes,
   }));
+
+const zone = "America/Los_Angeles";
+
+const meeting = (
+  event_id: string,
+  start: string,
+  end: string,
+  overrides: Partial<Meeting> = {},
+): Meeting => ({
+  conversation_id: 40,
+  item_seq: 400,
+  event_id,
+  series_id: null,
+  title: event_id,
+  start,
+  end,
+  all_day: false,
+  location: null,
+  status: "confirmed",
+  change: null,
+  recurring: false,
+  ...overrides,
+});
+
+const spansOn = (meetings: ReadonlyArray<Meeting>, date = monday) =>
+  meetingSpans(meetings, date, zone);
 
 describe("planned rows under pending intents", () => {
   it("a Plan intent moves the row before the server answers", () => {
@@ -243,5 +282,154 @@ describe("arrows", () => {
     expect(stepped("day", "2026-10-01", -1)).toBe("2026-09-30");
     expect(stepped("month", "2026-12-15", 1)).toBe("2027-01-01");
     expect(stepped("month", "2026-10-26", -1)).toBe("2026-09-01");
+  });
+});
+
+describe("meetings on the day timeline", () => {
+  const tuesday = "2026-10-27";
+  const local = (time: string, date = monday) => `${date}T${time}:00-07:00`;
+
+  it("a meeting sits at its local time in the daemon's zone", () => {
+    const uat = meeting("uat", local("10:00"), local("11:00"));
+    expect(spansOn([uat]).map(({ start, minutes }) => [start, minutes])).toEqual([[600, 60]]);
+    expect(
+      meetingSpans([uat], monday, "Europe/London").map(({ start, minutes }) => [start, minutes]),
+    ).toEqual([[1020, 60]]);
+  });
+
+  it("a meeting across midnight shows on both days, cut at midnight", () => {
+    const late = meeting("late", local("23:30"), local("00:30", tuesday));
+    const minutes = (date: string) =>
+      spansOn([late], date).map(({ start, minutes }) => [start, minutes]);
+    expect(minutes(monday)).toEqual([[1410, 30]]);
+    expect(minutes(tuesday)).toEqual([[0, 30]]);
+    expect(minutes("2026-10-25")).toEqual([]);
+  });
+
+  it("an all-day meeting covers its days up to the exclusive end and stays off the timeline", () => {
+    const freeze = meeting("freeze", "2026-10-31", "2026-11-01", { all_day: true });
+    expect(allDayOn([freeze], "2026-10-31")).toEqual([freeze]);
+    expect(allDayOn([freeze], "2026-11-01")).toEqual([]);
+    expect(spansOn([freeze], "2026-10-31")).toEqual([]);
+  });
+
+  it("day plans pack into the time meetings and slots leave free", () => {
+    const rows = [
+      row(1, { _tag: "Slot", date: tuesday, start: 570, minutes: 30 }),
+      row(2, { _tag: "Day", date: tuesday }, at(1)),
+      row(3, { _tag: "Day", date: tuesday }, at(2)),
+    ];
+    const spans = spansOn(
+      [meeting("standup", local("08:00", tuesday), local("09:00", tuesday))],
+      tuesday,
+    );
+    expect(
+      placed(rows, tuesday, now, spans).map(({ id, start, solid }) => [id, start, solid]),
+    ).toEqual([
+      ["standup", 480, true],
+      [2, 540, false],
+      [1, 570, true],
+      [3, 600, false],
+    ]);
+  });
+
+  it("a cancelled meeting stays on the timeline but frees its time", () => {
+    const spans = spansOn(
+      [
+        meeting("standup", local("08:00", tuesday), local("09:00", tuesday), {
+          status: "cancelled",
+        }),
+      ],
+      tuesday,
+    );
+    const rows = [row(2, { _tag: "Day", date: tuesday }, at(1))];
+    expect(
+      placed(rows, tuesday, now, spans).map(({ id, start, lane, lanes }) => [
+        id,
+        start,
+        lane,
+        lanes,
+      ]),
+    ).toEqual([
+      ["standup", 480, 0, 2],
+      [2, 480, 1, 2],
+    ]);
+  });
+
+  it("a meeting and an overlapping slot sit side by side", () => {
+    const spans = spansOn([meeting("uat", local("10:00"), local("11:00"))]);
+    const rows = [row(1, { _tag: "Slot", date: monday, start: 630, minutes: 30 })];
+    expect(
+      placed(rows, monday, now, spans).map(({ id, lane, lanes }) => [id, lane, lanes]),
+    ).toEqual([
+      ["uat", 0, 2],
+      [1, 1, 2],
+    ]);
+  });
+});
+
+describe("Later today", () => {
+  const at = (time: string) => `${monday}T${time}:00-07:00`;
+  const later = (rows: ReadonlyArray<Row>, meetings: ReadonlyArray<Meeting>) =>
+    laterToday(busyOn(planned(rows), spansOn(meetings), monday, monday, 7), now);
+
+  it("plans the first free half hour after now, rounded up to 15 minutes", () => {
+    expect(
+      later([], [meeting("a", at("09:30"), at("10:00")), meeting("b", at("10:30"), at("14:00"))]),
+    ).toEqual({
+      plan: { _tag: "Slot", date: monday, start: 600, minutes: 30 },
+      preview: "Today · 10:00 · free until 10:30",
+    });
+  });
+
+  it("counts other conversations' slots as busy but not the one being planned", () => {
+    const rows = [
+      row(7, { _tag: "Slot", date: monday, start: 600, minutes: 60 }),
+      row(8, { _tag: "Slot", date: monday, start: 555, minutes: 45 }),
+    ];
+    expect(later(rows, [])).toEqual({
+      plan: { _tag: "Slot", date: monday, start: 600, minutes: 30 },
+      preview: "Today · 10:00 · free the rest of the day",
+    });
+  });
+
+  it("with no free half hour left, plans for today without a time", () => {
+    expect(later([], [meeting("all", at("09:00"), at("23:45"))])).toEqual({
+      plan: { _tag: "Day", date: monday },
+      preview: "Today · no free gap left",
+    });
+  });
+
+  it("the Time step lists free gaps, skipping slivers under 15 minutes", () => {
+    const spans = spansOn([
+      meeting("a", at("09:00"), at("10:00")),
+      meeting("b", at("10:10"), at("12:00")),
+    ]);
+    expect(freeGaps(busyOn([], spans, monday, monday, 7), 480)).toEqual([
+      { start: 480, end: 540 },
+      { start: 720, end: 1440 },
+    ]);
+  });
+});
+
+describe("meetings in the month", () => {
+  it("a day lists one-off meetings, all-day first, and hides recurring ones", () => {
+    const list = [
+      meeting("one-on-one", `${monday}T09:30:00-07:00`, `${monday}T10:00:00-07:00`, {
+        recurring: true,
+      }),
+      meeting("uat", `${monday}T10:00:00-07:00`, `${monday}T11:00:00-07:00`),
+      meeting("freeze", monday, "2026-10-28", { all_day: true }),
+    ];
+    expect(
+      monthMeetings(list, monday, zone).map(({ meeting, start }) => [meeting.event_id, start]),
+    ).toEqual([
+      ["freeze", null],
+      ["uat", 600],
+    ]);
+  });
+
+  it("asks for the meetings of every day the grid shows", () => {
+    expect(gridRange("2026-10")).toBe("2026-09-28/2026-11-08");
   });
 });

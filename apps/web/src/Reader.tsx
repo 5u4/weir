@@ -49,10 +49,12 @@ import { covered, quiet, scrolled } from "./HeaderFold.ts";
 import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted, Prose, proseClass } from "./Marked.tsx";
+import { MeetingCard } from "./MeetingCard.tsx";
 import { monogram } from "./Notch.ts";
 import { CalendarIcon, Picker } from "./Picker.tsx";
 import {
   dock,
+  focusedItem,
   following,
   headerFold,
   hitAt,
@@ -490,32 +492,42 @@ function Bubble({
           );
         }}
       >
-        <div
-          className={`${tree === null ? "w-full min-w-0" : `min-w-0 max-w-em-36 px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${bubbleFillClass({ me, folded, previewed, tint })}`} rounded-b-2xl ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
-        >
-          {(tree === null ? item.body_new.trim() === "" : tree.children.length === 0) ? (
-            <p className={`m-0 ${folded ? foldedClass : "text-ink-3"}`}>(no text)</p>
-          ) : (
-            <Long
-              id={id}
-              seq={item.seq}
-              me={me && tree !== null}
-              className={
-                tree === null
-                  ? emailSurfaceClass(me)
-                  : folded
-                    ? `${proseClass} ${foldedClass}`
-                    : proseClass
-              }
-            >
-              {tree === null ? (
-                <Email html={item.body_new} title={item.title ?? item.from.name} />
-              ) : (
-                <Prose tree={tree} pattern={found.pattern} />
-              )}
-            </Long>
-          )}
-        </div>
+        {item.event !== null ? (
+          <MeetingCard
+            seq={item.seq}
+            title={item.title ?? "(no title)"}
+            event={item.event}
+            me={me}
+            className={found.current === key ? `${hitClass} outline-offset-out` : ""}
+          />
+        ) : (
+          <div
+            className={`${tree === null ? "w-full min-w-0" : `min-w-0 max-w-em-36 px-3.5 py-2.5 text-base leading-relaxed wrap-anywhere transition-bg duration-fast ${bubbleFillClass({ me, folded, previewed, tint })}`} rounded-b-2xl ${me ? "rounded-tl-2xl rounded-tr-md text-me-ink" : "rounded-tl-md rounded-tr-2xl text-ink"} ${found.current === key ? `${hitClass} outline-offset-out` : ""}`}
+          >
+            {(tree === null ? item.body_new.trim() === "" : tree.children.length === 0) ? (
+              <p className={`m-0 ${folded ? foldedClass : "text-ink-3"}`}>(no text)</p>
+            ) : (
+              <Long
+                id={id}
+                seq={item.seq}
+                me={me && tree !== null}
+                className={
+                  tree === null
+                    ? emailSurfaceClass(me)
+                    : folded
+                      ? `${proseClass} ${foldedClass}`
+                      : proseClass
+                }
+              >
+                {tree === null ? (
+                  <Email html={item.body_new} title={item.title ?? item.from.name} />
+                ) : (
+                  <Prose tree={tree} pattern={found.pattern} />
+                )}
+              </Long>
+            )}
+          </div>
+        )}
         {hit?._tag === "Item" && hit.field !== "body" && (
           <span
             className="ml-2 inline-flex flex-none items-center gap-1.5 self-center text-2xs leading-5 font-semibold whitespace-nowrap text-ink-3 before:size-2 before:rounded-xs before:bg-mk"
@@ -608,7 +620,7 @@ function Group({
           key={item.seq}
           id={id}
           item={item}
-          here={group.heres?.[index]}
+          here={group.heres?.[index] ?? undefined}
           controls={controls}
           watch={watch}
           mark={mark}
@@ -1190,6 +1202,16 @@ const land = (root: HTMLElement | null) => {
   quiet(scroller.scrollTop);
 };
 
+const spotlight = (root: HTMLElement, seq: number) => {
+  const card = root.querySelector<HTMLElement>(`[data-meeting="${seq}"]`);
+  if (card === null) return;
+  quiet();
+  card.scrollIntoView({ block: "center" });
+  card.removeAttribute("data-flash");
+  void card.offsetWidth;
+  card.setAttribute("data-flash", "");
+};
+
 const hold = (anchor: Element | null | undefined, digests: ReadonlyArray<number>) => {
   const scroller = anchor?.closest(".r-scroll");
   if (!(anchor instanceof HTMLElement) || scroller == null) return () => {};
@@ -1265,6 +1287,8 @@ function Conversation({
             });
           },
         };
+  const [focus, setFocus] = useAtom(focusedItem);
+  const spotlit = Option.isSome(focus) && focus.value.conversation === id ? focus.value.seq : null;
   const newCount = detail.items.filter(({ seq }) => seq > frozen).length;
   const home = homeTag(view, detail.tags);
   const tags = detail.tags.filter((tag) => tag !== home);
@@ -1280,9 +1304,15 @@ function Conversation({
       data-folded={folded || undefined}
       ref={(root) => {
         article.current = root;
-        if (hidden || landed.current || root === null) return;
-        landed.current = true;
-        land(root);
+        if (hidden || root === null) return;
+        if (!landed.current) {
+          landed.current = true;
+          land(root);
+        }
+        if (spotlit !== null) {
+          spotlight(root, spotlit);
+          setFocus(Option.none());
+        }
       }}
       aria-label={detail.title}
       style={hue === undefined ? undefined : ({ "--bh": hue } as CSSProperties)}
@@ -1469,8 +1499,20 @@ function Dock({ id }: { id: ConversationId }) {
           type="button"
           className={`${dockItemClass} inline-flex font-semibold active:scale-press ${action === "Done" || (action === "Restore" && state !== "planned") ? "bg-capbg px-5 text-cap-1 hover:bg-primary-hover" : "px-4 text-ink hover:bg-hover max-wide:px-3.5"}`}
           aria-keyshortcuts={dockKeys[action]}
-          aria-label={action in dockIcons ? dockLabels[action] : undefined}
-          title={action in dockIcons ? dockLabels[action] : undefined}
+          aria-label={
+            action === "Restore" && state === "planned"
+              ? "Back to inbox"
+              : action in dockIcons
+                ? dockLabels[action]
+                : undefined
+          }
+          title={
+            action === "Restore" && state === "planned"
+              ? "Back to inbox"
+              : action in dockIcons
+                ? dockLabels[action]
+                : undefined
+          }
           aria-expanded={action === "Plan" ? Option.isSome(plan) : undefined}
           onClick={() => {
             if (action === "MarkUnread") unread(null);
@@ -1490,7 +1532,16 @@ function Dock({ id }: { id: ConversationId }) {
               </svg>
             </>
           ) : action === "Restore" && state === "planned" ? (
-            "Back to inbox"
+            <>
+              <span className="max-wide:hidden">Back to inbox</span>
+              <svg
+                className={`hidden size-4.5 stroke-1.6 ${iconClass} max-wide:block`}
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <path d="M2.5 8.5h3l1 2h3l1-2h3M3.5 4.5l-1 4v3.5h11V8.5l-1-4z" />
+              </svg>
+            </>
           ) : (
             dockLabels[action]
           )}

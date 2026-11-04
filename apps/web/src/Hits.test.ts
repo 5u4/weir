@@ -37,6 +37,8 @@ const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSum
   body_new,
   text_new: derive({ format: "markdown", body: body_new, bodyNew: body_new }).textNew,
   stream: "robin.ellis@example.com",
+  kind: "message",
+  event: null,
 });
 
 const digest = (

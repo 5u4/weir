@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import expectedDigestsJson from "../expected-digests.json" with { type: "json" };
 import expected from "../expected-tags.json" with { type: "json" };
+import { applyRevisions, CALENDAR_CHANGES_AT } from "./calendar.ts";
 import type { GwsCall } from "./gws.ts";
 import {
   callsFile,
@@ -18,6 +19,7 @@ import {
 import type { Thread } from "./scenarios.ts";
 
 export type { Thread };
+export { CALENDAR_CHANGES_AT };
 
 export const FIXTURE_NOW = "2026-10-25T09:00:00-07:00";
 
@@ -75,6 +77,7 @@ sync_every = "5m"
 command = [${command.map(tomlString).join(", ")}]
 backfill = "newer_than:30d"
 labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]
+calendar = "primary"
 
 [[tag]]
 name = "Me"
@@ -124,6 +127,14 @@ match = { type = "some", target = "/raw/labelIds", rule = { type = "eq", target 
 [[group]]
 name = "Northbank alerts"
 match = { type = "regex", target = "/from/address", regex = "@northbank\\.example$", flags = "i" }
+
+[[group]]
+name = "Northwind migration"
+match = { type = "regex", target = "/title", regex = "Northwind|Go-live" }
+
+[[group]]
+name = "Mom's 60th"
+match = { type = "regex", target = "/title", regex = "^Mom's 60th" }
 `;
 };
 
@@ -136,6 +147,14 @@ export const seedMailbox = (dir: string, options: { until?: string } = {}) => {
     delivered: Object.keys(mailbox.messages).length,
     pending: mailbox.pending.length,
   };
+};
+
+export const deliverEvents = (dir: string, until: string): string[] => {
+  parseClock(until);
+  const mailbox = readMailbox(dir);
+  const ids = applyRevisions(mailbox.calendar, until);
+  writeMailbox(dir, mailbox);
+  return ids;
 };
 
 export const seedThreads = (

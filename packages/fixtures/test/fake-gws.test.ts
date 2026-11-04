@@ -2,7 +2,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CALENDAR_CHANGES_AT,
   deliver,
+  deliverEvents,
   deliverThreads,
   expireHistory,
   FIXTURE_NOW,
@@ -510,5 +512,89 @@ describe("fake-gws deliverThreads", () => {
     expect(reply).toHaveLength(1);
     const { messages } = gmail("threads get", { userId: "me", id: first }, dir);
     expect(messages.map((m: { id: string }) => m.id)).toEqual([first, ...reply]);
+  });
+});
+
+describe("fake-gws calendar", () => {
+  const calendar = (method: string, params: Record<string, unknown>, dir: string) =>
+    fakeGws(["calendar", "events", method, "--params", JSON.stringify(params)], dir);
+  const listed = (params: Record<string, unknown>, dir: string) => {
+    const run = calendar("list", { calendarId: "primary", ...params }, dir);
+    if (run.exitCode !== 0) throw new Error(run.stderr);
+    return JSON.parse(run.stdout) as {
+      items: { id: string; status: string; summary: string; updated: string }[];
+      nextPageToken?: string;
+      nextSyncToken?: string;
+    };
+  };
+
+  it("lists live events, then only the changes since a sync token", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir, { until: FIXTURE_NOW });
+    const full = listed({ timeMin: "2026-09-20T16:00:00.000Z" }, dir);
+    expect(full.items.map(({ summary }) => summary).sort()).toEqual([
+      "Go-live check-in",
+      "Mom's 60th lunch",
+      "Northwind UAT review",
+      "Northwind cutover freeze",
+      "Weekday 1:1",
+      "Weekday 1:1",
+    ]);
+    expect(full.nextSyncToken).toBeDefined();
+    expect(listed({ syncToken: full.nextSyncToken }, dir).items).toEqual([]);
+
+    expect(deliverEvents(dir, CALENDAR_CHANGES_AT)).toEqual([
+      "nwuat",
+      "nwgolive",
+      "mom60lunch",
+      "designcrit",
+    ]);
+    const changed = listed({ syncToken: full.nextSyncToken }, dir);
+    expect(changed.items.map(({ id, status }) => [id, status])).toEqual([
+      ["nwuat", "confirmed"],
+      ["nwgolive", "cancelled"],
+      ["mom60lunch", "confirmed"],
+      ["designcrit", "confirmed"],
+    ]);
+    expect(changed.items[0]?.updated).toBe("2026-10-25T16:10:00.000Z");
+
+    const mixed = calendar("list", { calendarId: "primary", syncToken: "1", timeMin: "x" }, dir);
+    expect(JSON.parse(mixed.stdout).error).toMatchObject({ code: 400 });
+    const stale = calendar("list", { calendarId: "primary", syncToken: "999" }, dir);
+    expect(JSON.parse(stale.stdout).error).toMatchObject({ code: 410 });
+  });
+
+  it("pages instances as one JSON line per page with --page-all", () => {
+    const dir = tempMailbox();
+    seedMailbox(dir);
+    const run = fakeGws(
+      [
+        "calendar",
+        "events",
+        "instances",
+        "--params",
+        JSON.stringify({
+          calendarId: "primary",
+          eventId: "weekday1on1",
+          timeMin: "2026-10-26T00:00:00Z",
+          timeMax: "2026-11-21T00:00:00Z",
+        }),
+        "--page-all",
+      ],
+      dir,
+    );
+    expect(run.exitCode).toBe(0);
+    const pages = run.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(pages.length).toBeGreaterThan(1);
+    const starts = pages.flatMap(({ items }) =>
+      items.map(({ start }: { start: { dateTime: string } }) => start.dateTime),
+    );
+    expect(starts).toContain("2026-10-28T11:00:00-07:00");
+    expect(starts).not.toContain("2026-10-28T09:30:00-07:00");
+    expect(starts.some((start: string) => start.startsWith("2026-10-29"))).toBe(false);
+    expect(starts).toContain("2026-11-02T09:30:00-08:00");
   });
 });
