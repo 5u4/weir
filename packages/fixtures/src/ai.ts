@@ -80,9 +80,9 @@ const dueState = (input: Input): Pick<Topic, "state" | "due"> => {
     if (date !== undefined) return { state: "open", due: { date, seq: item.seq } };
   }
   const carried = input.context
-    .flatMap((entry) => (entry.kind === "digest" ? entry.topics : []))
-    .flatMap(({ due }) => (due === undefined ? [] : [due]))
-    .at(-1);
+    .filter((entry) => entry.kind === "digest")
+    .at(-1)
+    ?.topics.find(({ due }) => due !== undefined)?.due;
   return carried === undefined ? { state: "fyi" } : { state: "open", due: carried };
 };
 

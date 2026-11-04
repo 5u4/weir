@@ -314,6 +314,12 @@ describe("auto digest", () => {
         ["resolved", undefined],
       ]);
 
+      yield* deliver([said("w4", "Thanks everyone.", 4)]);
+      const fourth = yield* eventually(detail(work), ({ digests }) => digests.length === 4);
+      expect(fourth.digests[3]?.topics.map((topic) => [topic.state, topic.due])).toEqual([
+        ["fyi", undefined],
+      ]);
+
       expect(
         calls().map(({ input, hasError }) => [
           hasError,
@@ -325,6 +331,7 @@ describe("auto digest", () => {
         [false, []],
         [false, [due]],
         [false, [due, due]],
+        [false, [due, due, undefined]],
       ]);
       expect(calls()[0]?.input.items[0]).toMatchObject({
         occurred_at: "2030-01-01T01:01:00.000-08:00",
