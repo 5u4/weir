@@ -26,6 +26,7 @@ const daemon = vi.hoisted(() => {
   const details = new Map<number, Record<string, unknown>>();
   const running: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
   const queued: Array<{ conversation_id: number; from_seq: number; to_seq: number }> = [];
+  const plans: Array<unknown> = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -53,12 +54,28 @@ const daemon = vi.hoisted(() => {
       rows.set(next.id, next);
       return Response.json(next);
     }
+    const planned = rows.get(Number(url.pathname.match(/^\/conversations\/(\d+)\/plan$/)?.[1]));
+    if (method === "POST" && planned !== undefined) {
+      const body = input instanceof Request ? await input.text() : init?.body;
+      const { plan } = JSON.parse(
+        typeof body === "string" ? body : new TextDecoder().decode(body as Uint8Array),
+      );
+      plans.push(plan);
+      const next: Row = {
+        ...planned,
+        plan,
+        planned_at: "2026-10-25T16:00:00.000Z",
+        state: "planned",
+      };
+      rows.set(next.id, next);
+      return Response.json(next);
+    }
     if (method === "GET" && url.pathname === "/conversations") {
       const cleared = url.searchParams.get("view") === "cleared";
       return Response.json({
         seq: 10,
         conversations: [...rows.values()].filter(
-          (row) => row.cleared_seq >= row.last_seq === cleared,
+          (row) => (row.state === "planned" || row.cleared_seq >= row.last_seq) === cleared,
         ),
       });
     }
@@ -68,6 +85,8 @@ const daemon = vi.hoisted(() => {
         tags: [],
         untagged: { unread: 0, open: rows.size, senders: [] },
         cleared: 0,
+        planned: { count: 0, dues: [] },
+        now: { date: "2026-10-25", minute: 540 },
       });
     }
     if (method === "GET" && url.pathname === "/status") {
@@ -106,7 +125,15 @@ const daemon = vi.hoisted(() => {
         last_at: "2026-10-25T09:00:00.000Z",
         tags: [],
         open: null,
-        state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "read" },
+        state: {
+          seen_seq: 0,
+          cleared_seq: 0,
+          muted: false,
+          state: "read",
+          plan: { _tag: "None" },
+          planned_at: null,
+          due: null,
+        },
         items: [],
         digests: [],
         digest: { backlog: null, earlier: null, now: null, last_failure: null },
@@ -149,7 +176,19 @@ const daemon = vi.hoisted(() => {
     querySelector: () => page.row,
     elementFromPoint: () => page.hit ?? page.row,
   });
-  return { rows, requests, digests, replies, details, running, queued, Source, location, page };
+  return {
+    rows,
+    requests,
+    digests,
+    replies,
+    details,
+    running,
+    queued,
+    plans,
+    Source,
+    location,
+    page,
+  };
 });
 
 const row = (id: number, last_seq: number): Row => ({
@@ -170,6 +209,9 @@ const row = (id: number, last_seq: number): Row => ({
   from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
   preview: "Ada: hello",
   senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false }],
+  plan: { _tag: "None" },
+  planned_at: null,
+  due: null,
 });
 
 const settled = <A, E>(
@@ -199,6 +241,7 @@ afterEach(() => {
   daemon.details.clear();
   daemon.running.length = 0;
   daemon.queued.length = 0;
+  daemon.plans.length = 0;
   daemon.replies.length = 0;
   daemon.Source.opened.length = 0;
   daemon.location.search = "";
@@ -421,6 +464,34 @@ it("Done slides out a row a sliding neighbour overlaps, but not a row the reader
   registry.set(dismiss, { act: "Done", target: second });
   expect(covered.has("data-leave")).toBe(false);
   await settled(registry, dismiss);
+  registry.dispose();
+});
+
+it("Plan slides the row out exactly like Done, then posts the plan and keeps the row out", async () => {
+  daemon.rows.set(1, row(1, 5));
+  daemon.rows.set(2, row(2, 6));
+  const registry = AtomRegistry.make();
+  const list = viewList("untagged");
+  registry.mount(list);
+  registry.mount(visibleRows("untagged"));
+  await settled(registry, list);
+
+  const { promise: exited, resolve: exit } = Promise.withResolvers<void>();
+  const flags = new Set<string>();
+  daemon.page.row = leaving(flags, exited);
+  const target = daemon.rows.get(1);
+  if (target === undefined) throw new Error("fixture row 1 missing");
+  const plan = { _tag: "Slot", date: "2026-10-29", start: 900, minutes: 30 } as const;
+
+  registry.set(dismiss, { act: "Plan", target, plan });
+  expect(flags.has("data-leave")).toBe(true);
+  expect(daemon.plans).toEqual([]);
+
+  exit();
+  await vi.waitFor(() => expect(daemon.plans).toEqual([plan]));
+  await settled(registry, dismiss);
+  expect(registry.get(intents).size).toBe(0);
+  expect(registry.get(visibleRows("untagged")).map(({ id }) => id)).toEqual([2]);
   registry.dispose();
 });
 

@@ -158,7 +158,7 @@ describe("group", () => {
       const merged = yield* detail(g);
       expect(merged.title).toBe("Receipts");
       expect(merged.items.map(({ seq }) => seq)).toEqual([...seqsA, ...seqsB]);
-      expect(merged.state).toEqual({
+      expect(merged.state).toMatchObject({
         seen_seq: lastB,
         cleared_seq: lastB,
         muted: false,
@@ -182,7 +182,7 @@ describe("group", () => {
 
       const row = yield* rowOf("Receipts");
       expect(row).toMatchObject({ state: "unread", new: 2, items: 4 });
-      expect((yield* detail(row.id)).state).toEqual({
+      expect((yield* detail(row.id)).state).toMatchObject({
         seen_seq: lastA,
         cleared_seq: lastA,
         muted: false,
@@ -211,7 +211,7 @@ describe("group", () => {
 
       const widened = yield* detail(g);
       expect(widened.items).toHaveLength(6);
-      expect(widened.state).toEqual({
+      expect(widened.state).toMatchObject({
         seen_seq: lastX,
         cleared_seq: lastX,
         muted: false,
@@ -237,7 +237,7 @@ describe("group", () => {
 
       const row = yield* rowOf("Receipts");
       expect(row).toMatchObject({ id: g, state: "unread", new: seqsX.length, items: 6 });
-      expect((yield* detail(g)).state).toEqual({
+      expect((yield* detail(g)).state).toMatchObject({
         seen_seq: lastB,
         cleared_seq: lastB,
         muted: false,
@@ -262,7 +262,7 @@ describe("group", () => {
       yield* configure("");
 
       const backA = yield* detail(a);
-      expect(backA.state).toEqual({
+      expect(backA.state).toMatchObject({
         seen_seq: 0,
         cleared_seq: lastA,
         muted: false,
@@ -270,7 +270,7 @@ describe("group", () => {
       });
       expect(backA.digests).toEqual(digests);
       const backB = yield* detail(b);
-      expect(backB.state).toEqual({
+      expect(backB.state).toMatchObject({
         seen_seq: 0,
         cleared_seq: 0,
         muted: false,
@@ -318,7 +318,7 @@ describe("group", () => {
       yield* configure(group("Receipts", "paid"));
 
       expect(yield* rowOf("Receipts")).toMatchObject({ id: g, state: "done", new: 0, items: 2 });
-      expect((yield* detail(g)).state).toEqual({
+      expect((yield* detail(g)).state).toMatchObject({
         seen_seq: lastR,
         cleared_seq: lastR,
         muted: false,

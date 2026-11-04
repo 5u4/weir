@@ -1,4 +1,5 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
+import type { Counts } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { Fragment, type MouseEvent, useCallback, useRef, useState } from "react";
@@ -12,11 +13,13 @@ import {
   chips,
   clearedWidget,
   enumerate,
+  overdue,
   sentence,
   type Widget,
   type WidgetKind,
   widgetDescription,
 } from "./Notch.ts";
+import { CalendarIcon } from "./Picker.tsx";
 import { chipText, type Field, fieldOf, queryOf, queryText, typed } from "./Query.ts";
 import { hitAt, searchHits, searchMatchedIn, stepHit } from "./Reading.ts";
 import { groups, type ResultGroup } from "./Results.ts";
@@ -33,7 +36,15 @@ import {
   type View,
 } from "./Route.ts";
 import { CloseIcon } from "./Settings.tsx";
-import { found, pickedGroup, searching, searchQuery, searchResult, tagOrder } from "./Weir.ts";
+import {
+  found,
+  pickedGroup,
+  searching,
+  searchQuery,
+  searchResult,
+  tagOrder,
+  today,
+} from "./Weir.ts";
 
 const measureCap = (cap: HTMLDivElement) => {
   const observer = new ResizeObserver(() =>
@@ -258,15 +269,56 @@ function Count({
   value,
   className,
   quick = false,
+  bump = false,
 }: {
   value: number;
   className: string;
   quick?: boolean;
+  bump?: boolean;
 }) {
   const roll = useChange(value, rollOf);
   return (
-    <span key={value} className={className} data-roll={roll} data-quick={quick || undefined}>
+    <span
+      key={value}
+      className={className}
+      data-roll={roll}
+      data-quick={quick || undefined}
+      data-bump={(bump && roll === "up") || undefined}
+    >
       {value}
+    </span>
+  );
+}
+
+function PlannedClause({
+  planned,
+  compact = false,
+}: {
+  planned: Counts["planned"];
+  compact?: boolean;
+}) {
+  const current = useAtomValue(today);
+  const late = Option.match(current, {
+    onNone: () => 0,
+    onSome: ({ date }) => overdue(planned, date),
+  });
+  return (
+    <span
+      className={`items-center gap-em-0.3 whitespace-nowrap text-cap-1 ${compact ? "h-9 flex-none px-3 font-sans text-md leading-none font-medium max-wide:h-8.5 max-wide:px-2.5 max-wide:text-sm" : "mr-em-0.3"} ${planned.count === 0 ? "hidden" : "inline-flex"}`}
+    >
+      <CalendarIcon className="size-em-1 text-cap-2" />
+      <span>
+        <Count value={planned.count} className={widgetCountClass(true)} bump /> planned
+        {late > 0 && (
+          <>
+            <span className={glueClass}>, </span>
+            <span className="text-warn-cap">
+              <Count value={late} className={widgetCountClass(true)} /> overdue
+            </span>
+          </>
+        )}
+        {!compact && <span className={glueClass}>.</span>}
+      </span>
     </span>
   );
 }
@@ -678,6 +730,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: Option.Option<Alert
               {Option.isSome(loaded) && (
                 <Chip widget={clearedWidget(loaded.value)} active={active} className="-ml-1" />
               )}
+              {Option.isSome(loaded) && <PlannedClause planned={loaded.value.planned} compact />}
               {Option.isSome(alert) && <AlertButton alert={alert.value} compact />}
             </>
           )}
@@ -687,7 +740,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: Option.Option<Alert
           {Option.match(loaded, {
             onNone: () => null,
             onSome: (value) => {
-              const { main, tail } = sentence(value);
+              const { main, tail, planned } = sentence(value);
               return (
                 <nav aria-label="Views">
                   <p className={sentenceMainClass}>
@@ -703,6 +756,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: Option.Option<Alert
                         <SentenceClause clause={clause} active={active} tail />
                       </span>
                     ))}
+                    <PlannedClause planned={planned} />
                     {Option.isSome(alert) && <AlertButton alert={alert.value} compact={false} />}
                   </p>
                 </nav>

@@ -181,6 +181,14 @@
   --inset-overlap: calc(100% - var(--spacing-3));
   --inset-dock-safe: calc(var(--spacing-3) + env(safe-area-inset-bottom));
   --max-width-dock: calc(100% - var(--spacing-8));
+  --height-dock: calc(var(--height-9\.5) + 2 * var(--spacing-1\.5));
+  --inset-strip: calc(var(--spacing-4) + var(--height-dock) + var(--spacing-2));
+  --inset-strip-safe: calc(var(--inset-dock-safe) + var(--height-dock) + var(--spacing-2));
+  --inset-picker: calc(var(--inset-strip) + var(--spacing-7) + var(--spacing-2));
+  --inset-picker-safe: calc(var(--inset-strip-safe) + var(--spacing-7) + var(--spacing-2));
+  --inset-toast: calc(var(--inset-edge) + var(--inset-picker));
+  --width-picker: 340px;
+  --max-height-picker: calc(100% - var(--inset-picker) - var(--spacing-24));
   --max-width-lane: 88%;
   --max-width-em-30: 30em;
   --max-width-em-36: 36em;
@@ -240,6 +248,7 @@
   --scale-enter: 80%;
   --scale-fold: 70%;
   --scale-flash: 98.5%;
+  --scale-bump: 125%;
   --rotate-flip: 180deg;
   --translate-lift: 4px;
   --outline-width-hit: 2.5px;
@@ -345,6 +354,7 @@
   --duration-spin: 800ms;
   --duration-loop: 1200ms;
   --duration-flash: 1600ms;
+  --duration-toast: 3200ms;
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
 

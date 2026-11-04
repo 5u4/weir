@@ -21,6 +21,9 @@ const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
   preview: "Ada: hello",
   senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false }],
+  plan: { _tag: "None" },
+  planned_at: null,
+  due: null,
 });
 
 const ids = (rows: ReadonlyArray<Row>) => rows.map(({ id }) => id);
@@ -51,12 +54,21 @@ describe("rows shown under pending intents", () => {
     expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([]);
     expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
   });
+
+  it("Plan hides the row from every view but Cleared, even when something newer arrives", () => {
+    const intents: Intents = new Map([[1, intentFor("Plan", row(1, 5))]]);
+    expect(ids(shown("untagged", [row(1, 5), row(2, 6)], intents))).toEqual([2]);
+    expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([]);
+    expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
+  });
 });
 
 describe("which dismissals slide the row out first", () => {
   it.each([
     { view: "untagged", act: "Done", searching: false, expected: true },
     { view: "tag:Work", act: "Mute", searching: false, expected: true },
+    { view: "tag:Work", act: "Plan", searching: false, expected: true },
+    { view: "cleared", act: "Plan", searching: false, expected: false },
     { view: "cleared", act: "Restore", searching: false, expected: false },
     { view: "cleared", act: "Done", searching: false, expected: false },
     { view: "untagged", act: "Done", searching: true, expected: false },

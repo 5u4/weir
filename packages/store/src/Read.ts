@@ -1,3 +1,4 @@
+import { CalendarDate } from "@weir/contract/Digest";
 import * as Arr from "effect/Array";
 import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -64,10 +65,31 @@ const listed = (sql: SqlClient.SqlClient) => sql`listed AS (
       coalesce(s.muted, 0) AS muted,
       CASE
         WHEN coalesce(s.muted, 0) = 1 THEN 'muted'
+        WHEN s.plan_kind IS NOT NULL THEN 'planned'
         WHEN c.last_seq <= coalesce(s.cleared_seq, 0) THEN 'done'
         WHEN c.last_seq > coalesce(s.seen_seq, 0) THEN 'unread'
         ELSE 'read'
-      END AS state
+      END AS state,
+      CASE s.plan_kind
+        WHEN 'tray' THEN json_object('_tag', 'Tray')
+        WHEN 'day' THEN json_object('_tag', 'Day', 'date', s.plan_date)
+        WHEN 'slot' THEN json_object('_tag', 'Slot', 'date', s.plan_date,
+          'start', s.plan_start, 'minutes', s.plan_minutes)
+        ELSE json_object('_tag', 'None')
+      END AS plan,
+      s.planned_at,
+      CASE s.due_kind
+        WHEN 'date' THEN json_object('date', s.due_date, 'by', json_object('_tag', 'User'))
+        WHEN 'cleared' THEN NULL
+        ELSE (SELECT json_object('date', json_extract(topic.value, '$.due.date'),
+            'by', json_object('_tag', 'Ai', 'seq', json_extract(topic.value, '$.due.seq')))
+          FROM (SELECT topics FROM digest WHERE digest.conversation_id = c.id
+              ORDER BY digest.from_seq DESC, digest.id DESC LIMIT 1) latest,
+            json_each(latest.topics) topic
+          WHERE json_extract(topic.value, '$.due.date') IS NOT NULL
+          ORDER BY json_extract(topic.value, '$.due.date'), json_extract(topic.value, '$.due.seq')
+          LIMIT 1)
+      END AS due
     FROM conversation c LEFT JOIN conversation_state s ON s.conversation_id = c.id
     WHERE EXISTS (SELECT 1 FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL)
   )`;
@@ -306,7 +328,7 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
     query._tag === "Ids"
       ? sql.in("c.id", query.ids)
       : query._tag === "Cleared"
-        ? sql`c.state IN ('done', 'muted')`
+        ? sql`c.state IN ('done', 'muted', 'planned')`
         : sql.and([open, tagCondition(sql, query)]);
   return yield* decodeListed(
     yield* sql`WITH ${listed(sql)}
@@ -355,10 +377,24 @@ export const stateTotals = Effect.fnUntraced(function* () {
   const [totals] = yield* decodeStateTotals(
     yield* sql`WITH ${listed(sql)}
       SELECT coalesce(sum(state = 'unread'), 0) AS unread,
-        coalesce(sum(state IN ('done', 'muted')), 0) AS cleared
+        coalesce(sum(state IN ('done', 'muted', 'planned')), 0) AS cleared
       FROM listed`,
   );
   return totals;
+});
+
+const decodePlannedDues = Schema.decodeUnknownEffect(
+  Schema.Array(Schema.Struct({ due: Schema.NullOr(CalendarDate) })),
+);
+
+export const plannedDues = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* decodePlannedDues(
+    yield* sql`WITH ${listed(sql)}
+      SELECT json_extract(due, '$.date') AS due FROM listed
+      WHERE state = 'planned'
+      ORDER BY due, id`,
+  );
 });
 
 export const UnreadSender = Schema.Struct({

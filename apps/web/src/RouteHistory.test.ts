@@ -430,6 +430,8 @@ const counts = (me: number, cleared = 0): Counts => ({
   tags: [{ name: "Me", unread: me, open: me, senders: [] }],
   untagged: { unread: 0, open: 0, senders: [] },
   cleared,
+  planned: { count: 0, dues: [] },
+  now: { date: "2026-10-25", minute: 540 },
 });
 
 const notch = (start: string) => {

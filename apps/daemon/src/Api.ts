@@ -1,8 +1,8 @@
 import { DurationShorthand } from "@weir/contract/Config";
-import { Digest, Trigger } from "@weir/contract/Digest";
+import { CalendarDate, Digest, Trigger } from "@weir/contract/Digest";
 import { RuleInput } from "@weir/contract/Rule";
 import { BodyFormat, Party, RowParty } from "@weir/contract/Source";
-import { AiKind, ConversationState } from "@weir/store/Rows";
+import { AiKind, ConversationState, DueOverride, Plan, RowDue } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
@@ -158,6 +158,9 @@ export const Row = Schema.Struct({
   from: RowParty,
   preview: Schema.String,
   senders: Schema.Array(RowParty),
+  plan: Plan,
+  planned_at: Schema.NullOr(Schema.String),
+  due: Schema.NullOr(RowDue),
 });
 export type Row = typeof Row.Type;
 
@@ -210,6 +213,9 @@ export const Conversation = Schema.Struct({
     cleared_seq: Schema.Int,
     muted: Schema.Boolean,
     state: ConversationState,
+    plan: Plan,
+    planned_at: Schema.NullOr(Schema.String),
+    due: Schema.NullOr(RowDue),
   }),
   items: Schema.Array(ItemSummary),
   digests: Schema.Array(Digest),
@@ -362,6 +368,11 @@ export const Counts = Schema.Struct({
   tags: Schema.Array(Schema.Struct({ name: Schema.String, ...viewSummary })),
   untagged: Schema.Struct(viewSummary),
   cleared: Schema.Int,
+  planned: Schema.Struct({ count: Schema.Int, dues: Schema.Array(CalendarDate) }),
+  now: Schema.Struct({
+    date: CalendarDate,
+    minute: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1439 })),
+  }),
 });
 export type Counts = typeof Counts.Type;
 
@@ -402,6 +413,18 @@ export class StateGroup extends HttpApiGroup.make("state", { topLevel: true }).a
   }),
   HttpApiEndpoint.post("restore", "/conversations/:id/restore", {
     params: conversationParams,
+    success: Row,
+    error: NotFound,
+  }),
+  HttpApiEndpoint.post("plan", "/conversations/:id/plan", {
+    params: conversationParams,
+    payload: Schema.Struct({ plan: Plan }),
+    success: Row,
+    error: NotFound,
+  }),
+  HttpApiEndpoint.post("due", "/conversations/:id/due", {
+    params: conversationParams,
+    payload: Schema.Struct({ due: DueOverride }),
     success: Row,
     error: NotFound,
   }),

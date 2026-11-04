@@ -26,7 +26,7 @@ describe("read", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
-  it.effect("the latest-digest lookup for list rows searches an index without sorting", () =>
+  it.effect("the latest-digest lookups for list rows search an index without sorting", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const statements: Array<Statement.Statement<unknown>> = [];
@@ -42,9 +42,8 @@ describe("read", () => {
       const plan = yield* sql.unsafe<PlanRow>(`EXPLAIN QUERY PLAN ${text}`, params);
 
       const lookups = plan.filter(({ detail }) => /\bdigest\b/u.test(detail));
-      expect(lookups.map(({ detail }) => detail)).toEqual([
-        "SEARCH digest USING INDEX digest_conversation_range (conversation_id=?)",
-      ]);
+      const indexed = "SEARCH digest USING INDEX digest_conversation_range (conversation_id=?)";
+      expect(lookups.map(({ detail }) => detail)).toEqual([indexed, indexed]);
       const siblings = plan.filter(({ parent }) => lookups.some((row) => row.parent === parent));
       expect(siblings.some(({ detail }) => detail.includes("TEMP B-TREE"))).toBe(false);
     }).pipe(Effect.provide(storeLayer())),

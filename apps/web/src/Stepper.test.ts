@@ -38,7 +38,15 @@ const daemon = vi.hoisted(() => {
     last_at: "2026-10-25T09:00:00.000Z",
     tags: [],
     open: null,
-    state: { seen_seq: 0, cleared_seq: 0, muted: false, state: "unread" },
+    state: {
+      seen_seq: 0,
+      cleared_seq: 0,
+      muted: false,
+      state: "unread",
+      plan: { _tag: "None" },
+      planned_at: null,
+      due: null,
+    },
     items: [...state.bodies].map(item),
     digests: state.digests.map(({ id, from_seq, to_seq, seqs }) => ({
       id,
@@ -62,6 +70,8 @@ const daemon = vi.hoisted(() => {
         tags: [],
         untagged: { unread: 0, open: 0, senders: [] },
         cleared: 0,
+        planned: { count: 0, dues: [] },
+        now: { date: "2026-10-25", minute: 540 },
       });
     }
     return new Response(null, { status: 404 });

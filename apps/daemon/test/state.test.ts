@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { RawItem } from "@weir/contract/Source";
 import * as Database from "@weir/store/Database";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -103,7 +104,15 @@ describe("conversation state", () => {
       expect(clamped).toMatchObject({ state: "read", seen_seq: s2, last_seq: s2, new: 0 });
 
       const detail = yield* client.conversation({ params: { id } });
-      expect(detail.state).toEqual({ seen_seq: s2, cleared_seq: 0, muted: false, state: "read" });
+      expect(detail.state).toEqual({
+        seen_seq: s2,
+        cleared_seq: 0,
+        muted: false,
+        state: "read",
+        plan: { _tag: "None" },
+        planned_at: null,
+        due: null,
+      });
       expect(detail.digests).toEqual([]);
 
       yield* deliver([item("a3", "t1", 3, { title: "Re: Work plan" })]);
@@ -252,7 +261,9 @@ describe("views and counts", () => {
       const both = yield* conversationOf("Work list");
       const workOnly = yield* conversationOf("Work only");
 
-      expect(yield* client.counts()).toEqual({
+      const { now, ...counts } = yield* client.counts();
+      expect(now.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(counts).toEqual({
         unread: 3,
         tags: [
           {
@@ -273,6 +284,7 @@ describe("views and counts", () => {
         ],
         untagged: { unread: 1, open: 1, senders: [{ name: "Bo", address: "bo@x.example" }] },
         cleared: 0,
+        planned: { count: 0, dues: [] },
       });
 
       expect(
@@ -693,4 +705,226 @@ describe("list rows", () => {
         expect(yield* previewOf("Long")).toBe(`Bob: ${"😀".repeat(160)}`);
       }).pipe(Effect.scoped),
   );
+});
+
+describe("plan and due", () => {
+  const insertDigest = (
+    db: string,
+    digest: {
+      readonly id: number;
+      readonly conversationId: number;
+      readonly fromSeq: number;
+      readonly toSeq: number;
+      readonly dues: ReadonlyArray<{ readonly date: string; readonly seq: number }>;
+    },
+  ) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const topics = [
+        { title: "Chatter", state: "fyi", body: "no date here", seqs: [digest.fromSeq] },
+        ...digest.dues.map((due) => ({
+          title: `Due ${due.date}`,
+          state: "open",
+          body: "needs a reply",
+          seqs: [due.seq],
+          due,
+        })),
+      ];
+      yield* sql`INSERT INTO digest
+        (id, conversation_id, from_seq, to_seq, headline, topics, "trigger", ai_profile, created_at)
+        VALUES (${digest.id}, ${digest.conversationId}, ${digest.fromSeq}, ${digest.toSeq},
+          'Headline', ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
+    }).pipe(Effect.provide(Database.layer(db)));
+
+  it.live("each plan kind moves the conversation out of its view and into Cleared", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf } = yield* start;
+      yield* deliver([item("q1", "t1", 1, { title: "Work quarterly" })]);
+      const id = yield* conversationOf("Work quarterly");
+
+      const tray = yield* client.plan({ params: { id }, payload: { plan: { _tag: "Tray" } } });
+      expect(tray).toMatchObject({ state: "planned", plan: { _tag: "Tray" } });
+      expect(tray.planned_at).toEqual(expect.any(String));
+      expect(ids(yield* listed(work))).toEqual([]);
+      expect(states(yield* listed(cleared))).toEqual([[id, "planned"]]);
+      const counts = yield* client.counts();
+      expect(counts).toMatchObject({ unread: 0, cleared: 1, planned: { count: 1, dues: [] } });
+      expect(counts.tags.find(({ name }) => name === "Work")).toMatchObject({ unread: 0, open: 0 });
+
+      const day = { _tag: "Day", date: "2026-10-29" } as const;
+      expect((yield* client.plan({ params: { id }, payload: { plan: day } })).plan).toEqual(day);
+
+      const slot = { _tag: "Slot", date: "2026-10-29", start: 900, minutes: 30 } as const;
+      expect((yield* client.plan({ params: { id }, payload: { plan: slot } })).plan).toEqual(slot);
+      expect((yield* client.conversation({ params: { id } })).state).toMatchObject({
+        state: "planned",
+        plan: slot,
+      });
+      expect((yield* client.search({ query: { q: "quarterly" } })).conversations).toMatchObject([
+        { id, state: "planned", plan: slot },
+      ]);
+
+      const unplanned = yield* client.plan({ params: { id }, payload: { plan: { _tag: "None" } } });
+      expect(unplanned).toMatchObject({
+        state: "unread",
+        plan: { _tag: "None" },
+        planned_at: null,
+      });
+      expect(ids(yield* listed(work))).toEqual([id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a planned conversation that receives a new item stays planned with one new", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([item("r1", "t1", 1, { title: "Work offsite" })]);
+      const id = yield* conversationOf("Work offsite");
+      const [s1] = yield* seqsOf(id);
+      if (s1 === undefined) throw new Error("expected one item");
+      yield* client.read({ params: { id }, payload: { seq: s1 } });
+      yield* client.plan({ params: { id }, payload: { plan: { _tag: "Tray" } } });
+
+      yield* deliver([item("r2", "t1", 2, { title: "Re: Work offsite" })]);
+      expect(ids(yield* listed(work))).toEqual([]);
+      const [row] = yield* listed(cleared);
+      expect(row).toMatchObject({ id, state: "planned", new: 1, plan: { _tag: "Tray" } });
+      expect((yield* client.counts()).unread).toBe(0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("done and back to inbox both clear the plan", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([item("s1", "t1", 1, { title: "Work invoice" })]);
+      const id = yield* conversationOf("Work invoice");
+      const [last] = yield* seqsOf(id);
+      if (last === undefined) throw new Error("expected one item");
+      const day = { _tag: "Day", date: "2026-10-26" } as const;
+
+      yield* client.plan({ params: { id }, payload: { plan: day } });
+      const done = yield* client.done({ params: { id }, payload: { seq: last } });
+      expect(done).toMatchObject({ state: "done", plan: { _tag: "None" }, planned_at: null });
+      expect((yield* client.counts()).planned).toEqual({ count: 0, dues: [] });
+
+      yield* client.plan({ params: { id }, payload: { plan: day } });
+      const restored = yield* client.restore({ params: { id } });
+      expect(restored).toMatchObject({ state: "read", plan: { _tag: "None" }, planned_at: null });
+      expect(ids(yield* listed(work))).toEqual([id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live(
+    "a user due beats the AI due, cleared hides it, and the latest digest's AI due wins",
+    () =>
+      Effect.gen(function* () {
+        const { client, home, deliver, conversationOf, seqsOf } = yield* start;
+        yield* deliver([
+          item("u1", "t1", 1, { title: "Work contract" }),
+          item("u2", "t1", 2, {}),
+          item("u3", "t1", 3, {}),
+        ]);
+        const id = yield* conversationOf("Work contract");
+        const [s1, s2, s3] = yield* seqsOf(id);
+        if (s1 === undefined || s2 === undefined || s3 === undefined) {
+          throw new Error("expected three items");
+        }
+        const dueOf = client
+          .conversation({ params: { id } })
+          .pipe(Effect.map(({ state }) => state.due));
+        expect(yield* dueOf).toBeNull();
+
+        yield* insertDigest(home.db, {
+          id: 1,
+          conversationId: id,
+          fromSeq: s1,
+          toSeq: s2,
+          dues: [
+            { date: "2026-10-30", seq: s1 },
+            { date: "2026-10-23", seq: s2 },
+          ],
+        });
+        const earliest = { date: "2026-10-23", by: { _tag: "Ai", seq: s2 } };
+        expect(yield* dueOf).toEqual(earliest);
+
+        yield* insertDigest(home.db, {
+          id: 2,
+          conversationId: id,
+          fromSeq: s3,
+          toSeq: s3,
+          dues: [{ date: "2026-11-02", seq: s3 }],
+        });
+        const latest = { date: "2026-11-02", by: { _tag: "Ai", seq: s3 } };
+        expect(yield* dueOf).toEqual(latest);
+
+        const user = yield* client.due({
+          params: { id },
+          payload: { due: { _tag: "Date", date: "2026-11-12" } },
+        });
+        expect(user.due).toEqual({ date: "2026-11-12", by: { _tag: "User" } });
+
+        const hidden = yield* client.due({ params: { id }, payload: { due: { _tag: "Cleared" } } });
+        expect(hidden.due).toBeNull();
+        expect(yield* dueOf).toBeNull();
+
+        const reset = yield* client.due({ params: { id }, payload: { due: { _tag: "None" } } });
+        expect(reset.due).toEqual(latest);
+      }).pipe(Effect.scoped),
+  );
+
+  it.live("counts report planned dues and the daemon's local date and minute", () => {
+    const fixedMillis = Date.parse("2026-10-25T09:00:00-07:00");
+    const live = Clock.Clock.defaultValue();
+    const fixed: Clock.Clock = {
+      currentTimeMillisUnsafe: () => fixedMillis,
+      currentTimeMillis: Effect.sync(() => fixedMillis),
+      currentTimeNanosUnsafe: () => BigInt(fixedMillis) * 1_000_000n,
+      currentTimeNanos: Effect.sync(() => BigInt(fixedMillis) * 1_000_000n),
+      monotonicTimeNanosUnsafe: () => live.monotonicTimeNanosUnsafe(),
+      monotonicTimeNanos: live.monotonicTimeNanos,
+      sleep: (duration) => live.sleep(duration),
+    };
+    return Effect.gen(function* () {
+      const { client, home, deliver, conversationOf, seqsOf } = yield* start;
+      yield* deliver([
+        item("v1", "northwind", 1, { title: "Northwind renewal" }),
+        item("v2", "party", 2, { title: "Party" }),
+        item("v3", "tray", 3, { title: "Someday" }),
+      ]);
+      const northwind = yield* conversationOf("Northwind renewal");
+      const party = yield* conversationOf("Party");
+      const someday = yield* conversationOf("Someday");
+      const [northwindSeq] = yield* seqsOf(northwind);
+      if (northwindSeq === undefined) throw new Error("expected one item");
+      yield* insertDigest(home.db, {
+        id: 1,
+        conversationId: northwind,
+        fromSeq: northwindSeq,
+        toSeq: northwindSeq,
+        dues: [{ date: "2026-10-23", seq: northwindSeq }],
+      });
+      yield* client.due({
+        params: { id: party },
+        payload: { due: { _tag: "Date", date: "2026-10-30" } },
+      });
+
+      const before = yield* client.counts();
+      expect(before.planned).toEqual({ count: 0, dues: [] });
+      expect(before.now).toEqual({ date: "2026-10-25", minute: 540 });
+
+      const planned = yield* client.plan({
+        params: { id: northwind },
+        payload: { plan: { _tag: "Tray" } },
+      });
+      expect(planned.planned_at).toBe("2026-10-25T16:00:00.000Z");
+      yield* client.plan({
+        params: { id: party },
+        payload: { plan: { _tag: "Day", date: "2026-10-24" } },
+      });
+      yield* client.plan({ params: { id: someday }, payload: { plan: { _tag: "Tray" } } });
+      expect((yield* client.counts()).planned).toEqual({
+        count: 3,
+        dues: ["2026-10-23", "2026-10-30"],
+      });
+    }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, fixed));
+  });
 });

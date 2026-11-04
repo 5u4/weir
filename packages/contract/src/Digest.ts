@@ -10,16 +10,16 @@ export type TopicState = typeof TopicState.Type;
 export const Trigger = Schema.Literals(["auto", "manual"]);
 export type Trigger = typeof Trigger.Type;
 
-const DueDate = Schema.String.check(
+export const CalendarDate = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
   Schema.makeFilter(
     (date: string) =>
       new Date(Date.parse(`${date}T00:00:00Z`) || 0).toISOString().startsWith(date) ||
-      "due date must be a real calendar date",
+      "must be a real calendar date",
   ),
 );
 
-export const Due = Schema.Struct({ date: DueDate, seq: Schema.Int });
+export const Due = Schema.Struct({ date: CalendarDate, seq: Schema.Int });
 export type Due = typeof Due.Type;
 
 export const Topic = Schema.Struct({

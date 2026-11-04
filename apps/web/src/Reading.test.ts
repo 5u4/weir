@@ -39,6 +39,9 @@ const daemon = vi.hoisted(() => {
     from: party,
     preview: "Ada: hello",
     senders: [party],
+    plan: { _tag: "None" },
+    planned_at: null,
+    due: null,
   });
   const body = (init?: RequestInit) => {
     const raw = init?.body;
@@ -97,6 +100,9 @@ const daemon = vi.hoisted(() => {
           cleared_seq: state.cleared,
           muted: state.muted,
           state: standing(),
+          plan: { _tag: "None" },
+          planned_at: null,
+          due: null,
         },
         items: [
           {
@@ -342,7 +348,7 @@ it("Restore reads the open conversation, so Mark unread is offered and Last read
   await vi.waitFor(() => expect(registry.get(reading(id)).seen).toBe(25));
   expect(registry.get(reading(id)).frozen).toEqual(Option.some(9));
   expect(Option.map(registry.get(dock(id)), ({ actions }) => actions)).toEqual(
-    Option.some(["Done", "MarkUnread", "Mute"]),
+    Option.some(["Done", "Plan", "MarkUnread", "Mute"]),
   );
   registry.dispose();
 });
