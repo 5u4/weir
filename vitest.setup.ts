@@ -18,6 +18,7 @@ const refuse = (name: string) => {
 };
 dns.promises.Resolver.prototype.resolveTxt = refuse;
 dns.promises.resolveTxt = refuse;
+dns.promises.lookup = refuse;
 
 afterEach(() => {
   expect(hits.splice(0), "a test reached the real network; pass fixtureFaceNet()").toEqual([]);
