@@ -12,13 +12,11 @@ and delete the old path in the same change, with no compatibility shims.
 - Workspaces live under three roots: `packages/`, `plugins/`, and `apps/`.
 - A package under `plugins/` has runtime dependencies on workspace packages: only
   `packages/contract`. Dev and test dependencies on other workspace packages are allowed.
-- Nothing under `packages/`, `plugins/`, or `apps/` imports from `design/`.
 - `skills/` holds agent skills for weir users. `packages/contract/test/skill-config.test.ts`
   decodes every `toml` block in `skills/weir-config/SKILL.md`, so a schema change updates the skill.
 
 ## Reference
 
-- `design/index.html` is the design doc.
 - Web UI styles use the tokens in `apps/web/src/theme.css`. A value with no step gets a new token
   there, never a literal, an `[arbitrary]` class or a `(--var)` shorthand. `bun run lint` enforces
   this on class strings and, through `lint/css-tokens.grit`, on literals in CSS other than
@@ -40,8 +38,6 @@ and delete the old path in the same change, with no compatibility shims.
   utilities cannot express (sibling selectors, masks) go in `apps/web/src/styles/*.css` under
   `@layer components`, imported from `theme.css`; element resets live in `styles/base.css` under
   `@layer base`.
-- `design/prototype/ui/final/` is historical reference only, never imported. Run it with
-  `cd design/prototype && bun ux/serve.ts` (`PORT` env, default 9347).
 
 ## Effect
 
