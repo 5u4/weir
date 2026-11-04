@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { plannedRows } from "./PlanLayout.ts";
 import { PlanBlock, PlanCard, PlanView } from "./PlanView.tsx";
 import { home } from "./Route.ts";
-import { planList, today } from "./Weir.ts";
+import { planList, today, zone } from "./Weir.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
@@ -79,6 +79,7 @@ const block = (due: string) => {
   return renderToStaticMarkup(
     <PlanBlock
       block={{
+        _tag: "Plan",
         row: { ...card, plan: card.plan },
         start: 600,
         minutes: 60,
@@ -118,6 +119,7 @@ describe("plan view", () => {
         initialValues={[
           [planList, AsyncResult.failure(Cause.fail("unreachable"))],
           [today, Option.some({ date: "2026-10-26", minute: 600 })],
+          [zone, Option.some("America/Los_Angeles")],
         ]}
       >
         <PlanView />

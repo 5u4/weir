@@ -4,6 +4,7 @@ import {
   ClearableView,
   type Counts,
   Event,
+  type Meeting,
   type Row,
 } from "@weir/daemon/Api";
 import { termPattern } from "@weir/daemon/Match";
@@ -29,7 +30,7 @@ import { capture, leave, stay } from "./Flip.ts";
 import { now } from "./Health.ts";
 import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
-import { plannedRows, sequence } from "./PlanLayout.ts";
+import { meetingSpans, plannedRows, sequence } from "./PlanLayout.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
 import {
@@ -127,6 +128,39 @@ export const clockNow = Atom.make((get) =>
     get(clockAnchor),
     ({ now: anchor, at }) => anchor.epoch_ms + Math.max(0, DateTime.toEpochMillis(get(now)) - at),
   ),
+);
+
+export const zone = Atom.make((get) =>
+  Option.map(get(clockAnchor), ({ now: anchor }) => anchor.zone),
+);
+
+export type MeetingRange = `${string}/${string}`;
+
+const meetingList = Atom.family((range: MeetingRange) => {
+  const [from = "", to = ""] = range.split("/");
+  return Weir.query("view", "meetings", { query: { from, to }, reactivityKeys: ["list"] });
+});
+
+export const meetings = Atom.family((range: MeetingRange) =>
+  Atom.make((get) =>
+    AsyncResult.getOrElse(
+      AsyncResult.map(get(meetingList(range)), (list) => list.meetings),
+      (): ReadonlyArray<Meeting> => [],
+    ),
+  ),
+);
+
+export const daySpans = Atom.family((date: string) =>
+  Atom.make((get) =>
+    Option.match(get(zone), {
+      onNone: () => [],
+      onSome: (where) => meetingSpans(get(meetings(`${date}/${date}`)), date, where),
+    }),
+  ),
+);
+
+export const todaySpans = Atom.make((get) =>
+  Option.match(get(today), { onNone: () => [], onSome: ({ date }) => get(daySpans(date)) }),
 );
 
 const toApiView = Schema.decodeSync(ApiView);

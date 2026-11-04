@@ -45,6 +45,35 @@ export const migration = Effect.gen(function* () {
   )`;
   yield* sql`CREATE INDEX item_conversation_id ON item (conversation_id)`;
   yield* sql`CREATE INDEX item_thread ON item (coalesce(thread_id, container_id))`;
+  yield* sql`CREATE TABLE event_detail (
+    item_seq INTEGER PRIMARY KEY REFERENCES item (seq),
+    event_id TEXT,
+    series_id TEXT,
+    recurring INTEGER,
+    start_at TEXT,
+    end_at TEXT,
+    start_utc TEXT,
+    end_utc TEXT,
+    all_day INTEGER,
+    time_zone TEXT,
+    location TEXT,
+    attendees TEXT,
+    status TEXT CHECK (status IN ('confirmed', 'cancelled')),
+    change TEXT
+  )`;
+  yield* sql`CREATE INDEX event_detail_event_id ON event_detail (event_id, item_seq)`;
+  yield* sql`CREATE TABLE event_occurrence (
+    source_id TEXT,
+    series_id TEXT,
+    event_id TEXT,
+    start_at TEXT,
+    end_at TEXT,
+    start_utc TEXT,
+    end_utc TEXT,
+    all_day INTEGER,
+    status TEXT CHECK (status IN ('confirmed', 'cancelled')),
+    PRIMARY KEY (source_id, series_id, event_id)
+  )`;
   yield* sql`CREATE TABLE conversation (
     id INTEGER PRIMARY KEY,
     source_id TEXT,

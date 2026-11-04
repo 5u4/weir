@@ -33,15 +33,62 @@ export type RowParty = typeof RowParty.Type;
 export const BodyFormat = Schema.Literals(["markdown", "html"]);
 export type BodyFormat = typeof BodyFormat.Type;
 
-export const ItemBody = Schema.Union([
-  Schema.Struct({
-    format: Schema.Literal("markdown"),
-    body: Schema.String,
-    bodyNew: Schema.NullOr(Schema.String),
-  }),
-  Schema.Struct({ format: Schema.Literal("html"), body: Schema.String, bodyNew: Schema.String }),
-]);
+const MarkdownBody = Schema.Struct({
+  format: Schema.Literal("markdown"),
+  body: Schema.String,
+  bodyNew: Schema.NullOr(Schema.String),
+});
+const HtmlBody = Schema.Struct({
+  format: Schema.Literal("html"),
+  body: Schema.String,
+  bodyNew: Schema.String,
+});
+
+export const ItemBody = Schema.Union([MarkdownBody, HtmlBody]);
 export type ItemBody = typeof ItemBody.Type;
+
+export const EventStatus = Schema.Literals(["confirmed", "cancelled"]);
+export type EventStatus = typeof EventStatus.Type;
+
+export const EventAttendee = Schema.Struct({
+  name: Schema.NullOr(Schema.String),
+  email: Schema.String,
+  response: Schema.NullOr(Schema.String),
+});
+export type EventAttendee = typeof EventAttendee.Type;
+
+export const EventTime = Schema.Struct({
+  start: Schema.String,
+  end: Schema.String,
+  allDay: Schema.Boolean,
+});
+export type EventTime = typeof EventTime.Type;
+
+export const RawEvent = Schema.Struct({
+  eventId: Schema.String,
+  seriesId: Schema.NullOr(Schema.String),
+  recurring: Schema.Boolean,
+  time: Schema.NullOr(EventTime),
+  timeZone: Schema.NullOr(Schema.String),
+  location: Schema.NullOr(Schema.String),
+  attendees: Schema.Array(EventAttendee),
+  status: EventStatus,
+  originalStart: Schema.NullOr(Schema.String),
+});
+export type RawEvent = typeof RawEvent.Type;
+
+export const Occurrence = Schema.Struct({
+  eventId: Schema.String,
+  ...EventTime.fields,
+  status: EventStatus,
+});
+export type Occurrence = typeof Occurrence.Type;
+
+export const SeriesOccurrences = Schema.Struct({
+  seriesId: Schema.String,
+  occurrences: Schema.Array(Occurrence),
+});
+export type SeriesOccurrences = typeof SeriesOccurrences.Type;
 
 const itemFields = {
   externalId: Schema.String,
@@ -53,16 +100,18 @@ const itemFields = {
   from: Party,
   link: Schema.NullOr(Schema.String),
   raw: Schema.Unknown,
+  event: Schema.optionalKey(RawEvent),
 };
 
-export const RawItem = Schema.Union(
-  ItemBody.members.map((body) => Schema.Struct({ ...itemFields, ...body.fields })),
-);
+export const RawItem = Schema.Union([
+  Schema.Struct({ ...itemFields, ...MarkdownBody.fields }),
+  Schema.Struct({ ...itemFields, ...HtmlBody.fields }),
+]);
 export type RawItem = typeof RawItem.Type;
 
 export const StreamDescriptor = Schema.Struct({
   id: Schema.String,
-  kind: Schema.Literal("message"),
+  kind: Schema.Literals(["message", "event"]),
   name: Schema.String,
   me: Schema.Array(Schema.String),
   openLabel: Schema.String,
@@ -74,6 +123,7 @@ export const SyncPage = Schema.Struct({
   deletions: Schema.Array(Schema.String),
   cursor: Schema.String,
   more: Schema.Boolean,
+  occurrences: Schema.optionalKey(Schema.Array(SeriesOccurrences)),
   kind: Schema.Literals(["live", "backfill"]),
   backfill: Schema.Literals(["running", "done"]),
 });
@@ -84,8 +134,12 @@ export interface Source {
   sync(streamId: string, cursor: string | null, signal: AbortSignal): Promise<SyncPage>;
 }
 
+export interface SourceHost {
+  readonly now: () => number;
+}
+
 export interface SourcePlugin<Config> {
   readonly id: string;
   readonly configSchema: StandardSchemaV1<unknown, Config>;
-  create(config: Config): Source;
+  create(config: Config, host: SourceHost): Source;
 }

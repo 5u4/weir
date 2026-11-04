@@ -84,8 +84,10 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+const host = { now: () => Date.parse(FIXTURE_NOW) };
+
 const sourceFor = (dir: string, labels = EVERY_LABEL): Source =>
-  gws.create({ command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels });
+  gws.create({ command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels }, host);
 
 const running = new AbortController().signal;
 
@@ -707,11 +709,14 @@ describe("gws plugin against fake-gws", () => {
       message: expect.stringMatching(/cannot read mailbox/),
     });
 
-    const crash = gws.create({
-      command: ["sh", "-c", "echo gws exploded >&2; exit 2"],
-      backfill: "newer_than:30d",
-      labels: EVERY_LABEL,
-    });
+    const crash = gws.create(
+      {
+        command: ["sh", "-c", "echo gws exploded >&2; exit 2"],
+        backfill: "newer_than:30d",
+        labels: EVERY_LABEL,
+      },
+      host,
+    );
     const shellError = await crash.sync(ME, null, running).catch((e: unknown) => e);
     expect(shellError).toBeInstanceOf(GwsError);
     expect(shellError).toMatchObject({ exitCode: 2, message: "gws exploded" });
@@ -733,6 +738,7 @@ describe("gws quota backoff", () => {
     createSource(
       { command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels: EVERY_LABEL },
       sleep,
+      host,
     );
   const failing = (error: object, sleep: Sleep) =>
     createSource(
@@ -742,6 +748,7 @@ describe("gws quota backoff", () => {
         labels: EVERY_LABEL,
       },
       sleep,
+      host,
     );
 
   it("retries a quota error after 2, 4, 8, 16, 32, 60, 60 and 60 s, then fails the page", async () => {

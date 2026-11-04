@@ -130,19 +130,17 @@ const run = async <A>(
   command: Command,
   method: ReadonlyArray<string>,
   params: Params,
-  schema: Schema.Codec<A>,
+  parse: (stdout: string) => A,
+  flags: ReadonlyArray<string>,
   signal?: AbortSignal,
 ): Promise<A> => {
   signal?.throwIfAborted();
-  const proc = Bun.spawn(
-    [...command, "gmail", "users", ...method, "--params", JSON.stringify(params)],
-    {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      ...(signal === undefined ? {} : { signal }),
-    },
-  );
+  const proc = Bun.spawn([...command, ...method, "--params", JSON.stringify(params), ...flags], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    ...(signal === undefined ? {} : { signal }),
+  });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -158,26 +156,43 @@ const run = async <A>(
       }),
     );
   }
-  return Schema.decodeUnknownSync(Schema.fromJsonString(schema))(stdout);
+  return parse(stdout);
 };
 
-const call = async <A>(
+const retrying = async <A>(
   gws: Gws,
   method: ReadonlyArray<string>,
   params: Params,
-  schema: Schema.Codec<A>,
+  parse: (stdout: string) => A,
+  flags: ReadonlyArray<string>,
   signal?: AbortSignal,
 ): Promise<A> => {
   for (const seconds of QUOTA_RETRY_SECONDS) {
     try {
-      return await run(gws.command, method, params, schema, signal);
+      return await run(gws.command, method, params, parse, flags, signal);
     } catch (error) {
       if (!isQuota(error)) throw error;
     }
     await gws.sleep(seconds * 1000, signal);
   }
-  return run(gws.command, method, params, schema, signal);
+  return run(gws.command, method, params, parse, flags, signal);
 };
+
+const call = <A>(
+  gws: Gws,
+  method: ReadonlyArray<string>,
+  params: Params,
+  schema: Schema.Codec<A>,
+  signal?: AbortSignal,
+): Promise<A> =>
+  retrying(
+    gws,
+    ["gmail", "users", ...method],
+    params,
+    Schema.decodeUnknownSync(Schema.fromJsonString(schema)),
+    [],
+    signal,
+  );
 
 export const getProfile = (gws: Gws, signal?: AbortSignal) =>
   call(gws, ["getProfile"], { userId: "me" }, Profile, signal);
@@ -229,5 +244,111 @@ export const listHistory = (
       ...(pageToken === null ? {} : { pageToken }),
     },
     HistoryList,
+    signal,
+  );
+
+const EventDateTime = Schema.Struct({
+  date: Schema.optionalKey(Schema.String),
+  dateTime: Schema.optionalKey(Schema.String),
+  timeZone: Schema.optionalKey(Schema.String),
+});
+export type EventDateTime = typeof EventDateTime.Type;
+
+const Person = Schema.Struct({
+  email: Schema.optionalKey(Schema.String),
+  displayName: Schema.optionalKey(Schema.String),
+  responseStatus: Schema.optionalKey(Schema.String),
+  self: Schema.optionalKey(Schema.Boolean),
+});
+
+export const CalendarEvent = Schema.StructWithRest(
+  Schema.Struct({
+    id: Schema.String,
+    status: Schema.optionalKey(Schema.String),
+    summary: Schema.optionalKey(Schema.String),
+    description: Schema.optionalKey(Schema.String),
+    location: Schema.optionalKey(Schema.String),
+    htmlLink: Schema.optionalKey(Schema.String),
+    updated: Schema.optionalKey(Schema.String),
+    start: Schema.optionalKey(EventDateTime),
+    end: Schema.optionalKey(EventDateTime),
+    recurrence: Schema.optionalKey(Schema.Array(Schema.String)),
+    recurringEventId: Schema.optionalKey(Schema.String),
+    originalStartTime: Schema.optionalKey(EventDateTime),
+    organizer: Schema.optionalKey(Person),
+    attendees: Schema.optionalKey(Schema.Array(Person)),
+  }),
+  Rest,
+);
+export type CalendarEvent = typeof CalendarEvent.Type;
+
+const EventList = Schema.Struct({
+  summary: Schema.optionalKey(Schema.String),
+  timeZone: Schema.optionalKey(Schema.String),
+  items: Schema.optionalKey(Schema.Array(CalendarEvent)),
+  nextPageToken: Schema.optionalKey(Schema.String),
+  nextSyncToken: Schema.optionalKey(Schema.String),
+});
+export type EventList = typeof EventList.Type;
+
+const calendarCall = <A>(
+  gws: Gws,
+  method: ReadonlyArray<string>,
+  params: Params,
+  schema: Schema.Codec<A>,
+  signal: AbortSignal,
+) =>
+  retrying(
+    gws,
+    ["calendar", ...method],
+    params,
+    Schema.decodeUnknownSync(Schema.fromJsonString(schema)),
+    [],
+    signal,
+  );
+
+export const listEvents = (
+  gws: Gws,
+  calendarId: string,
+  position:
+    | { readonly syncToken: string; readonly pageToken: string | null }
+    | { readonly timeMin: string; readonly pageToken: string | null },
+  signal: AbortSignal,
+) =>
+  calendarCall(
+    gws,
+    ["events", "list"],
+    {
+      calendarId,
+      singleEvents: false,
+      maxResults: 250,
+      ...("syncToken" in position
+        ? { syncToken: position.syncToken }
+        : { timeMin: position.timeMin }),
+      ...(position.pageToken === null ? {} : { pageToken: position.pageToken }),
+    },
+    EventList,
+    signal,
+  );
+
+const decodeEventPage = Schema.decodeUnknownSync(Schema.fromJsonString(EventList));
+
+export const listInstances = (
+  gws: Gws,
+  calendarId: string,
+  eventId: string,
+  window: { readonly timeMin: string; readonly timeMax: string },
+  signal: AbortSignal,
+) =>
+  retrying(
+    gws,
+    ["calendar", "events", "instances"],
+    { calendarId, eventId, ...window },
+    (stdout) =>
+      stdout
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .flatMap((line) => decodeEventPage(line).items ?? []),
+    ["--page-all"],
     signal,
   );

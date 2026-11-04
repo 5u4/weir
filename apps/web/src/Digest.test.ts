@@ -30,7 +30,7 @@ import {
   seeded,
 } from "./Digest.ts";
 
-const item = (seq: number): ItemSummary => ({
+const item = (seq: number, kind: ItemSummary["kind"] = "message"): ItemSummary => ({
   seq,
   occurred_at: `2026-10-20T09:${String(seq).padStart(2, "0")}:00.000Z`,
   from: { name: "Ada", address: "ada@example.com" },
@@ -40,6 +40,8 @@ const item = (seq: number): ItemSummary => ({
   body_new: `message ${seq}`,
   text_new: `message ${seq}`,
   stream: "robin.ellis@example.com",
+  kind,
+  event: null,
 });
 
 const detail = (
@@ -62,7 +64,7 @@ const detail = (
     planned_at: null,
     due: null,
   },
-  items: seqs.map(item),
+  items: seqs.map((seq) => item(seq)),
   digests: digests.map(([id, from_seq, to_seq]) => ({
     id,
     conversation_id: 1,
@@ -82,7 +84,7 @@ const heres = (blocks: ReadonlyArray<Block>) =>
     block._tag === "Bubbles"
       ? block.items.map((item, index) => {
           const here = block.heres?.[index];
-          return here === undefined
+          return here === undefined || here === null
             ? `#${item.seq}: none`
             : `#${item.seq}: ${here.range.from}-${here.range.to} (${here.items}) ${hereLabel(here.items)}`;
         })
@@ -138,6 +140,20 @@ describe("Digest from here", () => {
   it("is absent without a [digest] section", () => {
     const off = { ...conversation, digest: { ...conversation.digest, earlier: null } };
     expect(heres(reader(off, 0, closedUi, null))).toContain("#1: none");
+  });
+
+  it("skips meetings, which are never digested", () => {
+    const withEvents = {
+      ...conversation,
+      items: [...conversation.items.slice(0, -1), item(17, "event"), item(18), item(19, "event")],
+    };
+    expect(heres(reader(withEvents, 0, closedUi, null)).slice(-5)).toEqual([
+      "#15: 15-18 (3) Digest 3 from here",
+      "#16: 16-18 (2) Digest 2 from here",
+      "#17: none",
+      "#18: 18-18 (1) Digest this message",
+      "#19: none",
+    ]);
   });
 });
 
@@ -300,7 +316,14 @@ describe("run state", () => {
       error: "bad json",
       log_path: "/tmp/run.log",
     };
-    expect(seeded(idle, failure, [1, 2, 4, 7, 9].map(item), [])).toEqual({
+    expect(
+      seeded(
+        idle,
+        failure,
+        [1, 2, 4, 7, 9].map((seq) => item(seq)),
+        [],
+      ),
+    ).toEqual({
       _tag: "Failed",
       action: { _tag: "From", seq: 2 },
       range: { from: 2, to: 7 },

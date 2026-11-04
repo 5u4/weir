@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { expect, it } from "vitest";
 import { decodeConfig } from "../src/Config.ts";
 
-it("decodes the fixtures config with its fake-ai profile, gmail source, four tags and a group", () => {
+it("decodes the fixtures config with its fake-ai profile, gmail source, four tags and three groups", () => {
   const config = Effect.runSync(decodeConfig(Bun.TOML.parse(configToml())));
   expect(config.ai).toEqual({
     "fake-ai": { command: ["fake-ai"], timeout: Duration.seconds(30), concurrency: 1 },
@@ -25,6 +25,7 @@ it("decodes the fixtures config with its fake-ai profile, gmail source, four tag
         command: ["fake-gws"],
         backfill: "newer_than:30d",
         labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
+        calendar: "primary",
       },
     },
   ]);
@@ -34,7 +35,11 @@ it("decodes the fixtures config with its fake-ai profile, gmail source, four tag
     ["GitHub", false],
     ["Promos", false],
   ]);
-  expect(config.group.map(({ name }) => name)).toEqual(["Northbank alerts"]);
+  expect(config.group.map(({ name }) => name)).toEqual([
+    "Northbank alerts",
+    "Northwind migration",
+    "Mom's 60th",
+  ]);
 });
 
 it("decodes the fixtures config pointed at a mutable mailbox", () => {
@@ -45,5 +50,6 @@ it("decodes the fixtures config pointed at a mutable mailbox", () => {
     command: ["fake-gws", "--mailbox", '/tmp/mail "box"'],
     backfill: "newer_than:30d",
     labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
+    calendar: "primary",
   });
 });

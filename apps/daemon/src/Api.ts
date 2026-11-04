@@ -180,8 +180,40 @@ export const SearchResult = Schema.Struct({
 });
 export type SearchResult = typeof SearchResult.Type;
 
+export const EventChange = Schema.Union([
+  Schema.TaggedStruct("Created", {}),
+  Schema.TaggedStruct("Moved", { from_start: Schema.String, from_end: Schema.String }),
+  Schema.TaggedStruct("Relocated", { from_location: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct("Cancelled", {}),
+]);
+export type EventChange = typeof EventChange.Type;
+
+export const Attendee = Schema.Struct({
+  name: Schema.NullOr(Schema.String),
+  email: Schema.String,
+  response: Schema.NullOr(Schema.String),
+});
+export type Attendee = typeof Attendee.Type;
+
+export const EventStatus = Schema.Literals(["confirmed", "cancelled"]);
+
+export const EventDetail = Schema.Struct({
+  event_id: Schema.String,
+  series_id: Schema.NullOr(Schema.String),
+  start: Schema.String,
+  end: Schema.String,
+  all_day: Schema.Boolean,
+  location: Schema.NullOr(Schema.String),
+  attendees: Schema.Array(Attendee),
+  status: EventStatus,
+  change: Schema.NullOr(EventChange),
+  recurring: Schema.Boolean,
+});
+export type EventDetail = typeof EventDetail.Type;
+
 export const ItemSummary = Schema.Struct({
   seq: Schema.Int,
+  kind: Schema.Literals(["message", "event"]),
   occurred_at: Schema.String,
   from: Party,
   from_me: Schema.Boolean,
@@ -190,7 +222,27 @@ export const ItemSummary = Schema.Struct({
   body_new: Schema.String,
   text_new: Schema.String,
   stream: Schema.String,
+  event: Schema.NullOr(EventDetail),
 });
+
+export const Meeting = Schema.Struct({
+  conversation_id: Schema.Int,
+  item_seq: Schema.Int,
+  event_id: Schema.String,
+  series_id: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  start: Schema.String,
+  end: Schema.String,
+  all_day: Schema.Boolean,
+  location: Schema.NullOr(Schema.String),
+  status: EventStatus,
+  change: Schema.NullOr(EventChange),
+  recurring: Schema.Boolean,
+});
+export type Meeting = typeof Meeting.Type;
+
+export const Meetings = Schema.Struct({ meetings: Schema.Array(Meeting) });
+export type Meetings = typeof Meetings.Type;
 
 export const DigestGap = Schema.Struct({
   from_seq: Schema.Int,
@@ -390,6 +442,10 @@ export class ViewGroup extends HttpApiGroup.make("view", { topLevel: true }).add
     error: NotFound,
   }),
   HttpApiEndpoint.get("counts", "/counts", { success: Counts }),
+  HttpApiEndpoint.get("meetings", "/meetings", {
+    query: { from: CalendarDate, to: CalendarDate },
+    success: Meetings,
+  }),
 ) {}
 
 const conversationParams = { id: Schema.Int };

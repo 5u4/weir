@@ -41,7 +41,7 @@ const input = (title: string, items: InputItem[]): DigestInput => ({
   items,
 });
 
-const northwind = input("Northwind migration: cutover plan and UAT sign-off", [
+const northwind = input("Northwind migration", [
   item(21, "2026-10-20T11:05:00-07:00", "Rachel"),
   item(22, "2026-10-21T09:00:00-07:00", "Lisa"),
   item(23, "2026-10-22T09:00:00-07:00", "Ben"),

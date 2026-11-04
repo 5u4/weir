@@ -1,4 +1,5 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
+import type { Meeting } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import {
@@ -11,20 +12,25 @@ import {
 } from "react";
 import { Link } from "./Link.tsx";
 import { dueFlagClass, emptyBigClass, emptyClass } from "./ListClasses.ts";
+import { isCancelled } from "./Meeting.ts";
 import { overdue } from "./Notch.ts";
 import {
+  allDayOn,
   type Block,
   carriedLabel,
   type DatedRow,
   datedOn,
-  dayBlocks,
   dayMinutes,
   dayPlanMinutes,
+  gridRange,
   inMonth,
+  meetingSpans,
   monthEntries,
   monthGrid,
+  monthMeetings,
   movedStart,
   type PlannedRow,
+  placeDayPlans,
   resizedMinutes,
   scrollMinute,
   stepped,
@@ -32,8 +38,9 @@ import {
   trayAge,
   trayRows,
 } from "./PlanLayout.ts";
+import { focusedItem } from "./Reading.ts";
 import { ConversationId, type Route, route, type Scale } from "./Route.ts";
-import { clockNow, dismiss, planList, planRows, today } from "./Weir.ts";
+import { clockNow, dismiss, meetings, planList, planRows, today, zone } from "./Weir.ts";
 import {
   clock,
   daysBetween,
@@ -44,6 +51,8 @@ import {
   type Today,
 } from "./When.ts";
 
+type PlanBlockOf = Extract<Block, { readonly _tag: "Plan" }>;
+type MeetingBlockOf = Extract<Block, { readonly _tag: "Meeting" }>;
 type Source = "tray" | "block" | "chip";
 
 type Drag = {
@@ -403,7 +412,7 @@ export function PlanBlock({
   hands,
   inPlace,
 }: {
-  block: Block;
+  block: PlanBlockOf;
   at: Route;
   date: string;
   today: string;
@@ -483,6 +492,93 @@ export function PlanBlock({
   );
 }
 
+const meetingFocus = (meeting: Meeting) =>
+  Option.some({
+    conversation: ConversationId.make(meeting.conversation_id),
+    seq: meeting.item_seq,
+  });
+
+function MeetingBlock({
+  block,
+  at,
+  selected,
+}: {
+  block: MeetingBlockOf;
+  at: Route;
+  selected: boolean;
+}) {
+  const focus = useAtomSet(focusedItem);
+  const { meeting, start, minutes, lane, lanes } = block;
+  const short = minutes < 45;
+  const cancelled = isCancelled(meeting);
+  return (
+    <article
+      data-k={`m-${meeting.event_id}`}
+      className={`absolute top-slot left-lane h-slot w-lane overflow-hidden rounded-lg bg-bubble text-xs leading-tight text-ink select-none ${selected ? "shadow-ring-thick-ink" : "hover:shadow-ring-ink-4"}`}
+      style={
+        { "--start": start, "--span": minutes, "--lane": lane, "--lanes": lanes } as CSSProperties
+      }
+      onDragStart={handlers.onDragStart}
+    >
+      <Link
+        origin="active"
+        to={openRoute(at, meeting.conversation_id)}
+        current={selected}
+        onOpen={() => focus(meetingFocus(meeting))}
+        description={cancelled ? `${meeting.title}, cancelled` : undefined}
+        className={`flex h-full min-w-0 cursor-default gap-x-2 px-2 py-1 text-ink no-underline ${short ? "items-center" : "flex-col"}`}
+      >
+        <time className="flex-none text-ink-3 tabular-nums">
+          {clock(start)}–{clock(start + minutes)}
+        </time>
+        <span
+          className={`min-w-0 truncate font-semibold ${cancelled ? "text-ink-3 line-through" : ""}`}
+        >
+          {meeting.title}
+        </span>
+        {!short && meeting.location !== null && (
+          <span className="min-w-0 truncate text-ink-3">{meeting.location}</span>
+        )}
+      </Link>
+    </article>
+  );
+}
+
+function AllDay({
+  list,
+  at,
+  open,
+}: {
+  list: ReadonlyArray<Meeting>;
+  at: Route;
+  open: number | null;
+}) {
+  const focus = useAtomSet(focusedItem);
+  if (list.length === 0) return null;
+  return (
+    <ul className="m-0 mb-3 ml-hours flex list-none flex-wrap gap-1.5 p-0">
+      {list.map((meeting) => (
+        <li key={meeting.event_id} className="min-w-0">
+          <Link
+            origin="active"
+            to={openRoute(at, meeting.conversation_id)}
+            current={open === meeting.conversation_id}
+            onOpen={() => focus(meetingFocus(meeting))}
+            className={`inline-flex h-8 max-w-full cursor-default items-center gap-2 rounded-full bg-bubble px-3.5 text-sm text-ink no-underline ${open === meeting.conversation_id ? "shadow-ring-thick-ink" : "hover:shadow-ring-ink-4"}`}
+          >
+            <span className="flex-none text-xs font-semibold text-ink-3">All day</span>
+            <b
+              className={`min-w-0 truncate font-semibold ${isCancelled(meeting) ? "text-ink-3 line-through" : ""}`}
+            >
+              {meeting.title}
+            </b>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 
 function DayTimeline({
@@ -490,14 +586,17 @@ function DayTimeline({
   at,
   date,
   now: current,
+  zone: where,
   hands,
 }: {
   rows: ReadonlyArray<PlannedRow>;
   at: Route;
   date: string;
   now: Today;
+  zone: string;
   hands: Hands;
 }) {
+  const list = useAtomValue(meetings(`${date}/${date}`));
   const drag = hands.drag;
   const preview =
     drag?.moved === true && drag.plan?._tag === "Slot" && drag.plan.date === date
@@ -508,7 +607,7 @@ function DayTimeline({
     inPlace && preview !== null && drag !== null
       ? rows.map((row) => (row.id === drag.row.id ? { ...row, plan: preview } : row))
       : rows;
-  const blocks = dayBlocks(shown, date, current);
+  const blocks = placeDayPlans(shown, meetingSpans(list, date, where), date, current);
   const open = Option.getOrNull(at.conversation);
   const mark = scrollMinute(date, current);
   const scrollTo = useCallback((scroller: HTMLDivElement | null) => {
@@ -521,65 +620,77 @@ function DayTimeline({
       scrollPad;
   }, []);
   return (
-    <div
-      key={date}
-      ref={scrollTo}
-      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin"
-      aria-label={`Timeline for ${dayLong(date)}`}
-    >
-      <div className="plan-hours relative mr-1 ml-hours h-day" data-drop={`slot:${date}`}>
-        <span
-          data-mark=""
-          className="absolute top-slot"
-          style={{ "--start": mark } as CSSProperties}
-        />
-        {hours.map((hour) => (
+    <>
+      <AllDay list={allDayOn(list, date)} at={at} open={open} />
+      <div
+        key={date}
+        ref={scrollTo}
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin"
+        aria-label={`Timeline for ${dayLong(date)}`}
+      >
+        <div className="plan-hours relative mr-1 ml-hours h-day" data-drop={`slot:${date}`}>
           <span
-            key={hour}
-            aria-hidden="true"
-            className="absolute top-slot right-full -mt-2 w-hours pr-2 text-right text-2xs font-medium text-ink-3 tabular-nums"
-            style={{ "--start": hour * 60 } as CSSProperties}
-          >
-            {clock(hour * 60)}
-          </span>
-        ))}
-        {date === current.date && (
-          <span
-            className="absolute top-slot inset-x-0 z-raised h-px bg-ok"
-            style={{ "--start": current.minute } as CSSProperties}
-            aria-label={`Now, ${clock(current.minute)}`}
+            data-mark=""
+            className="absolute top-slot"
+            style={{ "--start": mark } as CSSProperties}
           />
-        )}
-        {blocks.map((block) => (
-          <PlanBlock
-            key={block.row.id}
-            block={block}
-            at={at}
-            date={date}
-            today={current.date}
-            selected={open === block.row.id}
-            hands={hands}
-            inPlace={inPlace && drag?.row.id === block.row.id}
-          />
-        ))}
-        {preview !== null && !inPlace && (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute top-slot left-lane h-slot w-lane rounded-lg border border-dashed border-ink-3 bg-hover px-2 py-1 text-xs font-semibold text-ink-2 tabular-nums"
-            style={
-              {
-                "--start": preview.start,
-                "--span": preview.minutes,
-                "--lane": 0,
-                "--lanes": 1,
-              } as CSSProperties
-            }
-          >
-            {clock(preview.start)}–{clock(preview.start + preview.minutes)}
-          </span>
-        )}
+          {hours.map((hour) => (
+            <span
+              key={hour}
+              aria-hidden="true"
+              className="absolute top-slot right-full -mt-2 w-hours pr-2 text-right text-2xs font-medium text-ink-3 tabular-nums"
+              style={{ "--start": hour * 60 } as CSSProperties}
+            >
+              {clock(hour * 60)}
+            </span>
+          ))}
+          {date === current.date && (
+            <span
+              className="absolute top-slot inset-x-0 z-raised h-px bg-ok"
+              style={{ "--start": current.minute } as CSSProperties}
+              aria-label={`Now, ${clock(current.minute)}`}
+            />
+          )}
+          {blocks.map((block) =>
+            block._tag === "Meeting" ? (
+              <MeetingBlock
+                key={`m-${block.meeting.event_id}`}
+                block={block}
+                at={at}
+                selected={open === block.meeting.conversation_id}
+              />
+            ) : (
+              <PlanBlock
+                key={block.row.id}
+                block={block}
+                at={at}
+                date={date}
+                today={current.date}
+                selected={open === block.row.id}
+                hands={hands}
+                inPlace={inPlace && drag?.row.id === block.row.id}
+              />
+            ),
+          )}
+          {preview !== null && !inPlace && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-slot left-lane h-slot w-lane rounded-lg border border-dashed border-ink-3 bg-hover px-2 py-1 text-xs font-semibold text-ink-2 tabular-nums"
+              style={
+                {
+                  "--start": preview.start,
+                  "--span": preview.minutes,
+                  "--lane": 0,
+                  "--lanes": 1,
+                } as CSSProperties
+              }
+            >
+              {clock(preview.start)}–{clock(preview.start + preview.minutes)}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -672,6 +783,43 @@ function MonthChip({
   );
 }
 
+function MonthMeeting({
+  meeting,
+  start,
+  at,
+  selected,
+}: {
+  meeting: Meeting;
+  start: number | null;
+  at: Route;
+  selected: boolean;
+}) {
+  const focus = useAtomSet(focusedItem);
+  const cancelled = isCancelled(meeting);
+  return (
+    <li
+      className={`min-w-0 overflow-hidden rounded-md bg-bubble select-none ${selected ? "shadow-ring-thick-ink" : ""}`}
+      onDragStart={handlers.onDragStart}
+    >
+      <Link
+        origin="active"
+        to={openRoute(at, meeting.conversation_id)}
+        current={selected}
+        onOpen={() => focus(meetingFocus(meeting))}
+        description={cancelled ? `${meeting.title}, cancelled` : undefined}
+        className="flex h-5 min-w-0 cursor-default items-center gap-1 px-1.5 text-2xs font-semibold text-ink-2 no-underline max-wide:px-1"
+      >
+        {start !== null && (
+          <time className="flex-none text-ink-3 tabular-nums max-wide:hidden">{clock(start)}</time>
+        )}
+        <span className={`min-w-0 truncate ${cancelled ? "text-ink-3 line-through" : ""}`}>
+          {meeting.title}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
 const weekClass = "col-span-full grid grid-cols-subgrid";
 
 function MonthGrid({
@@ -679,16 +827,20 @@ function MonthGrid({
   at,
   month,
   now: current,
+  zone: where,
   hands,
 }: {
   rows: ReadonlyArray<PlannedRow>;
   at: Route;
   month: string;
   now: Today;
+  zone: string;
   hands: Hands;
 }) {
   const [, navigate] = useAtom(route);
   const open = Option.getOrNull(at.conversation);
+  const weeks = monthGrid(month);
+  const list = useAtomValue(meetings(gridRange(month)));
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 scrollbar-thin">
       <div className="grid grid-cols-7 gap-1" role="grid" aria-label={monthTitle(month)}>
@@ -703,11 +855,14 @@ function MonthGrid({
             </span>
           ))}
         </div>
-        {monthGrid(month).map((week) => (
+        {weeks.map((week) => (
           <div key={week[0]} role="row" className={weekClass}>
             {week.map((date) => {
               const entries = monthEntries(rows, date, current.date);
-              const shown = entries.slice(0, 3);
+              const met = monthMeetings(list, date, where);
+              const metShown = met.slice(0, 3);
+              const shown = entries.slice(0, 3 - metShown.length);
+              const more = met.length + entries.length - metShown.length - shown.length;
               const key = `day:${date}`;
               return (
                 <div
@@ -715,7 +870,7 @@ function MonthGrid({
                   role="gridcell"
                   data-drop={key}
                   data-over={hands.drag?.over === key || undefined}
-                  aria-label={`${dayLong(date)}, ${entries.length} planned`}
+                  aria-label={`${dayLong(date)}, ${met.length === 0 ? "" : `${met.length} ${met.length === 1 ? "meeting" : "meetings"}, `}${entries.length} planned`}
                   className={`flex min-h-cell min-w-0 flex-col gap-1 rounded-xl p-1.5 transition-bg data-over:bg-g-hover max-wide:min-h-cell-sm max-wide:p-1 ${monthOf(date) === month ? "bg-hover" : "opacity-half"}`}
                 >
                   <button
@@ -736,8 +891,17 @@ function MonthGrid({
                   >
                     {Number(date.slice(8, 10))}
                   </button>
-                  {shown.length > 0 && (
+                  {metShown.length + shown.length > 0 && (
                     <ul className="m-0 flex min-w-0 list-none flex-col gap-0.5 p-0">
+                      {metShown.map(({ meeting, start }) => (
+                        <MonthMeeting
+                          key={`m-${meeting.event_id}`}
+                          meeting={meeting}
+                          start={start}
+                          at={at}
+                          selected={open === meeting.conversation_id}
+                        />
+                      ))}
                       {shown.map((row) => (
                         <MonthChip
                           key={row.id}
@@ -750,10 +914,8 @@ function MonthGrid({
                       ))}
                     </ul>
                   )}
-                  {entries.length > shown.length && (
-                    <span className="px-1 text-2xs font-semibold text-ink-3">
-                      +{entries.length - shown.length} more
-                    </span>
+                  {more > 0 && (
+                    <span className="px-1 text-2xs font-semibold text-ink-3">+{more} more</span>
                   )}
                 </div>
               );
@@ -854,6 +1016,7 @@ function Shell({ reading, children }: { reading: boolean; children: ReactNode })
 export function PlanView() {
   const [at] = useAtom(route);
   const current = useAtomValue(today);
+  const where = useAtomValue(zone);
   const rows = useAtomValue(planRows);
   const result = useAtomValue(planList);
   const loaded = !AsyncResult.isInitial(result);
@@ -865,7 +1028,9 @@ export function PlanView() {
     Option.match(current, { onNone: () => "", onSome: ({ date: day }) => day }),
   );
   const reading = Option.isSome(at.conversation);
-  if (Option.isNone(current) || date === "") return <Shell reading={reading}>{null}</Shell>;
+  if (Option.isNone(current) || Option.isNone(where) || date === "") {
+    return <Shell reading={reading}>{null}</Shell>;
+  }
   const month = monthOf(date);
   return (
     <Shell reading={reading}>
@@ -882,12 +1047,26 @@ export function PlanView() {
             {at.scale === "day" ? (
               <>
                 <DayHeading rows={rows} date={date} now={current.value} />
-                <DayTimeline rows={rows} at={at} date={date} now={current.value} hands={hands} />
+                <DayTimeline
+                  rows={rows}
+                  at={at}
+                  date={date}
+                  now={current.value}
+                  zone={where.value}
+                  hands={hands}
+                />
               </>
             ) : (
               <>
                 <MonthHeading rows={rows} month={month} now={current.value} />
-                <MonthGrid rows={rows} at={at} month={month} now={current.value} hands={hands} />
+                <MonthGrid
+                  rows={rows}
+                  at={at}
+                  month={month}
+                  now={current.value}
+                  zone={where.value}
+                  hands={hands}
+                />
               </>
             )}
           </section>

@@ -42,7 +42,7 @@ export type Bubbles = {
   readonly from: ItemSummary["from"];
   readonly at: string;
   readonly items: ReadonlyArray<ItemSummary>;
-  readonly heres: ReadonlyArray<Here> | null;
+  readonly heres: ReadonlyArray<Here | null> | null;
 };
 
 export type Day = { readonly _tag: "Day"; readonly at: string };
@@ -120,12 +120,12 @@ export const span = (items: ReadonlyArray<ItemSummary>) =>
 const group = (
   items: ReadonlyArray<ItemSummary>,
   breakBefore: (item: ItemSummary) => boolean,
-  here: ReadonlyArray<Here> | null,
+  here: ReadonlyArray<Here | null> | null,
 ) =>
   items.reduce<Array<Bubbles | Day>>((groups, item, index) => {
     const current = groups.at(-1);
     const previous = items[index - 1];
-    const at = here?.[index];
+    const at = here === null ? null : (here[index] ?? null);
     const nextDay =
       previous !== undefined &&
       calendarDay(DateTime.makeUnsafe(previous.occurred_at)) !==
@@ -143,13 +143,13 @@ const group = (
         from: item.from,
         at: item.occurred_at,
         items: [item],
-        heres: at === undefined ? null : [at],
+        heres: here === null ? null : [at],
       });
     } else {
       groups[groups.length - 1] = {
         ...current,
         items: [...current.items, item],
-        heres: current.heres === null || at === undefined ? null : [...current.heres, at],
+        heres: current.heres === null ? null : [...current.heres, at],
       };
     }
     return groups;
@@ -305,14 +305,16 @@ export const reader = (
         blocks.push(
           ...(head.length > 0
             ? head
-            : [
-                {
-                  _tag: "Tail" as const,
-                  items: seg.items,
-                  now: detail.digest.now,
-                  backlog: detail.digest.backlog,
-                },
-              ]),
+            : seg.items.every((item) => item.kind === "event")
+              ? []
+              : [
+                  {
+                    _tag: "Tail" as const,
+                    items: seg.items,
+                    now: detail.digest.now,
+                    backlog: detail.digest.backlog,
+                  },
+                ]),
         );
         bubbles(seg.items);
         blocks.push(...skeleton(seg.items, "end"));

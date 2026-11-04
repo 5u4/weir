@@ -39,8 +39,10 @@ export const rawItem = (externalId: string, overrides: Partial<Fixture> = {}): F
 export const writeRaw = (stream: StreamRow, items: ReadonlyArray<Fixture>) =>
   writeItems(
     stream,
-    items.map((item) => ({
-      ...draft(stream, item),
-      key: item.key ?? item.threadId ?? item.containerId,
-    })),
+    items.flatMap((item) => {
+      const drafted = draft(stream, item, undefined, true);
+      return drafted === null
+        ? []
+        : [{ ...drafted, key: item.key ?? item.threadId ?? item.containerId }];
+    }),
   );

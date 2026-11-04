@@ -12,6 +12,7 @@ export function Link({
   pop = false,
   className,
   description,
+  onOpen,
   children,
 }: {
   to: Route;
@@ -20,6 +21,7 @@ export function Link({
   pop?: boolean;
   className: string;
   description?: string | undefined;
+  onOpen?: () => void;
   children: ReactNode;
 }) {
   const [, navigate] = useAtom(route);
@@ -34,6 +36,7 @@ export function Link({
       onClick={(event) => {
         if (event.defaultPrevented || !plainLeftClick(event)) return;
         event.preventDefault();
+        onOpen?.();
         navigate({ _tag: "Go", to, origin });
       }}
     >

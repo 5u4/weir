@@ -50,9 +50,20 @@ const writePage = Effect.fnUntraced(function* (
 ) {
   const deleted = yield* Write.softDeleteItems(stream.id, page.deletions);
   const removed = new Set(page.deletions);
-  const drafts = page.upserts
-    .filter(({ externalId }) => !removed.has(externalId))
-    .map((item) => Write.draft(stream, item));
+  const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
+  const priors = yield* Read.priorEvents(
+    stream.id,
+    upserts.flatMap(({ event }) => (event === undefined ? [] : [event.eventId])),
+  );
+  const drafts = upserts.flatMap((item) => {
+    const draft = Write.draft(
+      stream,
+      item,
+      item.event === undefined ? undefined : priors.get(item.event.eventId),
+      page.kind === "live",
+    );
+    return draft === null ? [] : [draft];
+  });
   const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
@@ -81,7 +92,25 @@ const writePage = Effect.fnUntraced(function* (
     yield* Write.advanceSeenSeq(
       written.filter(({ inserted, conversationWasRead }) => inserted && conversationWasRead),
     );
+    if (stream.kind === "event") {
+      const fresh = yield* Read.eventOnly([
+        ...new Set(
+          written
+            .filter(({ conversationWasNew }) => conversationWasNew)
+            .map(({ conversationId }) => conversationId),
+        ),
+      ]);
+      yield* Write.advanceClearedSeq([
+        ...new Set([
+          ...written
+            .filter(({ conversationWasDone }) => conversationWasDone)
+            .map(({ conversationId }) => conversationId),
+          ...fresh,
+        ]),
+      ]);
+    }
   }
+  yield* Write.replaceOccurrences(stream.sourceId, page.occurrences ?? []);
   yield* Write.saveCursor(stream.id, page.cursor, page.backfill);
   return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });

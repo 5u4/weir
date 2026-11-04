@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyRevisions, type Calendar, emptyCalendar } from "./calendar.ts";
 import { type GeneratedMessage, gmailMessages, type Message } from "./gmail.ts";
 import { scenarios, type Thread } from "./scenarios.ts";
 
@@ -63,6 +64,7 @@ export type Mailbox = {
   messages: Record<string, Message>;
   pending: string[];
   history: History[];
+  calendar: Calendar;
   delay?: Record<string, number>;
   quota?: { until: number; methods: string[] };
 };
@@ -136,6 +138,7 @@ const empty = (now: string): Mailbox => {
     messages: {},
     pending: [],
     history: [],
+    calendar: emptyCalendar(),
   };
 };
 
@@ -146,6 +149,7 @@ export const seed = (now: string): Mailbox => {
     if (Number(m.internalDate) <= cutoff) deliverOne(mailbox, m);
     else mailbox.pending.push(m.id);
   }
+  applyRevisions(mailbox.calendar, now);
   return mailbox;
 };
 

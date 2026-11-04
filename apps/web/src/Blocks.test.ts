@@ -25,6 +25,8 @@ const item = (seq: number, minute: number, from = ada, from_me = false): ItemSum
   body_new: `message ${seq}`,
   text_new: `message ${seq}`,
   stream: "robin.ellis@example.com",
+  kind: "message",
+  event: null,
 });
 
 const digest = (id: number, from_seq: number, to_seq: number, seqs = [from_seq]): Digest => ({
@@ -117,6 +119,26 @@ describe("reader blocks", () => {
       "last-read(1)",
       "Ada Lovelace[12]",
     ]);
+  });
+
+  it("a trailing run of only meetings has no Not digested line; one mail brings it back", () => {
+    const meeting = (seq: number, minute: number) => ({
+      ...item(seq, minute),
+      kind: "event" as const,
+    });
+    const digested = [item(10, 30, robin, true), item(11, 31)];
+    for (const [tail, expected] of [
+      [[meeting(12, 32), meeting(13, 33)], []],
+      [[meeting(12, 32), item(13, 33)], ["Tail(2)"]],
+    ] as const) {
+      const blocks = reader(
+        detail([...digested, ...tail], [digest(1, 10, 11, [10, 11])]),
+        99,
+        closedUi,
+        null,
+      );
+      expect(shape(blocks).filter((tag) => tag.startsWith("Tail"))).toEqual(expected);
+    }
   });
 
   it("the session shape overrides card or row and keeps Last read above a collapsed card", () => {

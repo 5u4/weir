@@ -118,6 +118,8 @@ const daemon = vi.hoisted(() => {
             body_new: state.body,
             text_new: state.body,
             stream: "robin.ellis@example.com",
+            kind: "message",
+            event: null,
             raw: null,
             deleted_at: null,
           },

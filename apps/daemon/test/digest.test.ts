@@ -14,8 +14,10 @@ import * as Http from "../src/Http.ts";
 import {
   adjustableClock,
   apiClient,
+  calendarStream,
   type DigestOptions,
   digestConfig,
+  eventItem,
   eventually,
   type FakeSource,
   fakePlugin,
@@ -78,10 +80,10 @@ const serve = (home: WeirHome, port: number, source: FakeSource) =>
     const maxSeq = client
       .conversations({ query: { view: { _tag: "Untagged" } } })
       .pipe(Effect.map(({ seq }) => seq));
-    const deliver = (items: ReadonlyArray<RawItem>) =>
+    const deliver = (items: ReadonlyArray<RawItem>, queue: Array<RawItem> = source.pending) =>
       Effect.gen(function* () {
         const before = yield* maxSeq;
-        source.pending.push(...items);
+        queue.push(...items);
         yield* eventually(maxSeq, (seq) => seq >= before + items.length);
       });
     const conversationOf = (title: string) =>
@@ -96,12 +98,13 @@ const serve = (home: WeirHome, port: number, source: FakeSource) =>
     return { client, deliver, conversationOf, detail };
   });
 
-const start = (options: Omit<DigestOptions, "capture"> = {}) =>
+const start = (options: Omit<DigestOptions, "capture"> = {}, calendar = false) =>
   Effect.gen(function* () {
     const { home, port, writeConfig } = makeHome("");
     const capture = join(home.root, "capture.jsonl");
     writeConfig(configFor({ capture, ...options }));
     const source = fakeSource([]);
+    if (calendar) source.streams = async () => [mailStream, calendarStream];
     const served = yield* serve(home, port, source);
     return {
       ...served,
@@ -856,6 +859,69 @@ describe("detail digest ranges", () => {
         now: null,
         last_failure: null,
       });
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("calendar events", () => {
+  const meeting = (externalId: string, title: string, chars: number, minute: number) => {
+    const text = `${"word ".repeat(Math.ceil(chars / 5)).slice(0, chars - 1)}.`;
+    return eventItem(externalId, {
+      threadId: title,
+      title,
+      occurredAt: `2030-01-01T09:${String(minute).padStart(2, "0")}:00Z`,
+      body: text,
+      bodyNew: text,
+    });
+  };
+
+  it.live("an event-only conversation over the threshold makes no AI call", () =>
+    Effect.gen(function* () {
+      const { deliver, conversationOf, detail, calls, source } = yield* start({}, true);
+      yield* deliver(
+        [meeting("e1", "Work offsite", 900, 1), meeting("e2", "Work offsite", 900, 2)],
+        source.pendingEvents,
+      );
+      const offsite = yield* conversationOf("Work offsite");
+      expect((yield* detail(offsite)).tags).toEqual(["Work"]);
+      yield* deliver([item("w1", "Work plan", 1200, 3)]);
+      const work = yield* conversationOf("Work plan");
+      yield* eventually(detail(work), ({ digests }) => digests.length > 0);
+      const offsiteDetail = yield* detail(offsite);
+      expect(offsiteDetail.digests).toEqual([]);
+      expect(offsiteDetail.digest.backlog).toEqual({ chars: 0, threshold: 1000 });
+      expect(offsiteDetail.digest.now).toBeNull();
+      expect(calls().map(({ input }) => input.conversation.id)).toEqual([work]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("an event inside a mail range is left out of the prompt and the digest is written", () =>
+    Effect.gen(function* () {
+      const { deliver, conversationOf, detail, calls, source } = yield* start({}, true);
+      yield* deliver([item("w1", "Work plan", 600, 1)]);
+      yield* deliver([meeting("e1", "Work plan", 300, 2)], source.pendingEvents);
+      yield* deliver([item("w2", "Work plan", 600, 3)]);
+      const work = yield* conversationOf("Work plan");
+      const digested = yield* eventually(detail(work), ({ digests }) => digests.length > 0);
+      const [w1, e1, w2] = digested.items.map(({ seq }) => seq);
+      expect(digested.items.map(({ kind }) => kind)).toEqual(["message", "event", "message"]);
+      expect(ranges(digested.digests)).toEqual([[w1, w2, "auto"]]);
+      expect(calls().map(({ input }) => input.items.map(({ seq }) => seq))).toEqual([[w1, w2]]);
+      expect(e1).toBeGreaterThan(w1 ?? 0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("Digest now on a conversation with only events is rejected without an AI call", () =>
+    Effect.gen(function* () {
+      const { client, deliver, conversationOf, calls, source } = yield* start({}, true);
+      yield* deliver([meeting("e1", "List review", 100, 1)], source.pendingEvents);
+      const id = yield* conversationOf("List review");
+      const rejected = yield* Effect.flip(client.digest({ params: { id }, payload: {} }));
+      expect(rejected).toMatchObject({
+        _tag: "DigestConflict",
+        message: "the conversation has no items",
+      });
+      expect(calls()).toEqual([]);
     }).pipe(Effect.scoped),
   );
 });

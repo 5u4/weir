@@ -1,5 +1,11 @@
 import { CalendarDate, Topic, Trigger } from "@weir/contract/Digest";
-import { BodyFormat, RowParty, StreamDescriptor } from "@weir/contract/Source";
+import {
+  BodyFormat,
+  EventAttendee,
+  EventStatus,
+  RowParty,
+  StreamDescriptor,
+} from "@weir/contract/Source";
 import * as Schema from "effect/Schema";
 
 export const UtcIso = Schema.String.check(
@@ -73,6 +79,61 @@ export const SourcedItemRow = Schema.Struct({
   conversationKey: Schema.String,
 });
 export type SourcedItemRow = typeof SourcedItemRow.Type;
+
+export const EventChange = Schema.Union([
+  Schema.TaggedStruct("Created", {}),
+  Schema.TaggedStruct("Moved", { fromStart: Schema.String, fromEnd: Schema.String }),
+  Schema.TaggedStruct("Relocated", { fromLocation: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct("Cancelled", {}),
+]);
+export type EventChange = typeof EventChange.Type;
+
+const eventTimeFields = {
+  eventId: Schema.String,
+  startAt: Schema.String,
+  endAt: Schema.String,
+  startUtc: UtcIso,
+  endUtc: UtcIso,
+  allDay: Schema.BooleanFromBit,
+  status: EventStatus,
+};
+
+export const EventDetailRow = Schema.Struct({
+  itemSeq: Seq,
+  ...eventTimeFields,
+  seriesId: Schema.NullOr(Schema.String),
+  recurring: Schema.BooleanFromBit,
+  timeZone: Schema.NullOr(Schema.String),
+  location: Schema.NullOr(Schema.String),
+  attendees: Schema.fromJsonString(Schema.Array(EventAttendee)),
+  change: Schema.fromJsonString(Schema.NullOr(EventChange)),
+});
+export type EventDetailRow = typeof EventDetailRow.Type;
+
+export const EventOccurrenceRow = Schema.Struct({
+  sourceId: Schema.String,
+  seriesId: Schema.String,
+  ...eventTimeFields,
+});
+export type EventOccurrenceRow = typeof EventOccurrenceRow.Type;
+
+export const MeetingRow = Schema.Struct({
+  conversationId: ConversationId,
+  itemSeq: Seq,
+  eventId: Schema.String,
+  seriesId: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  startAt: Schema.String,
+  endAt: Schema.String,
+  startUtc: UtcIso,
+  endUtc: UtcIso,
+  allDay: Schema.BooleanFromBit,
+  location: Schema.NullOr(Schema.String),
+  status: EventStatus,
+  change: Schema.fromJsonString(Schema.NullOr(EventChange)),
+  recurring: Schema.BooleanFromBit,
+});
+export type MeetingRow = typeof MeetingRow.Type;
 
 export const ConversationRow = Schema.Struct({
   id: ConversationId,

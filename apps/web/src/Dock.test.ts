@@ -9,26 +9,37 @@ import {
 } from "./Dock.ts";
 
 describe("dock actions for the open conversation", () => {
+  const standing = (state: Standing["state"], read: boolean, eventOnly = false): Standing => ({
+    state,
+    read,
+    eventOnly,
+  });
   it.each<[string, Standing, ReadonlyArray<DockAction>]>([
-    ["unread", { state: "unread", read: false }, ["Done", "Plan", "Mute"]],
-    ["read", { state: "read", read: true }, ["Done", "Plan", "MarkUnread", "Mute"]],
+    ["unread", standing("unread", false), ["Done", "Plan", "Mute"]],
+    ["read", standing("read", true), ["Done", "Plan", "MarkUnread", "Mute"]],
     [
       "unread, just read to the end",
-      { state: "unread", read: true },
+      standing("unread", true),
       ["Done", "Plan", "MarkUnread", "Mute"],
     ],
-    ["read, then marked unread", { state: "read", read: false }, ["Done", "Plan", "Mute"]],
-    ["done and read", { state: "done", read: true }, ["Restore", "Plan", "MarkUnread", "Mute"]],
-    ["done with unread messages", { state: "done", read: false }, ["Restore", "Plan", "Mute"]],
+    ["read, then marked unread", standing("read", false), ["Done", "Plan", "Mute"]],
+    ["done and read", standing("done", true), ["Restore", "Plan", "MarkUnread", "Mute"]],
+    ["done with unread messages", standing("done", false), ["Restore", "Plan", "Mute"]],
     [
       "planned and read",
-      { state: "planned", read: true },
+      standing("planned", true),
       ["Done", "Plan", "Restore", "MarkUnread", "Mute"],
     ],
-    ["muted and read", { state: "muted", read: true }, ["Restore", "MarkUnread"]],
-    ["muted with unread messages", { state: "muted", read: false }, ["Restore"]],
-  ])("%s", (_, standing, expected) => {
-    expect(dockActions(standing)).toEqual(expected);
+    ["muted and read", standing("muted", true), ["Restore", "MarkUnread"]],
+    ["muted with unread messages", standing("muted", false), ["Restore"]],
+    ["a calendar-only conversation", standing("unread", false, true), ["Done", "Mute"]],
+    [
+      "a calendar-only conversation, done",
+      standing("done", true, true),
+      ["Restore", "MarkUnread", "Mute"],
+    ],
+  ])("%s", (_, given, expected) => {
+    expect(dockActions(given)).toEqual(expected);
   });
 });
 

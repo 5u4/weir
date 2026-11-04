@@ -1,6 +1,6 @@
 [
   {
-    "conversation": "Northwind migration: cutover plan and UAT sign-off",
+    "conversation": "Northwind migration",
     "first_occurred_at": "2026-10-20T18:05:00.000Z",
     "last_occurred_at": "2026-10-23T15:05:00.000Z",
     "output": {
@@ -17,7 +17,7 @@
     }
   },
   {
-    "conversation": "Mom's 60th: plan, dates and money",
+    "conversation": "Mom's 60th",
     "first_occurred_at": "2026-10-24T03:15:00.000Z",
     "last_occurred_at": "2026-10-24T03:15:00.000Z",
     "output": {

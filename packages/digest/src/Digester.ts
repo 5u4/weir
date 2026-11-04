@@ -115,7 +115,8 @@ export const make = Effect.fnUntraced(function* (
   const runChunk = Effect.fnUntraced(function* (plan: Plan, chunk: Range) {
     const detail = yield* Read.getConversation(plan.conversationId);
     if (Option.isNone(detail)) return Option.none<Write.DigestWrite>();
-    const { conversation, items } = detail.value;
+    const { conversation } = detail.value;
+    const items = detail.value.items.filter(({ kind }) => kind !== "event");
     const digests = yield* Read.digests([plan.conversationId]);
     const digestInput = Prompt.input({
       language: settings.digest.language,

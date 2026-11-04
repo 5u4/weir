@@ -57,9 +57,19 @@ export const payload = (action: Exclude<Action, { readonly _tag: "Redo" }>): Pay
   }
 };
 
-export const heres = (run: ReadonlyArray<{ readonly seq: number }>): ReadonlyArray<Here> => {
-  const to = run.at(-1)?.seq ?? 0;
-  return run.map(({ seq }, index) => ({ range: { from: seq, to }, items: run.length - index }));
+export const heres = (
+  run: ReadonlyArray<{ readonly seq: number; readonly kind: "message" | "event" }>,
+): ReadonlyArray<Here | null> => {
+  const messages = run.filter(({ kind }) => kind === "message");
+  const to = messages.at(-1)?.seq ?? 0;
+  return run.map(({ seq, kind }) =>
+    kind === "message"
+      ? {
+          range: { from: seq, to },
+          items: messages.length - messages.findIndex((message) => message.seq === seq),
+        }
+      : null,
+  );
 };
 
 export const hereLabel = (items: number) =>

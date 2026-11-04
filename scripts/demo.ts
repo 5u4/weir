@@ -8,8 +8,10 @@ import { plugins } from "@weir/daemon/Daemon";
 import * as Home from "@weir/daemon/Home";
 import * as Http from "@weir/daemon/Http";
 import {
+  CALENDAR_CHANGES_AT,
   configToml,
   deliver,
+  deliverEvents,
   expectedDigests,
   expectedTags,
   FIXTURE_NOW,
@@ -28,24 +30,18 @@ import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
 
 const searches: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
-  ["Northwind", ["Northwind migration: cutover plan and UAT sign-off"]],
+  ["Northwind", ["Northwind migration"]],
   [
     "migrat",
     [
-      "Northwind migration: cutover plan and UAT sign-off",
+      "Northwind migration",
       "[ledgerline/billing-api] Enforce unique (tenant_id, idempotency_key) on invoices (PR #4821)",
       "[ledgerline/billing-api] Batched backfill for invoice_line_items (PR #4818)",
     ],
   ],
   ["idempotency backfill", ["The Pragmatic Ledger #212: idempotency keys are not enough"]],
   ["Alfama", ["Last call: 2 nights for the price of 1 in Lisbon"]],
-  [
-    "60",
-    [
-      "Robin, your weekend list: 30% off trail packs ends Sunday",
-      "Mom's 60th: plan, dates and money",
-    ],
-  ],
+  ["60", ["Robin, your weekend list: 30% off trail packs ends Sunday", "Mom's 60th"]],
 ];
 
 const { values: flags } = parseArgs({
@@ -164,19 +160,35 @@ const demo = Effect.gen(function* () {
     ...Object.keys(expectedTags.tags).map((name) => ({ _tag: "Tag" as const, name })),
     { _tag: "Untagged" as const },
   ];
-  const allConversations = Effect.gen(function* () {
-    const byId = new Map<number, { readonly id: number; readonly last_seq: number }>();
-    for (const view of views) {
-      for (const row of (yield* client.conversations({ query: { view } })).conversations)
-        byId.set(row.id, row);
-    }
-    return [...byId.values()];
-  });
-  const before = yield* allConversations;
+  const conversationsIn = (
+    listed: ReadonlyArray<
+      (typeof views)[number] | { readonly _tag: "Planned" } | { readonly _tag: "Cleared" }
+    >,
+  ) =>
+    Effect.gen(function* () {
+      const byId = new Map<
+        number,
+        {
+          readonly id: number;
+          readonly title: string;
+          readonly last_seq: number;
+          readonly state: string;
+          readonly new: number;
+        }
+      >();
+      for (const view of listed) {
+        for (const row of (yield* client.conversations({ query: { view } })).conversations)
+          byId.set(row.id, row);
+      }
+      return [...byId.values()];
+    });
+  const allConversations = conversationsIn([...views, { _tag: "Planned" }, { _tag: "Cleared" }]);
+  const before = yield* conversationsIn(views);
   for (const { id, last_seq } of before)
     yield* client.read({ params: { id }, payload: { seq: last_seq } });
 
   const delivered = deliver(mailbox, seeded.pending);
+  const invited = deliverEvents(mailbox, FIXTURE_NOW);
   setNow(mailbox, FIXTURE_NOW);
   fixedMillis = millisOf(FIXTURE_NOW);
   yield* client.reload();
@@ -199,10 +211,45 @@ const demo = Effect.gen(function* () {
     }),
   );
   const lines = [
-    `weir demo: temporary WEIR_HOME, fixture clock ${AI_SINCE} (${seeded.delivered} items, read), then ${FIXTURE_NOW} (${delivered.length} more, reload)`,
+    `weir demo: temporary WEIR_HOME, fixture clock ${AI_SINCE} (${seeded.delivered} items, read), then ${FIXTURE_NOW} (${delivered.length} more and ${invited.length} calendar event(s), reload)`,
   ];
   const problems: Array<string> = [];
 
+  const byTitle = <A extends { readonly title: string }>(rows: ReadonlyArray<A>, title: string) =>
+    rows.find((row) => row.title === title);
+  const settled = yield* allConversations;
+  const mom = byTitle(settled, "Mom's 60th");
+  const northwind = byTitle(settled, "Northwind migration");
+  if (mom === undefined || northwind === undefined)
+    return yield* Effect.fail(`no Mom's 60th or Northwind migration conversation after sync`);
+  yield* client.done({ params: { id: mom.id }, payload: { seq: mom.last_seq } });
+  yield* client.plan({
+    params: { id: northwind.id },
+    payload: { plan: { _tag: "Day", date: "2026-10-27" } },
+  });
+  const planned = (yield* client.conversations({ query: { view: { _tag: "Planned" } } }))
+    .conversations;
+  const newBefore = byTitle(planned, "Northwind migration")?.new ?? 0;
+  const changes = deliverEvents(mailbox, CALENDAR_CHANGES_AT);
+  setNow(mailbox, CALENDAR_CHANGES_AT);
+  fixedMillis = millisOf(CALENDAR_CHANGES_AT);
+  yield* client.reload();
+  status = yield* syncedAt(CALENDAR_CHANGES_AT);
+  const changed = yield* allConversations;
+  const momAfter = byTitle(changed, "Mom's 60th");
+  const northwindAfter = byTitle(changed, "Northwind migration");
+  const crit = byTitle(changed, "Design crit");
+  if (momAfter?.state !== "unread")
+    problems.push(`Mom's 60th is ${momAfter?.state} after its lunch moved rooms, expected unread`);
+  if (northwindAfter?.state !== "planned" || northwindAfter.new <= newBefore)
+    problems.push(
+      `Northwind migration is ${northwindAfter?.state} with ${northwindAfter?.new} new after its meetings changed, expected planned with more than ${newBefore} new`,
+    );
+  if (crit?.state !== "unread") problems.push(`Design crit is ${crit?.state}, expected unread`);
+  lines.push(
+    `calendar changes at ${CALENDAR_CHANGES_AT}: ${changes.length} delivered after marking Mom's 60th done and planning Northwind migration`,
+    `  Mom's 60th: ${momAfter?.state}; Northwind migration: ${northwindAfter?.state}, ${northwindAfter?.new} new; Design crit: ${crit?.state}`,
+  );
   for (const [query, expected] of searches) {
     const titles = decodeSearch(yield* weir("search", ...query.split(" "))).conversations.map(
       ({ title }) => title,
@@ -273,7 +320,7 @@ const demo = Effect.gen(function* () {
     for (const digest of conversation.digests) {
       if (digest.trigger !== "auto") continue;
       const range = conversation.items.filter(
-        ({ seq }) => digest.from_seq <= seq && seq <= digest.to_seq,
+        ({ seq, kind }) => kind === "message" && digest.from_seq <= seq && seq <= digest.to_seq,
       );
       const first = range[0];
       const last = range.at(-1);
