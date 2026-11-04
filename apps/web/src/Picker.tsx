@@ -3,13 +3,12 @@ import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { type KeyboardEvent, useState } from "react";
 import { dock } from "./Reading.ts";
-import type { ConversationId } from "./Route.ts";
+import { type ConversationId, route } from "./Route.ts";
 import {
   conversation,
   type DueOverride,
   dismiss,
   type PickerTab,
-  type Planned,
   picker,
   setDue,
   toast,
@@ -24,6 +23,7 @@ import {
   monthDay,
   monthOf,
   monthTitle,
+  type Planned,
   parseDue,
   parseWhen,
   slotMinutes,
@@ -444,13 +444,14 @@ export function Picker({ id }: { id: ConversationId }) {
 
 export function Toast() {
   const [shown, setShown] = useAtom(toast);
+  const [, navigate] = useAtom(route);
   if (Option.isNone(shown)) return null;
-  const { text, key } = shown.value;
+  const { text, key, show } = shown.value;
   return (
     <div className="pointer-events-none fixed bottom-toast left-reader z-dock flex w-reader justify-center max-wide:inset-x-0 max-wide:bottom-picker-safe max-wide:w-auto">
       <p
         key={key}
-        className="m-0 rounded-full bg-capbg px-4 py-2.5 text-sm font-semibold text-cap-1 elevation-float"
+        className="m-0 flex items-center gap-3 rounded-full bg-capbg py-1.5 pr-1.5 pl-4 text-sm font-semibold text-cap-1 elevation-float"
         role="status"
         data-toast=""
         onAnimationEnd={({ target, currentTarget }) => {
@@ -458,6 +459,25 @@ export function Toast() {
         }}
       >
         {text}
+        {Option.isSome(show) && (
+          <button
+            type="button"
+            className="pointer-events-auto inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-cap-1 transition-tint hover:bg-cap-hover"
+            aria-keyshortcuts="g"
+            onClick={() => {
+              setShown(Option.none());
+              navigate({ _tag: "Go", to: show.value, origin: "passive" });
+            }}
+          >
+            Show in Plan
+            <kbd
+              className="rounded-sm px-1 py-0.5 font-sans text-2xs leading-none font-semibold opacity-muted shadow-ring-current"
+              aria-hidden="true"
+            >
+              g
+            </kbd>
+          </button>
+        )}
       </p>
     </div>
   );

@@ -114,7 +114,7 @@ export const sentence = (counts: Counts): Sentence => {
   };
 };
 
-export const overdue = (planned: Counts["planned"], today: string) =>
+export const overdue = (planned: { readonly dues: ReadonlyArray<string> }, today: string) =>
   planned.dues.filter((due) => due < today).length;
 
 export type AlertClause = {
@@ -158,11 +158,13 @@ export const formOf = ({
   reading,
   query,
   searching,
+  planning,
 }: {
   readonly settings: boolean;
   readonly reading: boolean;
   readonly query: string;
   readonly searching: boolean;
+  readonly planning: boolean;
 }): CapForm =>
   settings
     ? "compact"
@@ -172,7 +174,9 @@ export const formOf = ({
         : "result"
       : searching || query !== ""
         ? "search"
-        : "full";
+        : planning
+          ? "compact"
+          : "full";
 
 const notchShape: Record<CapForm, (counts: Counts) => unknown> = {
   full: sentence,

@@ -10,6 +10,7 @@
 @import "./styles/cap.css";
 @import "./styles/prose.css";
 @import "./styles/motion.css";
+@import "./styles/plan.css";
 
 @theme {
   --*: initial;
@@ -171,6 +172,14 @@
   --width-list: clamp(300px, calc(var(--stage-width) * 0.3), 420px);
   --width-reader: calc(var(--stage-width) - var(--width-list) - var(--stage-gap));
   --max-width-compact: calc(var(--width-reader) - 2 * var(--inset-gap) - 2 * var(--size-pill));
+  --width-stage: var(--stage-width);
+  --width-card: 248px;
+  --spacing-hours: var(--spacing-12);
+  --height-day: calc(24 * 60 * var(--plan-minute));
+  --min-height-cell: 112px;
+  --min-height-cell-sm: 56px;
+  --grid-template-columns-plan: minmax(0, 1fr) 300px;
+  --container-plan: 720px;
   --height-band: calc(2 * var(--inset-gap) + var(--size-pill));
   --height-pill: var(--size-pill);
   --size-pill: var(--spacing-12);
@@ -415,6 +424,10 @@
     oklch(var(--cl-l) var(--cl-c) var(--bh)) 24%,
     var(--color-me-bg)
   );
+  --inset-slot: calc(var(--start) * var(--plan-minute));
+  --height-slot: calc(var(--span) * var(--plan-minute) - var(--spacing-0\.5));
+  --inset-lane: calc(var(--lane) * 100% / var(--lanes));
+  --width-lane: calc(100% / var(--lanes) - var(--spacing-1));
 }
 
 @utility linecap-round {
@@ -492,6 +505,8 @@
   --stage-gap: var(--spacing-6);
   --stage-width: min(var(--stage-max), calc(100vw - 2 * var(--inset-edge)));
   --cap-clear: max(var(--height-band), calc(var(--cap-h, 0px) + 2 * var(--inset-gap)));
+  --plan-minute: 1.2px;
+  --plan-hour: calc(60 * var(--plan-minute));
 }
 
 :root[data-theme="dark"] {

@@ -153,8 +153,18 @@ describe("notch form", () => {
       "result",
     ],
     ["Settings", { settings: true, reading: true, query: "a", searching: true }, "compact"],
+    [
+      "Plan",
+      { settings: false, reading: false, query: "", searching: false, planning: true },
+      "compact",
+    ],
+    [
+      "searching from Plan",
+      { settings: false, reading: false, query: "", searching: true, planning: true },
+      "search",
+    ],
   ] as const)("%s", (_, shown, form) => {
-    expect(formOf(shown)).toBe(form);
+    expect(formOf({ planning: false, ...shown })).toBe(form);
   });
 });
 

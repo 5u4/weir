@@ -349,10 +349,20 @@ const ClearedView = Schema.Literal("cleared").pipe(
   ),
 );
 
+const PlannedView = Schema.Literal("plan").pipe(
+  Schema.decodeTo(
+    Schema.TaggedStruct("Planned", {}),
+    SchemaTransformation.transform({
+      decode: () => ({ _tag: "Planned" as const }),
+      encode: () => "plan" as const,
+    }),
+  ),
+);
+
 export const ClearableView = Schema.Union([UntaggedView, TagView]);
 export type ClearableView = typeof ClearableView.Type;
 
-export const View = Schema.Union([UntaggedView, TagView, ClearedView]);
+export const View = Schema.Union([UntaggedView, TagView, ClearedView, PlannedView]);
 export type View = typeof View.Type;
 
 export const ViewList = Schema.Struct({ seq: Schema.Int, conversations: Schema.Array(Row) });

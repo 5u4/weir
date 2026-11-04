@@ -26,6 +26,7 @@ import { groups, type ResultGroup } from "./Results.ts";
 import {
   type ConversationId,
   capCounts,
+  home,
   href,
   listTops,
   type Route,
@@ -191,7 +192,7 @@ function ViewStrip({
   );
 }
 
-const viewRoute = (view: View): Route => ({ view, query: "", conversation: Option.none() });
+const viewRoute = (view: View): Route => ({ ...home, view });
 
 function SearchIcon({ className = "" }: { className?: string }) {
   return (
@@ -298,27 +299,37 @@ function PlannedClause({
   compact?: boolean;
 }) {
   const current = useAtomValue(today);
+  const [at] = useAtom(route);
+  const on = at.mode === "plan" && at.query === "";
   const late = Option.match(current, {
     onNone: () => 0,
     onSome: ({ date }) => overdue(planned, date),
   });
   return (
     <span
-      className={`items-center gap-em-0.3 whitespace-nowrap text-cap-1 ${compact ? "h-9 flex-none px-3 font-sans text-md leading-none font-medium max-wide:h-8.5 max-wide:px-2.5 max-wide:text-sm" : "mr-em-0.3"} ${planned.count === 0 ? "hidden" : "inline-flex"}`}
+      className={`items-center whitespace-nowrap ${compact ? "flex-none" : "mr-em-0.3"} ${planned.count === 0 && !on ? "hidden" : "inline-flex"}`}
     >
-      <CalendarIcon className="size-em-1 text-cap-2" />
-      <span>
-        <Count value={planned.count} className={widgetCountClass(true)} bump /> planned
-        {late > 0 && (
-          <>
-            <span className={glueClass}>, </span>
-            <span className="text-warn-cap">
-              <Count value={late} className={widgetCountClass(true)} /> overdue
-            </span>
-          </>
-        )}
-        {!compact && <span className={glueClass}>.</span>}
-      </span>
+      <Link
+        origin="passive"
+        to={{ ...at, mode: "plan", query: "", conversation: Option.none() }}
+        current={on}
+        description="Open Plan"
+        className={`inline-flex items-center gap-em-0.3 no-underline transition-bg ${on ? "bg-cap-1 text-on-c" : "text-cap-1 hover:bg-cap-hover"} ${compact ? "h-9 rounded-full px-2.5 font-sans text-md leading-none font-medium max-wide:h-8.5 max-wide:px-2 max-wide:text-sm" : "-mx-em-0.3 rounded-chip px-em-0.3 py-em-0.05"}`}
+      >
+        <CalendarIcon className={`size-em-1 ${on ? "" : "text-cap-2"}`} />
+        <span>
+          <Count value={planned.count} className={widgetCountClass(true)} bump /> planned
+          {late > 0 && !compact && (
+            <>
+              <span className={on ? "" : glueClass}>, </span>
+              <span className={on ? "" : "text-warn-cap"}>
+                <Count value={late} className={widgetCountClass(true)} /> overdue
+              </span>
+            </>
+          )}
+        </span>
+      </Link>
+      {!compact && <span className={glueClass}>.</span>}
     </span>
   );
 }
@@ -422,7 +433,7 @@ export function Chip({
       to={viewRoute(widget.view)}
       current={on}
       pop={pop}
-      className={`cw ${chipShapeClass} px-3.5 no-underline ${on ? "bg-cap-1 text-on-c" : "text-cap-1 hover:bg-cap-hover"} ${className}`}
+      className={`cw ${chipShapeClass} px-2.5 no-underline ${on ? "bg-cap-1 text-on-c" : "text-cap-1 hover:bg-cap-hover"} ${className}`}
       description={widgetDescription(widget)}
     >
       {widget.kind === "cleared" ? (
@@ -503,7 +514,7 @@ function QueryField({ stepping, form }: { stepping: ConversationId | null; form:
         </span>
       )}
       <input
-        className={`cap-in col-2 h-9 rounded-full border-none border-current bg-cap-hover px-3.5 py-0 font-sans text-md leading-none font-medium text-cap-1 placeholder:text-cap-3 ${wide ? "w-full min-w-em-6" : "w-em-9 max-wide:w-em-6"}`}
+        className={`cap-in col-2 h-9 rounded-full border-none border-current bg-cap-hover py-0 font-sans text-md leading-none font-medium text-cap-1 placeholder:text-cap-3 ${wide ? "w-full min-w-em-6 px-3.5" : form === "compact" ? "w-em-6 px-3" : "w-em-9 px-3.5 max-wide:w-em-6 max-wide:px-3"}`}
         type="search"
         aria-label="Search"
         placeholder="Search"
@@ -670,13 +681,13 @@ function HitStepper({ id }: { id: ConversationId }) {
 const capClass = (compact: boolean) =>
   `cap fixed top-edge-gap left-reader-gap z-cap mx-auto flex flex-col bg-capbg text-cap-1 elevation-notch **:focus-visible:outline-cap-1 **:focus-visible:outline-offset-near max-wide:left-edge ${compact ? "compact w-fit rounded-full wide:right-stage-gap wide:max-w-compact" : "right-stage-gap rounded-notch max-wide:right-edge"}`;
 
-const capDivClass = "mr-2.5 ml-3.5 h-4.5 w-px flex-none bg-cap-rule max-wide:mr-1.5 max-wide:ml-2";
+const capDivClass = "mx-1.5 h-4.5 w-px flex-none bg-cap-rule max-wide:mx-1";
 
 export function Cap({ form, alert }: { form: CapForm; alert: Option.Option<Alert> }) {
   const [current, navigate] = useAtom(route);
   const setSearching = useAtomSet(searchOpen);
   const loaded = useAtomValue(capCounts);
-  const active = current.query === "" ? current.view : null;
+  const active = current.query === "" && current.mode === "messages" ? current.view : null;
   const result = form === "result";
   return (
     <div

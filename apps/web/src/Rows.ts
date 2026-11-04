@@ -2,11 +2,12 @@ import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
 import { monogram, type Sender } from "./Notch.ts";
 import type { View } from "./Route.ts";
+import type { Planned } from "./When.ts";
 
 export type Intent =
   | { readonly _tag: "Done"; readonly lastSeq: number }
   | { readonly _tag: "Mute" }
-  | { readonly _tag: "Plan" }
+  | { readonly _tag: "Plan"; readonly plan: Planned }
   | { readonly _tag: "Restore"; readonly clearedSeq: number };
 
 export type Act = Intent["_tag"];
@@ -19,20 +20,19 @@ export type Target = {
   readonly cleared_seq: number;
 };
 
-export const intentFor = (act: Act, target: Target): Intent => {
+export const intentFor = (act: Exclude<Act, "Plan">, target: Target): Intent => {
   switch (act) {
     case "Done":
       return { _tag: "Done", lastSeq: target.last_seq };
     case "Mute":
       return { _tag: "Mute" };
-    case "Plan":
-      return { _tag: "Plan" };
     case "Restore":
       return { _tag: "Restore", clearedSeq: target.cleared_seq };
   }
 };
 
-export const leaves = (view: View, act: Act) => (act === "Restore") === (view === "cleared");
+export const leaves = (view: View, act: Act) =>
+  act === "Plan" || (act === "Restore") === (view === "cleared");
 
 export const exits = (view: View, act: Act, searching: boolean) =>
   act !== "Restore" && !searching && leaves(view, act);

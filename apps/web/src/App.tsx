@@ -7,6 +7,7 @@ import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
 import { formOf } from "./Notch.ts";
 import { Toast } from "./Picker.tsx";
+import { PlanView } from "./PlanView.tsx";
 import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
 import { route, searchOpen, settingsOpen } from "./Route.ts";
@@ -45,17 +46,30 @@ export function App() {
   const result = useAtomValue(status);
   const loaded = AsyncResult.getOrElse(AsyncResult.map(result, Option.some), Option.none);
   const alert = Option.flatMap(loaded, alertOf);
-  const form = formOf({ settings: open, reading, query: current.query, searching: opened });
+  const planning = current.mode === "plan";
+  const form = formOf({
+    settings: open,
+    reading,
+    query: current.query,
+    searching: opened,
+    planning,
+  });
   const sheet = open || reading;
   return (
     <>
       <div id="app" data-reading={sheet || undefined}>
-        <main className="list fixed top-edge bottom-0 left-stage w-list scrollbar-thin overflow-y-auto overscroll-contain max-wide:top-list max-wide:right-0 max-wide:left-0 max-wide:w-auto max-wide:px-1.5">
-          <List />
-        </main>
-        <SettingsButton />
+        {planning ? (
+          <PlanView />
+        ) : (
+          <>
+            <main className="list fixed top-edge bottom-0 left-stage w-list scrollbar-thin overflow-y-auto overscroll-contain max-wide:top-list max-wide:right-0 max-wide:left-0 max-wide:w-auto max-wide:px-1.5">
+              <List />
+            </main>
+            <SettingsButton />
+          </>
+        )}
         <section
-          className={`reader fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : "max-wide:hidden"}`}
+          className={`reader fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : planning ? "hidden" : "max-wide:hidden"}`}
           aria-label="Reader"
         >
           {Option.isSome(current.conversation) && (

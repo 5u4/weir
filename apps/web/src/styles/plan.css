@@ -1,0 +1,14 @@
+@layer components {
+  .plan-hours {
+    background-image: repeating-linear-gradient(
+      var(--color-line-2) 0 var(--spacing-px),
+      transparent var(--spacing-px) var(--plan-hour)
+    );
+  }
+
+  .plan [data-dragging] {
+    z-index: var(--z-index-dock);
+    translate: var(--dx) var(--dy);
+    cursor: grabbing;
+  }
+}

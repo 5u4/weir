@@ -55,11 +55,11 @@ describe("rows shown under pending intents", () => {
     expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
   });
 
-  it("Plan hides the row from every view but Cleared, even when something newer arrives", () => {
-    const intents: Intents = new Map([[1, intentFor("Plan", row(1, 5))]]);
+  it("Plan hides the row from every Messages view, Cleared included, even when something newer arrives", () => {
+    const intents: Intents = new Map([[1, { _tag: "Plan", plan: { _tag: "Tray" } }]]);
     expect(ids(shown("untagged", [row(1, 5), row(2, 6)], intents))).toEqual([2]);
     expect(ids(shown("untagged", [row(1, 8)], intents))).toEqual([]);
-    expect(ids(shown("cleared", [row(1, 5)], intents))).toEqual([1]);
+    expect(ids(shown("cleared", [row(1, 5, 5)], intents))).toEqual([]);
   });
 });
 
@@ -68,7 +68,7 @@ describe("which dismissals slide the row out first", () => {
     { view: "untagged", act: "Done", searching: false, expected: true },
     { view: "tag:Work", act: "Mute", searching: false, expected: true },
     { view: "tag:Work", act: "Plan", searching: false, expected: true },
-    { view: "cleared", act: "Plan", searching: false, expected: false },
+    { view: "cleared", act: "Plan", searching: false, expected: true },
     { view: "cleared", act: "Restore", searching: false, expected: false },
     { view: "cleared", act: "Done", searching: false, expected: false },
     { view: "untagged", act: "Done", searching: true, expected: false },

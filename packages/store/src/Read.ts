@@ -27,7 +27,7 @@ export type TagFilter =
   | { readonly _tag: "Tag"; readonly name: string }
   | { readonly _tag: "Untagged" };
 
-export type View = TagFilter | { readonly _tag: "Cleared" };
+export type View = TagFilter | { readonly _tag: "Cleared" } | { readonly _tag: "Planned" };
 
 export type RowQuery = View | { readonly _tag: "Ids"; readonly ids: ReadonlyArray<ConversationId> };
 
@@ -328,8 +328,10 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
     query._tag === "Ids"
       ? sql.in("c.id", query.ids)
       : query._tag === "Cleared"
-        ? sql`c.state IN ('done', 'muted', 'planned')`
-        : sql.and([open, tagCondition(sql, query)]);
+        ? sql`c.state IN ('done', 'muted')`
+        : query._tag === "Planned"
+          ? sql`c.state = 'planned'`
+          : sql.and([open, tagCondition(sql, query)]);
   return yield* decodeListed(
     yield* sql`WITH ${listed(sql)}
       SELECT c.*,
@@ -377,7 +379,7 @@ export const stateTotals = Effect.fnUntraced(function* () {
   const [totals] = yield* decodeStateTotals(
     yield* sql`WITH ${listed(sql)}
       SELECT coalesce(sum(state = 'unread'), 0) AS unread,
-        coalesce(sum(state IN ('done', 'muted', 'planned')), 0) AS cleared
+        coalesce(sum(state IN ('done', 'muted')), 0) AS cleared
       FROM listed`,
   );
   return totals;

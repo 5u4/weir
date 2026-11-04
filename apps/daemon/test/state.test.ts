@@ -32,6 +32,7 @@ const work: View = { _tag: "Tag", name: "Work" };
 const lists: View = { _tag: "Tag", name: "Lists" };
 const untagged: View = { _tag: "Untagged" };
 const cleared: View = { _tag: "Cleared" };
+const planned: View = { _tag: "Planned" };
 
 const item = (externalId: string, thread: string, minute: number, overrides: Partial<RawItem>) =>
   rawItem(externalId, {
@@ -736,7 +737,7 @@ describe("plan and due", () => {
           'Headline', ${JSON.stringify(topics)}, 'manual', 'test', '2026-10-28T10:00:00.000Z')`;
     }).pipe(Effect.provide(Database.layer(db)));
 
-  it.live("each plan kind moves the conversation out of its view and into Cleared", () =>
+  it.live("each plan kind moves the conversation out of its view and Cleared into Plan", () =>
     Effect.gen(function* () {
       const { client, listed, deliver, conversationOf } = yield* start;
       yield* deliver([item("q1", "t1", 1, { title: "Work quarterly" })]);
@@ -746,9 +747,10 @@ describe("plan and due", () => {
       expect(tray).toMatchObject({ state: "planned", plan: { _tag: "Tray" } });
       expect(tray.planned_at).toEqual(expect.any(String));
       expect(ids(yield* listed(work))).toEqual([]);
-      expect(states(yield* listed(cleared))).toEqual([[id, "planned"]]);
+      expect(ids(yield* listed(cleared))).toEqual([]);
+      expect(states(yield* listed(planned))).toEqual([[id, "planned"]]);
       const counts = yield* client.counts();
-      expect(counts).toMatchObject({ unread: 0, cleared: 1, planned: { count: 1, dues: [] } });
+      expect(counts).toMatchObject({ unread: 0, cleared: 0, planned: { count: 1, dues: [] } });
       expect(counts.tags.find(({ name }) => name === "Work")).toMatchObject({ unread: 0, open: 0 });
 
       const day = { _tag: "Day", date: "2026-10-29" } as const;
@@ -771,6 +773,7 @@ describe("plan and due", () => {
         planned_at: null,
       });
       expect(ids(yield* listed(work))).toEqual([id]);
+      expect(ids(yield* listed(planned))).toEqual([]);
     }).pipe(Effect.scoped),
   );
 
@@ -786,7 +789,7 @@ describe("plan and due", () => {
 
       yield* deliver([item("r2", "t1", 2, { title: "Re: Work offsite" })]);
       expect(ids(yield* listed(work))).toEqual([]);
-      const [row] = yield* listed(cleared);
+      const [row] = yield* listed(planned);
       expect(row).toMatchObject({ id, state: "planned", new: 1, plan: { _tag: "Tray" } });
       expect((yield* client.counts()).unread).toBe(0);
     }).pipe(Effect.scoped),
