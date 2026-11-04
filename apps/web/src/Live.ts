@@ -32,5 +32,7 @@ export const refetches = (event: Event, open: Option.Option<number>): Refetch =>
       return event.status === "ok"
         ? { status: true, counts: true, list: true, conversation: Option.isSome(open) }
         : { status: true, counts: false, list: false, conversation: false };
+    case "faces":
+      return { status: false, counts: false, list: false, conversation: false };
   }
 };

@@ -2500,6 +2500,7 @@
         {
           "at": "2026-10-22T09:14:00-07:00",
           "from": "omar",
+          "spoofed": true,
           "to": ["me", "rachel"],
           "cc": ["lisa", "ben"],
           "text": "Hi Robin,\n\nRe-ran the migration on the Oct 20 snapshot with the extended field in UAT: 1.94M records migrated, 0 PO Reference failures.\n\n37 customer records now fail on duplicate email addresses (same email, different customer IDs). List attached. We need a decision from your side for each: merge them into one customer, or keep them separate and we relax the uniqueness rule for your tenant.\n\nOmar"

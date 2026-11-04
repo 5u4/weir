@@ -272,18 +272,24 @@ describe("views and counts", () => {
             unread: 2,
             open: 2,
             senders: [
-              { name: "Ada", address: "ada@x.example" },
-              { name: "List bot", address: "bot@lists.example" },
+              { source: "mail", name: "Ada", address: "ada@x.example", verified: false },
+              { source: "mail", name: "List bot", address: "bot@lists.example", verified: false },
             ],
           },
           {
             name: "Lists",
             unread: 1,
             open: 1,
-            senders: [{ name: "List bot", address: "bot@lists.example" }],
+            senders: [
+              { source: "mail", name: "List bot", address: "bot@lists.example", verified: false },
+            ],
           },
         ],
-        untagged: { unread: 1, open: 1, senders: [{ name: "Bo", address: "bo@x.example" }] },
+        untagged: {
+          unread: 1,
+          open: 1,
+          senders: [{ source: "mail", name: "Bo", address: "bo@x.example", verified: false }],
+        },
         cleared: 0,
         planned: { count: 0, dues: [] },
       });
@@ -601,15 +607,54 @@ describe("list rows", () => {
         });
 
       const mixedParties = {
-        from: { ...ann, me: false },
+        from: { ...ann, me: false, verified: false },
         senders: [
-          { ...me, me: true },
-          { ...ann, me: false },
+          { ...me, me: true, verified: false },
+          { ...ann, me: false, verified: false },
         ],
       };
       expect(yield* producers(mixed)).toEqual([mixedParties, mixedParties, mixedParties]);
-      const mineParties = { from: { ...me, me: true }, senders: [{ ...me, me: true }] };
+      const mineParties = {
+        from: { ...me, me: true, verified: false },
+        senders: [{ ...me, me: true, verified: false }],
+      };
       expect(yield* producers(mine)).toEqual([mineParties, mineParties, mineParties]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("a sender is verified in a row only when every message from them was", () =>
+    Effect.gen(function* () {
+      const { client, listed, deliver, conversationOf } = yield* start;
+      const rachel = { name: "Rachel", address: "rachel@northwind.example" };
+      const omar = { name: "Omar", address: "omar@northwind.example" };
+      yield* deliver([
+        item("v1", "brand", 1, { title: "Brand", from: rachel, fromVerified: true }),
+        item("v2", "brand", 2, { from: { ...rachel, address: "Rachel@Northwind.example" } }),
+        item("v3", "brand", 3, { from: omar, fromVerified: true }),
+        item("v4", "kept", 4, { title: "Kept", from: rachel, fromVerified: true }),
+        item("v5", "kept", 5, { from: rachel, fromVerified: true }),
+      ]);
+      const brand = yield* conversationOf("Brand");
+      const kept = yield* conversationOf("Kept");
+      const rows = yield* listed(untagged);
+
+      expect(rows.find(({ id }) => id === brand)).toMatchObject({
+        from: { ...omar, verified: true },
+        senders: [
+          { ...rachel, verified: false },
+          { ...omar, verified: true },
+        ],
+      });
+      expect(rows.find(({ id }) => id === kept)).toMatchObject({
+        from: { ...rachel, verified: true },
+        senders: [{ ...rachel, verified: true }],
+      });
+      const { items } = yield* client.conversation({ params: { id: brand } });
+      expect(items.map(({ from }) => from.verified)).toEqual([true, false, true]);
+      expect((yield* client.counts()).untagged.senders).toEqual([
+        { source: "mail", ...rachel, verified: true },
+        { source: "mail", ...omar, verified: true },
+      ]);
     }).pipe(Effect.scoped),
   );
 

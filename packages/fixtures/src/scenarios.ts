@@ -4,6 +4,7 @@ export type Person = { name: string; addr: string; bot?: boolean; signature?: st
 export type ThreadMessage = {
   at: string;
   from: string;
+  spoofed?: boolean;
   to: string[];
   cc?: string[];
   text: string;

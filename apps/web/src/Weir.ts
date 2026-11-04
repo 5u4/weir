@@ -25,6 +25,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
+import { observeFaces } from "./Faces.ts";
 import { capture, leave, stay } from "./Flip.ts";
 import { now } from "./Health.ts";
 import { refetches } from "./Live.ts";
@@ -277,6 +278,7 @@ export const live = Weir.runtime.atom((get) =>
     Effect.gen(function* () {
       const open = get.registry.get(route).conversation;
       const refetch = refetches(event, open);
+      observeFaces(get.registry, event);
       if (event.type === "digest") {
         get.registry.update(digestRuns, (runs) =>
           withRun(

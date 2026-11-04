@@ -17,6 +17,9 @@ import {
   DigestRunRow,
   EventDetailRow,
   EventOccurrenceRow,
+  FaceBlobRow,
+  type FaceHash,
+  FaceRow,
   ItemLiteRow,
   ItemRow,
   ListedConversationRow,
@@ -348,14 +351,19 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
           AS items,
         (SELECT count(DISTINCT lower(item.from_address)) FROM item
           WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants,
-        (SELECT json_object('name', item.from_name, 'address', item.from_address,
-            'me', json(iif(item.from_me, 'true', 'false'))) FROM item
-          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
-          ORDER BY item.from_me, item.seq DESC LIMIT 1) AS "from",
+        (SELECT json_object('name', pick.from_name, 'address', pick.from_address,
+            'me', json(iif(pick.from_me, 'true', 'false')),
+            'verified', json(iif((SELECT sum(other.from_verified) = count(*) FROM item other
+              WHERE other.conversation_id = c.id AND other.deleted_at IS NULL
+                AND lower(other.from_address) = lower(pick.from_address)), 'true', 'false')))
+          FROM (SELECT item.from_name, item.from_address, item.from_me FROM item
+            WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
+            ORDER BY item.from_me, item.seq DESC LIMIT 1) AS pick) AS "from",
         (SELECT json_group_array(json_object('name', name, 'address', address,
-            'me', json(iif(me, 'true', 'false')))) FROM
+            'me', json(iif(me, 'true', 'false')), 'verified', json(iif(verified, 'true', 'false'))))
+          FROM
           (SELECT item.from_name AS name, item.from_address AS address, item.from_me AS me,
-              min(item.seq) AS first_seq
+              sum(item.from_verified) = count(*) AS verified, min(item.seq) AS first_seq
             FROM item WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
             GROUP BY lower(item.from_address) ORDER BY first_seq LIMIT ${rowSenders})) AS senders,
         last.from_name AS last_from_name,
@@ -406,8 +414,10 @@ export const plannedDues = Effect.fnUntraced(function* () {
 
 export const UnreadSender = Schema.Struct({
   tag: Schema.NullOr(Schema.String),
+  source: Schema.String,
   name: Schema.String,
   address: Schema.String,
+  verified: Schema.BooleanFromBit,
 });
 export type UnreadSender = typeof UnreadSender.Type;
 
@@ -418,7 +428,7 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
   return yield* decodeUnreadSenders(
     yield* sql`WITH ${listed(sql)},
       latest AS (
-        SELECT listed.id AS conversation_id, item.from_name AS name,
+        SELECT listed.id AS conversation_id, listed.source_id AS source, item.from_name AS name,
           item.from_address AS address, item.occurred_at AS at,
           row_number() OVER (PARTITION BY listed.id ORDER BY item.seq DESC) AS position
         FROM listed
@@ -427,7 +437,11 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
         WHERE listed.state = 'unread'
       ),
       sender AS (
-        SELECT conversation_tag.tag, latest.name, latest.address, max(latest.at) AS at
+        SELECT conversation_tag.tag, latest.source, latest.name, latest.address,
+          (SELECT sum(other.from_verified) = count(*) FROM item other
+            WHERE other.conversation_id = latest.conversation_id AND other.deleted_at IS NULL
+              AND lower(other.from_address) = lower(latest.address)) AS verified,
+          max(latest.at) AS at
         FROM latest
         LEFT JOIN conversation_tag ON conversation_tag.conversation_id = latest.conversation_id
         WHERE latest.position = 1
@@ -436,7 +450,8 @@ export const unreadSenders = Effect.fnUntraced(function* (perTag: number) {
       ranked AS (
         SELECT *, row_number() OVER (PARTITION BY tag ORDER BY at DESC, address) AS rank FROM sender
       )
-      SELECT tag, name, address FROM ranked WHERE rank <= ${perTag} ORDER BY tag, rank`,
+      SELECT tag, source, name, address, verified FROM ranked WHERE rank <= ${perTag}
+      ORDER BY tag, rank`,
   );
 });
 
@@ -672,5 +687,26 @@ export const meetings = Effect.fnUntraced(function* (from: DateTime.Utc, to: Dat
         AND coalesce(master.status, 'confirmed') = 'confirmed'
         AND occurrence.end_utc >= ${start} AND occurrence.start_utc <= ${end}
       ORDER BY start_utc, item_seq`,
+  );
+});
+
+const decodeFaces = Schema.decodeUnknownEffect(Schema.Array(FaceRow));
+
+export const face = Effect.fnUntraced(function* (sourceId: string, address: string) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeFaces(
+      yield* sql`SELECT hash, kind, fetched_at FROM face
+        WHERE source_id = ${sourceId} AND address = ${address}`,
+    ),
+  );
+});
+
+const decodeFaceBlobs = Schema.decodeUnknownEffect(Schema.Array(FaceBlobRow));
+
+export const faceBlob = Effect.fnUntraced(function* (hash: FaceHash) {
+  const sql = yield* SqlClient.SqlClient;
+  return Arr.head(
+    yield* decodeFaceBlobs(yield* sql`SELECT mime, bytes FROM face_blob WHERE hash = ${hash}`),
   );
 });

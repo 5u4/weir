@@ -1,5 +1,6 @@
 import { TextDecoder } from "node:util";
 import type { ItemBody, RawItem } from "@weir/contract/Source";
+import { dmarcAligned } from "./auth.ts";
 import type { Message, MessagePart } from "./gws.ts";
 import { htmlBody, htmlBodyNew, htmlNew, plainBody, plainNew } from "./markdown.ts";
 
@@ -85,6 +86,7 @@ const content = (html: string | null, plain: string, labels: readonly string[]):
 export const toRawItem = (message: Message, emailAddress: string): RawItem => {
   const html = textOf(message.payload, "text/html");
   const plain = textOf(message.payload, "text/plain") ?? "";
+  const from = mailbox(headerOf(message.payload, "from") ?? "");
   return {
     externalId: message.id,
     threadId: message.threadId,
@@ -92,7 +94,8 @@ export const toRawItem = (message: Message, emailAddress: string): RawItem => {
     containerName: "Gmail",
     occurredAt: new Date(Number(message.internalDate)).toISOString(),
     title: headerOf(message.payload, "subject"),
-    from: mailbox(headerOf(message.payload, "from") ?? ""),
+    from,
+    fromVerified: dmarcAligned(headerOf(message.payload, "authentication-results"), from.address),
     ...content(html, plain, message.labelIds ?? []),
     link: `https://mail.google.com/mail/?authuser=${encodeURIComponent(emailAddress)}#all/${message.id}`,
     raw: { ...message, payload: trimPart(message.payload) },

@@ -3,8 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { decode } from "@toon-format/toon";
-import { Api } from "@weir/daemon/Api";
-import { plugins } from "@weir/daemon/Daemon";
+import { Api, facePath } from "@weir/daemon/Api";
 import * as Home from "@weir/daemon/Home";
 import * as Http from "@weir/daemon/Http";
 import {
@@ -15,9 +14,11 @@ import {
   expectedDigests,
   expectedTags,
   FIXTURE_NOW,
+  fixtureFaceNet,
   seedMailbox,
   setNow,
 } from "@weir/fixtures";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -129,7 +130,7 @@ const pollUntil = <A, E, R>(
   });
 
 const demo = Effect.gen(function* () {
-  yield* Layer.build(Http.layer(home, plugins));
+  yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
   const client = yield* HttpApiClient.make(Api, { baseUrl: `http://127.0.0.1:${port}` });
 
   const syncedAt = (iso: string) =>
@@ -376,8 +377,31 @@ const demo = Effect.gen(function* () {
     ...[...got].map(([k, dueText]) => `  ${k}: ${dueText}`),
   );
 
+  const facePerson = "lisa.chen@example.com";
+  const faceUrl = `http://127.0.0.1:${port}${facePath("gmail", facePerson, false)}`;
+  const redirect = yield* pollUntil(
+    `face of ${facePerson}`,
+    Effect.promise(() => fetch(faceUrl, { redirect: "manual" })).pipe(
+      Effect.map((response) => ({
+        done: response.status !== 503,
+        pending: `status ${response.status}`,
+        value: response,
+      })),
+    ),
+  );
+  const location = redirect.headers.get("location");
+  if (redirect.status !== 302 || location === null) {
+    problems.push(`face of ${facePerson} answered ${redirect.status}, expected a 302`);
+  } else {
+    const blob = yield* Effect.promise(() => fetch(`http://127.0.0.1:${port}${location}`));
+    const policy = blob.headers.get("content-security-policy");
+    if (blob.status !== 200 || policy !== "sandbox")
+      problems.push(`face blob ${location} answered ${blob.status} with csp ${policy}`);
+    lines.push(`face of ${facePerson}: ${location} (${blob.headers.get("content-type")})`);
+  }
+
   if (problems.length > 0) return yield* Effect.fail(problems.join("\n"));
-  lines.push("ok: search, tag test and digests match the fixtures");
+  lines.push("ok: search, tag test, digests and faces match the fixtures");
   if (flags.fail) {
     writeConfig(join(home.root, "gone"));
     yield* client.reload();

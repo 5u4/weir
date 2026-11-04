@@ -201,7 +201,7 @@ export const widgetDescription = ({ kind }: Widget) => {
   }
 };
 
-export const monogram = ({ name, address }: Sender) => {
+export const monogram = ({ name, address }: Pick<Sender, "name" | "address">) => {
   const source = (name.trim() === "" ? (address.split("@")[0] ?? "") : name).replace(
     /^[^\p{L}\p{N}]+/u,
     "",

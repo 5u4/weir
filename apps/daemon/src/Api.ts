@@ -2,7 +2,7 @@ import { DurationShorthand } from "@weir/contract/Config";
 import { CalendarDate, Digest, Trigger } from "@weir/contract/Digest";
 import { RuleInput } from "@weir/contract/Rule";
 import { BodyFormat, Party, RowParty } from "@weir/contract/Source";
-import { AiKind, ConversationState, DueOverride, Plan, RowDue } from "@weir/store/Rows";
+import { AiKind, ConversationState, DueOverride, FaceHash, Plan, RowDue } from "@weir/store/Rows";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
@@ -215,7 +215,7 @@ export const ItemSummary = Schema.Struct({
   seq: Schema.Int,
   kind: Schema.Literals(["message", "event"]),
   occurred_at: Schema.String,
-  from: Party,
+  from: Schema.Struct({ ...Party.fields, verified: Schema.Boolean }),
   from_me: Schema.Boolean,
   title: Schema.NullOr(Schema.String),
   format: BodyFormat,
@@ -419,10 +419,17 @@ export type View = typeof View.Type;
 
 export const ViewList = Schema.Struct({ seq: Schema.Int, conversations: Schema.Array(Row) });
 
+export const CapSender = Schema.Struct({
+  ...Party.fields,
+  source: Schema.String,
+  verified: Schema.Boolean,
+});
+export type CapSender = typeof CapSender.Type;
+
 const viewSummary = {
   unread: Schema.Int,
   open: Schema.Int,
-  senders: Schema.Array(Party),
+  senders: Schema.Array(CapSender),
 };
 
 export const Counts = Schema.Struct({
@@ -552,6 +559,11 @@ export const Event = Schema.Union([
     at: Schema.String,
   }),
   Schema.Struct({
+    type: Schema.Literal("faces"),
+    source: Schema.String,
+    addresses: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
     type: Schema.Literal("digest"),
     conversation_id: Schema.Int,
     from_seq: Schema.Int,
@@ -580,10 +592,36 @@ export class EventsGroup extends HttpApiGroup.make("events", { topLevel: true })
   HttpApiEndpoint.get("events", "/events", { success: HttpApiSchema.StreamSse({ data: Event }) }),
 ) {}
 
+export const faceAddress = (address: string) => address.trim().toLowerCase();
+
+export const facePath = (source: string, address: string, verified: boolean): string | null => {
+  const normalized = faceAddress(address);
+  return normalized === ""
+    ? null
+    : `/faces?${new URLSearchParams({ source, address: normalized, ...(verified ? { verified: "1" } : {}) })}`;
+};
+
+export class FacesGroup extends HttpApiGroup.make("faces", { topLevel: true }).add(
+  HttpApiEndpoint.get("face", "/faces", {
+    query: {
+      source: Schema.NonEmptyString,
+      address: Schema.NonEmptyString,
+      verified: Schema.optionalKey(Schema.Literal("1")),
+      v: Schema.optionalKey(Schema.String),
+    },
+    success: HttpApiSchema.NoContent,
+  }),
+  HttpApiEndpoint.get("faceImage", "/faces/:hash", {
+    params: { hash: FaceHash },
+    success: HttpApiSchema.NoContent,
+  }),
+) {}
+
 export class Api extends HttpApi.make("weir").add(
   WeirGroup,
   ViewGroup,
   StateGroup,
   DigestGroup,
   EventsGroup,
+  FacesGroup,
 ) {}

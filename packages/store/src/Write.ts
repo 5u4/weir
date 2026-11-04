@@ -1,11 +1,12 @@
 import { derive } from "@weir/body/Body";
 import { groupKeyPrefix, groupNameOf } from "@weir/contract/Config";
-import type {
-  BodyFormat,
-  RawItem,
-  SeriesOccurrences,
-  StreamDescriptor,
-  SyncPage,
+import {
+  type BodyFormat,
+  FaceKind,
+  type RawItem,
+  type SeriesOccurrences,
+  type StreamDescriptor,
+  type SyncPage,
 } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -29,6 +30,8 @@ import {
   type DueOverride,
   EventDetailRow,
   EventOccurrenceRow,
+  FaceHash,
+  type FaceOutcome,
   ItemInsert,
   type Plan,
   Seq,
@@ -52,6 +55,7 @@ export interface ItemDraft {
   readonly fromName: string;
   readonly fromAddress: string;
   readonly fromMe: boolean;
+  readonly fromVerified: boolean;
   readonly format: BodyFormat;
   readonly bodyNew: string;
   readonly text: string;
@@ -155,6 +159,7 @@ export const draft = (
     fromName: item.from.name,
     fromAddress: item.from.address,
     fromMe: ownAddresses(stream).has(item.from.address.toLowerCase()),
+    fromVerified: item.fromVerified,
     format: item.format,
     ...derived,
     link: item.link,
@@ -411,6 +416,7 @@ export const writeItems = Effect.fnUntraced(function* (
             fromName: item.fromName,
             fromAddress: item.fromAddress,
             fromMe: item.fromMe,
+            fromVerified: item.fromVerified,
             format: item.format,
             bodyNew: item.bodyNew,
             text: item.text,
@@ -433,6 +439,7 @@ export const writeItems = Effect.fnUntraced(function* (
                 from_name = excluded.from_name,
                 from_address = excluded.from_address,
                 from_me = excluded.from_me,
+                from_verified = excluded.from_verified,
                 format = excluded.format,
                 body_new = excluded.body_new,
                 text = excluded.text,
@@ -830,6 +837,84 @@ export const writeDigest = Effect.fnUntraced(function* (
         yield* sql`DELETE FROM search_fts WHERE rowid = ${-replaces}`;
       }
       return { _tag: "Written", digest: written } satisfies DigestWrite;
+    }),
+  );
+});
+
+const decodeStoredFaces = Schema.decodeUnknownEffect(
+  Schema.Array(
+    Schema.Struct({
+      address: Schema.String,
+      hash: Schema.NullOr(FaceHash),
+      kind: Schema.NullOr(FaceKind),
+    }),
+  ),
+);
+
+export const putFaces = Effect.fnUntraced(function* (
+  sourceId: string,
+  outcomes: ReadonlyArray<FaceOutcome>,
+  fetchedAt: DateTime.Utc,
+) {
+  if (outcomes.length === 0) return [];
+  const sql = yield* SqlClient.SqlClient;
+  const fetched = yield* Schema.encodeEffect(UtcIso)(fetchedAt);
+  const blobs = new Map(
+    outcomes.flatMap((outcome) =>
+      outcome.status === "found"
+        ? [
+            [
+              outcome.address,
+              {
+                hash: FaceHash.make(
+                  new Bun.CryptoHasher("sha256").update(outcome.bytes).digest("hex"),
+                ),
+                mime: outcome.mime,
+                bytes: outcome.bytes,
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  );
+  const faces = outcomes.map((outcome) => ({
+    sourceId,
+    address: outcome.address,
+    hash: blobs.get(outcome.address)?.hash ?? null,
+    kind: outcome.status === "found" ? outcome.kind : null,
+    fetchedAt: fetched,
+  }));
+  return yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const previous = new Map(
+        (yield* decodeStoredFaces(
+          yield* sql`SELECT address, hash, kind FROM face WHERE source_id = ${sourceId}
+            AND ${sql.in(
+              "address",
+              faces.map(({ address }) => address),
+            )}`,
+        )).map(({ address, hash, kind }) => [address, { hash, kind }]),
+      );
+      if (blobs.size > 0) {
+        yield* sql`INSERT INTO face_blob ${sql.insert([...blobs.values()])}
+          ON CONFLICT (hash) DO NOTHING`;
+      }
+      yield* sql`INSERT INTO face ${sql.insert(faces)}
+        ON CONFLICT (source_id, address) DO UPDATE SET
+          hash = excluded.hash,
+          kind = excluded.kind,
+          fetched_at = excluded.fetched_at`;
+      const released = [...previous.values()].flatMap(({ hash }) => (hash === null ? [] : [hash]));
+      if (released.length > 0) {
+        yield* sql`DELETE FROM face_blob WHERE ${sql.in("hash", released)}
+          AND NOT EXISTS (SELECT 1 FROM face WHERE face.hash = face_blob.hash)`;
+      }
+      return faces
+        .filter(({ address, hash, kind }) => {
+          const before = previous.get(address) ?? { hash: null, kind: null };
+          return before.hash !== hash || before.kind !== kind;
+        })
+        .map(({ address }) => address);
     }),
   );
 });

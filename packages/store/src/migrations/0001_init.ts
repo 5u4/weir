@@ -34,6 +34,7 @@ export const migration = Effect.gen(function* () {
     from_name TEXT,
     from_address TEXT,
     from_me INTEGER,
+    from_verified INTEGER,
     format TEXT,
     body_new TEXT,
     text TEXT,
@@ -171,4 +172,18 @@ export const migration = Effect.gen(function* () {
     digest_id UNINDEXED,
     tokenize = 'trigram case_sensitive 0'
   )`;
+  yield* sql`CREATE TABLE face_blob (
+    hash TEXT PRIMARY KEY,
+    mime TEXT NOT NULL,
+    bytes BLOB NOT NULL
+  ) WITHOUT ROWID`;
+  yield* sql`CREATE TABLE face (
+    source_id TEXT NOT NULL,
+    address TEXT NOT NULL,
+    hash TEXT,
+    kind TEXT,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, address)
+  ) WITHOUT ROWID`;
+  yield* sql`CREATE INDEX face_hash ON face (hash) WHERE hash IS NOT NULL`;
 });

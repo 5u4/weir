@@ -33,7 +33,7 @@ import {
 const item = (seq: number, kind: ItemSummary["kind"] = "message"): ItemSummary => ({
   seq,
   occurred_at: `2026-10-20T09:${String(seq).padStart(2, "0")}:00.000Z`,
-  from: { name: "Ada", address: "ada@example.com" },
+  from: { name: "Ada", address: "ada@example.com", verified: false },
   from_me: false,
   title: null,
   format: "markdown",

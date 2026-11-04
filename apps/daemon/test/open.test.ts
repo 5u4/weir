@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
-import { remove, seedMailbox } from "@weir/fixtures";
-import { gws } from "@weir/plugin-gws";
+import { fixtureFaceNet, remove, seedMailbox } from "@weir/fixtures";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Http from "../src/Http.ts";
@@ -34,7 +34,7 @@ sync_every = "100ms"
 command = ["${fakeGws}", "--mailbox", "${mailbox}"]
 backfill = "newer_than:30d"
 `);
-        yield* Layer.build(Http.layer(home, { gws }));
+        yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
         const client = yield* apiClient(port);
         yield* eventually(client.status(), ({ sources }) =>
           sources.every(

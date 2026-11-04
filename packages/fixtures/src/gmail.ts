@@ -29,6 +29,7 @@ export type GeneratedMessage = Omit<Message, "historyId">;
 
 const PLAIN_ONLY_THREAD = "note-to-self";
 const MX = "mx.google.example";
+const AUTHSERV_ID = "mx.google.com";
 const WEEKDAYS = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_MS = 86_400_000;
@@ -137,6 +138,7 @@ const transportHeaders = (
   recipient: string,
   clock: WallClock,
   bulk: boolean,
+  spoofed: boolean,
 ): Header[] => {
   const domain = domainOf(sender.addr);
   const senderIp = `203.0.113.${octet(`${domain}:ip`)}`;
@@ -144,7 +146,10 @@ const transportHeaders = (
   const date = rfc2822(clock);
   const seconds = Math.floor(clock.ms / 1000);
   const smtpId = (n: number) => `${sha1(`${key}:smtp:${n}`).slice(0, 12)}`;
-  const auth = `${MX}; dkim=pass header.i=@${domain} header.s=s1 header.b=${b64(`${key}:hb`, 8)}; spf=pass (google.example: domain of ${sender.addr} designates ${senderIp} as permitted sender) smtp.mailfrom=${sender.addr}; dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=${domain}`;
+  const dmarc = spoofed
+    ? "dmarc=fail (p=REJECT sp=REJECT dis=QUARANTINE)"
+    : "dmarc=pass (p=NONE sp=NONE dis=NONE)";
+  const auth = `${AUTHSERV_ID}; dkim=pass header.i=@${domain} header.s=s1 header.b=${b64(`${key}:hb`, 8)}; spf=pass (google.example: domain of ${sender.addr} designates ${senderIp} as permitted sender) smtp.mailfrom=${sender.addr}; ${dmarc} header.from=${domain}`;
   return [
     { name: "Delivered-To", value: recipient },
     { name: "Received", value: `by ${googleIp} with SMTP id ${smtpId(1)}; ${date}` },
@@ -227,7 +232,14 @@ const threadMessages = (
 
     const boundary = `000000000000${sha1(id).slice(0, 12)}`;
     const headers: Header[] = [
-      ...transportHeaders(`${t.id}:${k}`, from, me.addr, clock, bulk && !fromMe),
+      ...transportHeaders(
+        `${t.id}:${k}`,
+        from,
+        me.addr,
+        clock,
+        bulk && !fromMe,
+        m.spoofed === true,
+      ),
       { name: "MIME-Version", value: "1.0" },
       { name: "Date", value: rfc2822(clock) },
       { name: "Message-ID", value: msgId(k, m) },

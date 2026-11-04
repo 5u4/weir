@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SyncPage } from "@weir/contract/Source";
-import { FIXTURE_NOW, readCalls, seedMailbox, setQuota } from "@weir/fixtures";
+import { FIXTURE_NOW, fixtureFaceNet, readCalls, seedMailbox, setQuota } from "@weir/fixtures";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it } from "vitest";
 import { createSource } from "../src/index.ts";
@@ -42,6 +42,7 @@ const calendarSource = () => {
     },
     async () => {},
     { now: () => clock.now },
+    fixtureFaceNet(),
   );
   const sync = async (cursor: string | null) =>
     decodePage(await source.sync(STREAM, cursor, new AbortController().signal));

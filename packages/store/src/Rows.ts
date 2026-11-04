@@ -3,6 +3,8 @@ import {
   BodyFormat,
   EventAttendee,
   EventStatus,
+  FaceKind,
+  FaceMime,
   RowParty,
   StreamDescriptor,
 } from "@weir/contract/Source";
@@ -59,6 +61,7 @@ const itemFields = {
   fromName: Schema.String,
   fromAddress: Schema.String,
   fromMe: Schema.BooleanFromBit,
+  fromVerified: Schema.BooleanFromBit,
   format: BodyFormat,
   bodyNew: Schema.String,
   text: Schema.String,
@@ -284,3 +287,27 @@ export const SearchFtsRow = Schema.Struct({
   digestId: Schema.NullOr(DigestId),
 });
 export type SearchFtsRow = typeof SearchFtsRow.Type;
+
+export const FaceHash = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)).pipe(
+  Schema.brand("FaceHash"),
+);
+export type FaceHash = typeof FaceHash.Type;
+
+export const FaceRow = Schema.Union([
+  Schema.Struct({ hash: FaceHash, kind: FaceKind, fetchedAt: UtcIso }),
+  Schema.Struct({ hash: Schema.Null, kind: Schema.Null, fetchedAt: UtcIso }),
+]);
+export type FaceRow = typeof FaceRow.Type;
+
+export const FaceBlobRow = Schema.Struct({ mime: FaceMime, bytes: Schema.Uint8Array });
+export type FaceBlobRow = typeof FaceBlobRow.Type;
+
+export type FaceOutcome =
+  | {
+      readonly address: string;
+      readonly status: "found";
+      readonly kind: FaceKind;
+      readonly mime: FaceMime;
+      readonly bytes: Uint8Array;
+    }
+  | { readonly address: string; readonly status: "missing" };

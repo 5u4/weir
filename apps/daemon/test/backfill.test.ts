@@ -3,13 +3,14 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   deliverThreads,
   expireHistory,
+  fixtureFaceNet,
   readCalls,
   seedThreads,
   setDelay,
   setQuota,
   type Thread,
 } from "@weir/fixtures";
-import { gws } from "@weir/plugin-gws";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -58,7 +59,7 @@ const gmailHome = (threads: number, now: number, labels?: ReadonlyArray<string>)
 
 const connect = (home: WeirHome, port: number) =>
   Effect.gen(function* () {
-    yield* Layer.build(Http.layer(home, { gws }));
+    yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
     const client = yield* apiClient(port);
     return {
       client,

@@ -50,6 +50,7 @@ const message = (title: string, externalId: string, minute: number): RawItem => 
   occurredAt: `2026-10-20T09:${String(minute).padStart(2, "0")}:00Z`,
   title,
   from: { name: "Ada", address: "ada@example.com" },
+  fromVerified: false,
   format: "markdown",
   body: `note ${externalId}`,
   bodyNew: `note ${externalId}`,

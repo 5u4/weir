@@ -18,9 +18,9 @@ const row = (id: number, last_seq: number, cleared_seq = 0): Row => ({
   new: 0,
   items: 1,
   participants: 1,
-  from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
+  from: { name: "Ada Lovelace", address: "ada@example.com", me: false, verified: false },
   preview: "Ada: hello",
-  senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false }],
+  senders: [{ name: "Ada Lovelace", address: "ada@example.com", me: false, verified: false }],
   plan: { _tag: "None" },
   planned_at: null,
   due: null,
@@ -113,10 +113,10 @@ describe("j and k move through the list", () => {
 });
 
 describe("row face", () => {
-  const ada = { name: "Ada Lovelace", address: "ada@example.com", me: false };
-  const bo = { name: "Bo", address: "bo@example.com", me: false };
-  const nameless = { name: " ", address: "carol.k@example.com", me: false };
-  const self = { name: "Sen Hung Wong", address: "sen@example.com", me: true };
+  const ada = { name: "Ada Lovelace", address: "ada@example.com", me: false, verified: false };
+  const bo = { name: "Bo", address: "bo@example.com", me: false, verified: false };
+  const nameless = { name: " ", address: "carol.k@example.com", me: false, verified: false };
+  const self = { name: "Sen Hung Wong", address: "sen@example.com", me: true, verified: false };
   it.each([
     ["no senders, nobody else", [], 0, "", ""],
     ["no senders, three participants", [], 3, "+3", ""],

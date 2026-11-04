@@ -27,7 +27,7 @@ const row = (fresh: number): Row => ({
   new: fresh,
   items: 4,
   participants: 2,
-  from: { name: "Rachel Lin", address: "rachel@northwind.example", me: false },
+  from: { name: "Rachel Lin", address: "rachel@northwind.example", me: false, verified: false },
   preview: "Rachel: can we confirm the window?",
   senders: [],
   plan: { _tag: "Tray" },

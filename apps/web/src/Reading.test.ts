@@ -12,7 +12,7 @@ const daemon = vi.hoisted(() => {
   const requests: Array<string> = [];
   const held: Array<() => void> = [];
   const failing = new Set<string>();
-  const party = { name: "Ada Lovelace", address: "ada@example.com", me: false };
+  const party = { name: "Ada Lovelace", address: "ada@example.com", me: false, verified: false };
   const standing = () =>
     state.muted
       ? "muted"

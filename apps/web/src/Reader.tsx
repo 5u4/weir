@@ -578,6 +578,7 @@ function Bubble({
 
 function Group({
   id,
+  source,
   group,
   mark,
   found,
@@ -587,6 +588,7 @@ function Group({
   folded = false,
 }: {
   id: ConversationId;
+  source: string;
   group: Bubbles;
   mark: Mark;
   found: Found;
@@ -599,7 +601,12 @@ function Group({
   const at = DateTime.makeUnsafe(group.at);
   const avatar = (
     <span className="pt-5 text-av-md">
-      <Avatar address={group.from.address} mark={group.me ? "Me" : monogram(group.from)} />
+      <Avatar
+        source={source}
+        address={group.from.address}
+        verified={group.from.verified}
+        mark={group.me ? "Me" : monogram(group.from)}
+      />
     </span>
   );
   const column = (
@@ -685,6 +692,7 @@ const flipped =
 
 function Originals({
   id,
+  source,
   fold,
   noun,
   toggle,
@@ -694,6 +702,7 @@ function Originals({
   solo,
 }: {
   id: ConversationId;
+  source: string;
   fold: AnyFold;
   noun: string;
   toggle: (target: Element) => void;
@@ -703,6 +712,11 @@ function Originals({
   solo: boolean;
 }) {
   const who = [...new Map(fold.items.map((item) => [item.from_me || item.from.address, item]))];
+  const spoofed = new Set(
+    fold.items
+      .filter((item) => !item.from.verified)
+      .map((item) => item.from_me || item.from.address),
+  );
   const cellClass = solo ? "col-start-1" : "col-start-2";
   return (
     <>
@@ -716,7 +730,9 @@ function Originals({
           {who.slice(0, 3).map(([key, item], index) => (
             <Avatar
               key={String(key)}
+              source={source}
               address={item.from.address}
+              verified={!spoofed.has(key)}
               mark={item.from_me ? "Me" : monogram(item.from)}
               className={index > 0 ? "-ml-1.5 shadow-halo-island" : "shadow-halo-island"}
             />
@@ -734,6 +750,7 @@ function Originals({
               <Group
                 key={blockKey(group)}
                 id={id}
+                source={source}
                 group={group}
                 mark={mark}
                 found={found}
@@ -753,6 +770,7 @@ const titleClass =
 
 function Topic({
   id,
+  source,
   view,
   solo,
   mark,
@@ -760,6 +778,7 @@ function Topic({
   tint,
 }: {
   id: ConversationId;
+  source: string;
   view: TopicView;
   solo: boolean;
   mark: Mark;
@@ -806,6 +825,7 @@ function Topic({
       </p>
       <Originals
         id={id}
+        source={source}
         fold={view}
         noun="original"
         toggle={toggle}
@@ -826,6 +846,7 @@ const meta = (digest: Digest, items: ReadonlyArray<ItemSummary>) => [
 
 function DigestCard({
   id,
+  source,
   block,
   watch,
   mark,
@@ -835,6 +856,7 @@ function DigestCard({
   lead,
 }: {
   id: ConversationId;
+  source: string;
   block: Extract<Block, { _tag: "DigestCard" }>;
   watch: Watch;
   mark: Mark;
@@ -929,6 +951,7 @@ function DigestCard({
           <Topic
             key={view.key}
             id={id}
+            source={source}
             view={view}
             solo={solo}
             mark={mark}
@@ -944,6 +967,7 @@ function DigestCard({
           >
             <Originals
               id={id}
+              source={source}
               fold={uncited}
               noun="other original"
               toggle={(target) => unfold(target, uncited.open, () => setUi(flipped(uncited)))}
@@ -962,6 +986,7 @@ function DigestCard({
 
 export function BlockView({
   id,
+  source,
   block,
   watch,
   mark,
@@ -971,6 +996,7 @@ export function BlockView({
   lead,
 }: {
   id: ConversationId;
+  source: string;
   block: Block;
   watch: Watch;
   mark: Mark;
@@ -1049,6 +1075,7 @@ export function BlockView({
       return (
         <DigestCard
           id={id}
+          source={source}
           block={block}
           watch={watch}
           mark={mark}
@@ -1156,6 +1183,7 @@ export function BlockView({
       return (
         <Group
           id={id}
+          source={source}
           group={block}
           watch={watch}
           mark={mark}
@@ -1365,6 +1393,7 @@ function Conversation({
         <BlockView
           key={blockKey(block)}
           id={id}
+          source={detail.source}
           block={block}
           watch={watch}
           mark={mark}

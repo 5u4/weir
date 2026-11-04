@@ -30,7 +30,7 @@ const daemon = vi.hoisted(() => {
     new: 0,
     items: 1,
     participants: 1,
-    from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
+    from: { name: "Ada Lovelace", address: "ada@example.com", me: false, verified: false },
     preview: "Ada: hello",
     senders: [],
     plan: { _tag: "None" },

@@ -22,10 +22,14 @@ import { ConversationId } from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
-const rachel = { name: "Rachel Gomez", address: "rachel.gomez@northwind.example" };
-const ben = { name: "Ben Foster", address: "ben.foster@example.com" };
-const lisa = { name: "Lisa Chen", address: "lisa.chen@northwind.example" };
-const daniel = { name: "", address: "dan.ellis@mail.example" };
+const rachel = {
+  name: "Rachel Gomez",
+  address: "rachel.gomez@northwind.example",
+  verified: true,
+};
+const ben = { name: "Ben Foster", address: "ben.foster@example.com", verified: false };
+const lisa = { name: "Lisa Chen", address: "lisa.chen@northwind.example", verified: true };
+const daniel = { name: "", address: "dan.ellis@mail.example", verified: false };
 
 const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSummary => ({
   seq,
@@ -182,6 +186,7 @@ const rendered = (
         createElement(BlockView, {
           key: at,
           id,
+          source: of.source,
           block,
           watch: () => () => {},
           mark: { seen: lastSeq(of), unread: () => {} },
@@ -345,7 +350,11 @@ describe("landing on a hit", () => {
 const newsletterBody =
   scenarios.threads.find(({ id }) => id === "newsletter-trailhead")?.messages[0]?.text ?? "";
 const newsletter = detail([
-  item(1, { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example" }, newsletterBody),
+  item(
+    1,
+    { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example", verified: false },
+    newsletterBody,
+  ),
 ]);
 
 describe("HTML body", () => {
@@ -426,7 +435,9 @@ describe("newsletter body", () => {
     }
     expect(markup).toContain("&lt;b&gt;raw tags&lt;/b&gt;");
     expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
-    const images = [...markup.matchAll(/<img\b[^>]*>/g)].map(([tag]) => tag);
+    const images = [...markup.matchAll(/<img\b[^>]*>/g)]
+      .map(([tag]) => tag)
+      .filter((tag) => !tag.includes(' src="/faces?'));
     expect(images).toHaveLength(4);
     for (const tag of images) {
       expect(tag).toMatch(/ src="https:\/\/cdn\.trailhead-weekly\.example\//);
@@ -490,5 +501,29 @@ describe("reveal", () => {
 
   it("leaves the reader as it is for a sender hit outside any digest", () => {
     expect(reveal(closedUi, northwind, { _tag: "Item", seq: 2, field: "from" })).toBe(closedUi);
+  });
+});
+
+describe("fold strip", () => {
+  const faces = (spoofed: boolean) => {
+    const of = detail(
+      [
+        item(1, { ...rachel, verified: !spoofed }, "Wire the deposit today."),
+        item(2, rachel, "Cutover runbook is in the shared drive."),
+      ],
+      [digest(3, 1, 2, "Runbook", [{ title: "Runbook", body: "Rachel wrote.", seqs: [1, 2] }])],
+    );
+    const ui = reveal(closedUi, of, { _tag: "Topic", key: topicKey(of.digests[0] as Digest, 0) });
+    const markup = rendered(of, ui, { pattern: null, hits: new Map(), current: null });
+    return [...markup.matchAll(/ src="(\/faces\?[^"]*)"/g)].map(([, src]) => src);
+  };
+
+  it("asks for a brand logo only when every folded message from the sender is verified", () => {
+    expect(faces(false)).toEqual([
+      "/faces?source=gmail&amp;address=rachel.gomez%40northwind.example&amp;verified=1",
+    ]);
+    expect(faces(true)).toEqual([
+      "/faces?source=gmail&amp;address=rachel.gomez%40northwind.example",
+    ]);
   });
 });

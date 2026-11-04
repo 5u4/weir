@@ -72,7 +72,13 @@ function ListRow({ row, view, selected, hue, onDismiss }: RowProps) {
         className={rowLinkClass}
       >
         <span className={`${rowAvClass(state, hue)} row-end-4`}>
-          <Avatar address={from.address} mark={mark} className={rowAvatarClass} />
+          <Avatar
+            source={row.source}
+            address={from.address}
+            verified={from.verified}
+            mark={mark}
+            className={rowAvatarClass}
+          />
         </span>
         <span className={rowTitleClass(state)}>{row.title}</span>
         <span className={`${rowLineClass(unread)} row-start-2`}>{preview}</span>

@@ -1,6 +1,6 @@
 import type { Row } from "@weir/daemon/Api";
 import * as Option from "effect/Option";
-import { monogram, type Sender } from "./Notch.ts";
+import { monogram } from "./Notch.ts";
 import type { View } from "./Route.ts";
 import type { Planned } from "./When.ts";
 
@@ -61,7 +61,7 @@ export const moved = (rows: ReadonlyArray<Row>, open: Option.Option<number>, by:
 };
 
 type Face = {
-  readonly from: Sender;
+  readonly from: Row["from"];
   readonly mark: string;
   readonly preview: string;
   readonly who: string;
