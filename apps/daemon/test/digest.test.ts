@@ -280,6 +280,59 @@ describe("auto digest", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.live("a due carries forward to the next digest until a later digest drops it", () =>
+    Effect.gen(function* () {
+      const { deliver, conversationOf, detail, calls } = yield* start({
+        args: ["--dues"],
+        threshold: 10,
+      });
+      const said = (externalId: string, text: string, minute: number) =>
+        rawItem(externalId, {
+          threadId: "Work plan",
+          title: "Work plan",
+          occurredAt: `2030-01-01T09:0${minute}:00Z`,
+          body: text,
+          bodyNew: text,
+        });
+      yield* deliver([said("w1", "Please send the figures, due 2030-01-10.", 1)]);
+      const work = yield* conversationOf("Work plan");
+      const first = yield* eventually(detail(work), ({ digests }) => digests.length === 1);
+      const due = { date: "2030-01-10", seq: first.items[0]?.seq };
+      expect(first.digests[0]?.topics.map((topic) => [topic.state, topic.due])).toEqual([
+        ["open", due],
+      ]);
+
+      yield* deliver([said("w2", "Still collecting the figures.", 2)]);
+      const second = yield* eventually(detail(work), ({ digests }) => digests.length === 2);
+      expect(second.digests[1]?.topics.map((topic) => [topic.state, topic.due])).toEqual([
+        ["open", due],
+      ]);
+
+      yield* deliver([said("w3", "Figures sent, all done.", 3)]);
+      const third = yield* eventually(detail(work), ({ digests }) => digests.length === 3);
+      expect(third.digests[2]?.topics.map((topic) => [topic.state, topic.due])).toEqual([
+        ["resolved", undefined],
+      ]);
+
+      expect(
+        calls().map(({ input, hasError }) => [
+          hasError,
+          input.context.flatMap((entry) =>
+            entry.kind === "digest" ? entry.topics.map((topic) => topic.due) : [],
+          ),
+        ]),
+      ).toEqual([
+        [false, []],
+        [false, [due]],
+        [false, [due, due]],
+      ]);
+      expect(calls()[0]?.input.items[0]).toMatchObject({
+        occurred_at: "2030-01-01T01:01:00.000-08:00",
+        weekday: "Tuesday",
+      });
+    }).pipe(Effect.scoped),
+  );
+
   it.live("a new own address that makes a conversation AI-tagged gets an auto digest", () =>
     Effect.gen(function* () {
       const { deliver, conversationOf, detail, source } = yield* start();

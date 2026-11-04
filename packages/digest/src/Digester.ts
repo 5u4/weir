@@ -96,6 +96,7 @@ export const make = Effect.fnUntraced(function* (
   const scope = yield* Scope.Scope;
   const services: Context.Context<Services> = yield* Effect.context<Services>();
   const sql = yield* SqlClient.SqlClient;
+  const zone = yield* DateTime.CurrentTimeZone;
   const permits = yield* Semaphore.make(settings.profile.concurrency);
   const locks = new Map<ConversationId, Semaphore.Semaphore>();
   const queuedAuto = new Set<ConversationId>();
@@ -124,16 +125,18 @@ export const make = Effect.fnUntraced(function* (
         source: conversation.sourceId,
         title: conversation.title,
       },
-      items: items.map(
-        (item): InputItem => ({
+      items: items.map((item): InputItem => {
+        const local = DateTime.setZone(item.occurredAt, zone);
+        return {
           seq: item.seq,
-          occurred_at: DateTime.formatIso(item.occurredAt),
+          occurred_at: DateTime.formatIsoOffset(local),
+          weekday: DateTime.format(local, { weekday: "long", locale: "en-US" }),
           from: { name: item.fromName, address: item.fromAddress },
           from_me: item.fromMe,
           title: item.title,
           body_new: item.textNew,
-        }),
-      ),
+        };
+      }),
       digests: digests.filter(({ id }) => id !== plan.replaces?.id),
       range: chunk,
       context: settings.digest.context,

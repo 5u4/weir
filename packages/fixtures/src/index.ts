@@ -38,6 +38,7 @@ export type ExpectedDigest = {
   items: number;
   trigger: "auto" | "manual";
   ai_profile: string;
+  due: { date: string; occurred_at: string } | null;
 };
 export const expectedDigests: { ai_since: string; digests: ExpectedDigest[] } =
   expectedDigestsJson as { ai_since: string; digests: ExpectedDigest[] };

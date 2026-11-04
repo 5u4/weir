@@ -22,6 +22,10 @@ afterEach(() => {
 const item = (seq: number, occurred_at: string, name: string): InputItem => ({
   seq,
   occurred_at,
+  weekday: new Date(`${occurred_at.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "long",
+    timeZone: "UTC",
+  }),
   from: { name, address: `${name.toLowerCase()}@example.com` },
   from_me: false,
   title: null,
@@ -83,6 +87,7 @@ it("replays the recording keyed by title and first/last occurred_at, mapping pos
         state: "open",
         body: recorded?.topics[0]?.body,
         seqs: [21, 22, 23, 24],
+        due: { date: "2026-10-23", seq: 23 },
       },
     ],
   });

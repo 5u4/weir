@@ -148,7 +148,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           return yield* Effect.never;
         }).pipe(
           Effect.scoped,
-          Effect.provide(platform),
+          Effect.provide([platform, DateTime.layerCurrentZoneLocal]),
           Effect.provideService(SqlClient.SqlClient, sql),
         );
 
