@@ -246,6 +246,7 @@ describe("context", () => {
   const inputItem = (seq: number, body: string): InputItem => ({
     seq,
     occurred_at: "2026-10-28T09:00:00Z",
+    weekday: "Wednesday",
     from: { name: "Ana", address: "ana@example.com" },
     from_me: false,
     title: null,

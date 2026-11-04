@@ -9,15 +9,28 @@ type Item = {
   seq: number;
   occurred_at: string;
   from: { name?: string | null; address?: string | null };
+  body_new: string;
 };
 type Input = {
   conversation: { id: number; title: string };
   range: { from_seq: number; to_seq: number };
+  context: ({ kind: "digest"; topics: Topic[] } | { kind: "item" })[];
   items: Item[];
 };
-type Output = {
-  headline: string;
-  topics: { title: string; state: "open" | "resolved" | "fyi"; body: string; seqs: number[] }[];
+type Topic = {
+  title: string;
+  state: "open" | "resolved" | "fyi";
+  body: string;
+  seqs: number[];
+  due?: { date: string; seq: number };
+};
+type Output = { headline: string; topics: Topic[] };
+type RecordedTopic = {
+  title: string;
+  state: string;
+  body: string;
+  positions: number[];
+  due?: { date: string; position: number };
 };
 export type Capture = { input: Input; attempt: number; hasError: boolean };
 export type Run = { stdout: string; stderr: string; exitCode: number; delayMs: number };
@@ -39,26 +52,50 @@ const replay = (input: Input): Output | undefined => {
       Date.parse(r.last_occurred_at) === Date.parse(last.occurred_at),
   );
   if (hit === undefined) return undefined;
-  const topics = hit.output.topics.map(({ positions, ...topic }) => ({
-    ...topic,
-    state: topic.state as Output["topics"][number]["state"],
-    seqs: positions.map((p) => input.items[p]?.seq),
-  }));
-  const inRange = (t: (typeof topics)[number]): t is Output["topics"][number] =>
-    t.seqs.every((s) => s !== undefined);
-  return topics.every(inRange) ? { headline: hit.output.headline, topics } : undefined;
+  const topics = hit.output.topics.map(
+    ({ positions, due, ...topic }: RecordedTopic): Topic | undefined => {
+      const seqs = positions.map((position) => input.items[position]?.seq);
+      const dueSeq = due === undefined ? undefined : input.items[due.position]?.seq;
+      if (!seqs.every((seq) => seq !== undefined)) return undefined;
+      if (due !== undefined && dueSeq === undefined) return undefined;
+      return {
+        ...topic,
+        state: topic.state as Topic["state"],
+        seqs,
+        ...(due === undefined || dueSeq === undefined
+          ? {}
+          : { due: { date: due.date, seq: dueSeq } }),
+      };
+    },
+  );
+  return topics.every((topic) => topic !== undefined)
+    ? { headline: hit.output.headline, topics }
+    : undefined;
 };
 
-const envelope = (input: Input): Output => {
+const dueState = (input: Input): Pick<Topic, "state" | "due"> => {
+  for (const item of input.items.toReversed()) {
+    if (/\bdone\b/.test(item.body_new)) return { state: "resolved" };
+    const date = item.body_new.match(/\bdue (\d{4}-\d{2}-\d{2})\b/)?.[1];
+    if (date !== undefined) return { state: "open", due: { date, seq: item.seq } };
+  }
+  const carried = input.context
+    .filter((entry) => entry.kind === "digest")
+    .at(-1)
+    ?.topics.find(({ due }) => due !== undefined)?.due;
+  return carried === undefined ? { state: "fyi" } : { state: "open", due: carried };
+};
+
+const envelope = (input: Input, dues: boolean): Output => {
   const senders = [...new Set(input.items.map((i) => i.from.name ?? i.from.address ?? "?"))];
   return {
     headline: `${input.items.length} 条新消息：${input.conversation.title}`.slice(0, 40),
     topics: [
       {
         title: `第 ${input.range.from_seq}–${input.range.to_seq} 条`,
-        state: "fyi",
         body: `来自 ${senders.join("、")}`.slice(0, 80),
         seqs: input.items.map((i) => i.seq),
+        ...(dues ? dueState(input) : { state: "fyi" }),
       },
     ],
   };
@@ -73,6 +110,7 @@ export const runAi = (argv: string[], prompt: string): Run => {
       delay: { type: "string" },
       exit: { type: "string" },
       capture: { type: "string" },
+      dues: { type: "boolean", default: false },
     },
   });
   const fail = (stderr: string, exitCode = 2): Run => ({
@@ -118,7 +156,9 @@ export const runAi = (argv: string[], prompt: string): Run => {
     };
   }
   const invalid = values.invalid === "always" || (values.invalid === "first" && !hasError);
-  const output = invalid ? { headline: "", topics: [] } : (replay(input) ?? envelope(input));
+  const output = invalid
+    ? { headline: "", topics: [] }
+    : (replay(input) ?? envelope(input, values.dues));
   return {
     stdout: `\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\`\n`,
     stderr: "",

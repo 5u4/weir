@@ -2509,7 +2509,7 @@
           "from": "rachel",
           "to": ["me", "lisa"],
           "cc": ["omar", "ben"],
-          "text": "Hi Robin, Lisa,\n\nFriendly reminder that UAT sign-off is due this Friday, Oct 24. We still don't have CO-0147 signed, and without it Omar can't apply the field change to production.\n\nRobin, can you confirm who is signing, and give us your call on the 37 duplicate customers by Thursday Oct 23? Otherwise the Oct 31 freeze date is at risk.\n\nThanks,\nRachel"
+          "text": "Hi Robin, Lisa,\n\nFriendly reminder that UAT sign-off is due this Friday, Oct 24. We still don't have CO-0147 signed, and without it Omar can't apply the field change to production.\n\nRobin, can you confirm who is signing, and give us your call on the 37 duplicate customers by Friday Oct 23? Otherwise the Oct 31 freeze date is at risk.\n\nThanks,\nRachel"
         },
         {
           "at": "2026-10-23T08:05:00-07:00",

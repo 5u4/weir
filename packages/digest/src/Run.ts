@@ -78,6 +78,11 @@ const call = (profile: AiProfile, prompt: string) =>
 
 export const generate = Effect.fnUntraced(function* (profile: AiProfile, digestInput: DigestInput) {
   const seqs = digestInput.items.map(({ seq }) => seq);
+  const carried = digestInput.context.flatMap((entry) =>
+    entry.kind === "digest"
+      ? entry.topics.flatMap(({ due }) => (due === undefined ? [] : [due]))
+      : [],
+  );
   const attempts: Array<Attempt> = [];
   let error: string | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -85,7 +90,7 @@ export const generate = Effect.fnUntraced(function* (profile: AiProfile, digestI
     const startedAt = yield* Clock.currentTimeMillis;
     const { stdout, stderr, failure } = yield* call(profile, prompt);
     const decoded: Result.Result<DigestOutput, string> =
-      failure === null ? decode(stdout, seqs) : Result.fail(failure);
+      failure === null ? decode(stdout, seqs, carried) : Result.fail(failure);
     error = Result.isFailure(decoded) ? `attempt ${attempt}: ${decoded.failure}` : null;
     attempts.push({
       prompt,

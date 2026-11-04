@@ -10,11 +10,24 @@ export type TopicState = typeof TopicState.Type;
 export const Trigger = Schema.Literals(["auto", "manual"]);
 export type Trigger = typeof Trigger.Type;
 
+const DueDate = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
+  Schema.makeFilter(
+    (date: string) =>
+      new Date(Date.parse(`${date}T00:00:00Z`) || 0).toISOString().startsWith(date) ||
+      "due date must be a real calendar date",
+  ),
+);
+
+export const Due = Schema.Struct({ date: DueDate, seq: Schema.Int });
+export type Due = typeof Due.Type;
+
 export const Topic = Schema.Struct({
   title: Schema.String,
   state: TopicState,
   body: Schema.String,
   seqs: Schema.Array(Schema.Int),
+  due: Schema.optionalKey(Due),
 });
 export type Topic = typeof Topic.Type;
 
@@ -51,7 +64,13 @@ export const DigestOutput = Schema.Struct({
       state: TopicState,
       body: Text(digestLimits.body),
       seqs: Seqs,
-    }),
+      due: Schema.optionalKey(Due),
+    }).check(
+      Schema.makeFilter(
+        (topic: { readonly state: TopicState; readonly due?: Due }) =>
+          topic.state !== "resolved" || topic.due === undefined || "a resolved topic has no due",
+      ),
+    ),
   ).check(
     Schema.isMinLength(digestLimits.topics.min),
     Schema.isMaxLength(digestLimits.topics.max),
@@ -79,6 +98,7 @@ export type Digest = typeof Digest.Type;
 const itemFields = {
   seq: Schema.Int,
   occurred_at: Schema.String,
+  weekday: Schema.String,
   from: Party,
   from_me: Schema.Boolean,
   title: Schema.NullOr(Schema.String),

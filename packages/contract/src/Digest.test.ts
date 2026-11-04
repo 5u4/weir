@@ -98,4 +98,18 @@ describe("DigestOutput", () => {
     if (accepted) expect(() => decode(candidate)).not.toThrow();
     else expect(() => decode(candidate)).toThrow();
   });
+
+  it.each([
+    ["2026-10-23", true],
+    ["2028-02-29", true],
+    ["2026-02-29", false],
+    ["2026-13-01", false],
+    ["2026-10-32", false],
+    ["2026-10-3", false],
+    ["Oct 23", false],
+  ])("due date %s: accepted = %s", (date, accepted) => {
+    const candidate = { ...output, topics: [{ ...topic, due: { date, seq: 1 } }] };
+    if (accepted) expect(() => decode(candidate)).not.toThrow();
+    else expect(() => decode(candidate)).toThrow();
+  });
 });

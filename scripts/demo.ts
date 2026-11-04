@@ -55,6 +55,7 @@ const { values: flags } = parseArgs({
   },
 });
 
+process.env.TZ = "America/Los_Angeles";
 const home = Home.make(mkdtempSync(join(tmpdir(), "weir-demo-")));
 console.error(`weir demo: WEIR_HOME=${home.root}`);
 
@@ -265,7 +266,7 @@ const demo = Effect.gen(function* () {
     ]),
   );
   const aiTags = new Set(status.ai.map(({ name }) => name));
-  const got = new Set<string>();
+  const got = new Map<string, string>();
   for (const { id } of yield* allConversations) {
     const conversation = yield* client.conversation({ params: { id } });
     const isAi = conversation.tags.some((tag) => aiTags.has(tag));
@@ -283,8 +284,10 @@ const demo = Effect.gen(function* () {
         continue;
       }
       const k = key(conversation.title, first.occurred_at, last.occurred_at);
+      const dues = digest.topics.flatMap(({ due }) => (due === undefined ? [] : [due]));
+      const dueText = dues.map(({ date, seq }) => `due ${date} seq=${seq}`).join(", ") || "no due";
       if (got.has(k)) problems.push(`"${conversation.title}" has duplicate auto digest ${k}`);
-      got.add(k);
+      got.set(k, dueText);
       const expected = want.get(k);
       if (!isAi)
         problems.push(`"${conversation.title}" is in no AI scope but has auto digest ${k}`);
@@ -296,10 +299,21 @@ const demo = Effect.gen(function* () {
         problems.push(
           `"${conversation.title}" auto digest ${k} (${range.length} items) is not in expected-digests.json`,
         );
-      } else if (range.length !== expected.items || digest.ai_profile !== expected.ai_profile) {
-        problems.push(
-          `"${conversation.title}" auto digest ${k}: ${range.length} items by ${digest.ai_profile}, expected ${expected.items} by ${expected.ai_profile}`,
-        );
+      } else {
+        if (range.length !== expected.items || digest.ai_profile !== expected.ai_profile) {
+          problems.push(
+            `"${conversation.title}" auto digest ${k}: ${range.length} items by ${digest.ai_profile}, expected ${expected.items} by ${expected.ai_profile}`,
+          );
+        }
+        const { due } = expected;
+        const wantDue =
+          due === null
+            ? "no due"
+            : `due ${due.date} seq=${conversation.items.find(({ occurred_at }) => millisOf(occurred_at) === millisOf(due.occurred_at))?.seq}`;
+        if (dueText !== wantDue)
+          problems.push(
+            `"${conversation.title}" auto digest ${k}: ${dueText}, expected ${wantDue}`,
+          );
       }
     }
   }
@@ -312,7 +326,7 @@ const demo = Effect.gen(function* () {
   lines.push(
     `ai_since ${aiScopes.join(", ")}: ${AI_SINCE}`,
     `auto digests: ${got.size}`,
-    ...[...got].map((k) => `  ${k}`),
+    ...[...got].map(([k, dueText]) => `  ${k}: ${dueText}`),
   );
 
   if (problems.length > 0) return yield* Effect.fail(problems.join("\n"));

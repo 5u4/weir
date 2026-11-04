@@ -15,6 +15,7 @@ export default defineConfig({
           name: "integration",
           include: ["{packages,plugins,apps}/*/test/**/*.test.{ts,tsx}"],
           testTimeout: 30_000,
+          env: { TZ: "America/Los_Angeles" },
         },
       },
     ],
