@@ -579,6 +579,17 @@ function AllDay({
   );
 }
 
+const neverLoaded = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
+  AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result));
+
+function CantLoad({ what }: { what: "plans" | "meetings" }) {
+  return (
+    <div className={emptyClass}>
+      <p className={emptyBigClass}>Can't load {what}.</p>
+    </div>
+  );
+}
+
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 
 function DayTimeline({
@@ -596,7 +607,8 @@ function DayTimeline({
   zone: string;
   hands: Hands;
 }) {
-  const list = useAtomValue(meetings(`${date}/${date}`));
+  const result = useAtomValue(meetings(`${date}/${date}`));
+  const list = Option.getOrElse(AsyncResult.value(result), () => []);
   const drag = hands.drag;
   const preview =
     drag?.moved === true && drag.plan?._tag === "Slot" && drag.plan.date === date
@@ -619,6 +631,7 @@ function DayTimeline({
       scroller.scrollTop -
       scrollPad;
   }, []);
+  if (neverLoaded(result)) return <CantLoad what="meetings" />;
   return (
     <>
       <AllDay list={allDayOn(list, date)} at={at} open={open} />
@@ -840,7 +853,9 @@ function MonthGrid({
   const [, navigate] = useAtom(route);
   const open = Option.getOrNull(at.conversation);
   const weeks = monthGrid(month);
-  const list = useAtomValue(meetings(gridRange(month)));
+  const result = useAtomValue(meetings(gridRange(month)));
+  const list = Option.getOrElse(AsyncResult.value(result), () => []);
+  if (neverLoaded(result)) return <CantLoad what="meetings" />;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 scrollbar-thin">
       <div className="grid grid-cols-7 gap-1" role="grid" aria-label={monthTitle(month)}>
@@ -1020,7 +1035,7 @@ export function PlanView() {
   const rows = useAtomValue(planRows);
   const result = useAtomValue(planList);
   const loaded = !AsyncResult.isInitial(result);
-  const failed = AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result));
+  const failed = neverLoaded(result);
   const date = Option.getOrElse(at.date, () =>
     Option.match(current, { onNone: () => "", onSome: ({ date: day }) => day }),
   );
@@ -1036,9 +1051,7 @@ export function PlanView() {
     <Shell reading={reading}>
       <PlanBar at={at} date={date} now={current.value} />
       {failed ? (
-        <div className={emptyClass}>
-          <p className={emptyBigClass}>Can't load plans.</p>
-        </div>
+        <CantLoad what="plans" />
       ) : (
         <div
           className={`flex min-h-0 flex-1 flex-col gap-2 px-6 max-wide:px-0 @plan:grid @plan:grid-cols-plan @plan:gap-6 ${loaded ? "" : "opacity-none"}`}

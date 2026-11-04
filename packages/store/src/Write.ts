@@ -68,6 +68,7 @@ export type StoredItem = ItemDraft & { readonly key: string };
 export interface ItemMove {
   readonly seq: Seq;
   readonly key: string;
+  readonly quiet: boolean;
 }
 
 export interface WrittenItem {
@@ -109,6 +110,9 @@ const decodeBounds = Schema.decodeUnknownEffect(
   Schema.Tuple([
     Schema.Struct({ minUnseen: Schema.NullOr(Seq), minUncleared: Schema.NullOr(Seq) }),
   ]),
+);
+const decodeSettled = Schema.decodeUnknownEffect(
+  Schema.Tuple([Schema.Struct({ settled: Schema.BooleanFromBit })]),
 );
 const decodeWatermarks = Schema.decodeUnknownEffect(
   Schema.Tuple([Schema.Struct({ seenSeq: Seq, clearedSeq: Seq })]),
@@ -270,6 +274,7 @@ export const moveItems = Effect.fnUntraced(function* (
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       const keyOf = new Map(moves.map(({ seq, key }) => [seq, key]));
+      const quiet = new Set(moves.filter((move) => move.quiet).map(({ seq }) => seq));
       const current = yield* decodeMoveRefs(
         yield* sql`SELECT item.seq, item.conversation_id, conversation.key FROM item
           JOIN conversation ON conversation.id = item.conversation_id
@@ -294,6 +299,12 @@ export const moveItems = Effect.fnUntraced(function* (
               ON CONFLICT (source_id, key) DO UPDATE SET key = excluded.key
               RETURNING id`,
           );
+          const [{ settled }] = yield* decodeSettled(
+            yield* sql`SELECT EXISTS (SELECT 1 FROM item
+                WHERE conversation_id = ${target.id} AND deleted_at IS NULL
+                  AND NOT ${sql.in("seq", moving)}) AS settled`,
+          );
+          const counted = settled ? seqs.filter((seq) => !quiet.has(seq)) : seqs;
           const [bounds] = yield* decodeBounds(
             yield* sql`SELECT
                 min(CASE WHEN item.seq > coalesce(s.seen_seq, 0) THEN item.seq END) AS min_unseen,
@@ -301,7 +312,7 @@ export const moveItems = Effect.fnUntraced(function* (
               FROM item LEFT JOIN conversation_state s ON s.conversation_id = item.conversation_id
               WHERE item.deleted_at IS NULL
                 AND ((item.conversation_id = ${target.id} AND NOT ${sql.in("item.seq", moving)})
-                  OR ${sql.in("item.seq", seqs)})`,
+                  OR ${sql.in("item.seq", counted)})`,
           );
           yield* sql`UPDATE item SET conversation_id = ${target.id} WHERE ${sql.in("seq", seqs)}`;
           if (groupNameOf(key) !== null) {

@@ -61,7 +61,7 @@ const writePage = Effect.fnUntraced(function* (
   });
   const refreshed = yield* Write.refreshItems(drafted.filter(({ refresh }) => refresh !== null));
   const drafts = drafted.filter(({ refresh }) => refresh === null);
-  const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
+  const { keys, moved } = yield* joinThreads(stream, drafted, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
     drafts.map((draft) => {
@@ -69,7 +69,7 @@ const writePage = Effect.fnUntraced(function* (
       return { ...draft, key: keys.get(thread) ?? thread };
     }),
   );
-  const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds]);
+  const recompute = new Set<ConversationId>([...moved, ...deleted.conversationIds, ...refreshed]);
   for (const { conversationId, previousConversationId } of written) {
     if (previousConversationId === null) continue;
     recompute.add(conversationId);
@@ -109,13 +109,7 @@ const writePage = Effect.fnUntraced(function* (
   }
   yield* Write.replaceOccurrences(stream.sourceId, page.occurrences ?? []);
   yield* Write.saveCursor(stream.id, page.cursor, page.backfill);
-  return [
-    ...new Set([
-      ...recompute,
-      ...refreshed,
-      ...written.map(({ conversationId }) => conversationId),
-    ]),
-  ];
+  return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
 });
 
 export const syncStream = Effect.fnUntraced(function* (

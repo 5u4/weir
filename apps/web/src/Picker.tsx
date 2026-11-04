@@ -199,7 +199,10 @@ function Gaps({
 }) {
   const spans = useAtomValue(daySpans(date));
   const rows = useAtomValue(planRows);
-  const gaps = freeGaps(busyOn(rows, spans, date, now.date, id), packStart(date, now));
+  const gaps = Option.match(AsyncResult.value(spans), {
+    onNone: () => [],
+    onSome: (known) => freeGaps(busyOn(rows, known, date, now.date, id), packStart(date, now)),
+  });
   return (
     <Choices
       choices={[
@@ -269,7 +272,13 @@ export function Picker({ id }: { id: ConversationId }) {
     writeDue({ id, due: next });
   };
   const tomorrow = addDays(now.date, 1);
-  const later = laterToday(busyOn(rows, spansToday, now.date, now.date, id), now);
+  const later = Option.match(AsyncResult.value(spansToday), {
+    onNone: () => ({
+      plan: { _tag: "Day", date: now.date } satisfies Planned,
+      preview: "Today · no set time",
+    }),
+    onSome: (known) => laterToday(busyOn(rows, known, now.date, now.date, id), now),
+  });
   const pickDay: Choice = {
     label: "Pick a day",
     sub: tab === "plan" ? "Any date, then a time if you like" : "Any date ahead",

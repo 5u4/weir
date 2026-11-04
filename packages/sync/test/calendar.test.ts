@@ -6,6 +6,7 @@ import * as Write from "@weir/store/Write";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/sql/SqlClient";
 import type { Groups } from "../src/Groups.ts";
 import { syncStream } from "../src/Sync.ts";
 import type { Tags } from "../src/Tags.ts";
@@ -22,8 +23,11 @@ const calendarStream: StreamDescriptor = {
 const groups: Groups = [
   { name: "Alpha", match: { type: "regex", target: "/title", regex: "^Alpha" } },
   { name: "Beta", match: { type: "regex", target: "/title", regex: "^Beta" } },
+  { name: "Northwind", match: { type: "regex", target: "/title", regex: "^Northwind" } },
 ];
-const tags: Tags = [];
+const tags: Tags = [
+  { name: "offsite", match: { type: "regex", target: "/title", regex: "offsite" } },
+];
 
 const meeting = (
   eventId: string,
@@ -192,6 +196,111 @@ describe("calendar changes", () => {
         null,
         { _tag: "Relocated", fromLocation: "Room 1" },
       ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+});
+
+const northwindMail = sync(
+  mailStream,
+  new Map<string | null, Step>([
+    [
+      null,
+      page({
+        cursor: "m1",
+        upserts: [
+          rawItem("n1", { threadId: "tn", title: "Northwind renewal" }),
+          rawItem("n2", { threadId: "tn", title: "Northwind renewal" }),
+        ],
+      }),
+    ],
+  ]),
+);
+
+const planningInvite = sync(
+  calendarStream,
+  new Map<string | null, Step>([
+    [
+      null,
+      page({ cursor: "p1", upserts: [meeting("planning", "2026-10-10T09:00:00Z", "Planning")] }),
+    ],
+  ]),
+);
+
+const renamePlanning = (from: string, updated: string, title: string) =>
+  sync(
+    calendarStream,
+    new Map<string | null, Step>([
+      [from, page({ cursor: `${from}+`, upserts: [meeting("planning", updated, title)] })],
+    ]),
+  );
+
+const northwind = Effect.gen(function* () {
+  const row = (yield* byTitle).Northwind;
+  if (row === undefined) throw new Error("no Northwind conversation");
+  return row;
+});
+
+const tagsOf = (id: ConversationId) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ tag: string }>`SELECT tag FROM conversation_tag
+      WHERE conversation_id = ${id} ORDER BY tag`;
+    return rows.map(({ tag }) => tag);
+  });
+
+describe("calendar edits", () => {
+  it.effect("a rename into a Done group moves the meeting and keeps the group Done", () =>
+    Effect.gen(function* () {
+      yield* northwindMail;
+      const before = yield* northwind;
+      yield* Write.changeState([before.id], { _tag: "Done", seq: before.lastSeq });
+      yield* planningInvite;
+      yield* renamePlanning("p1", "2026-10-20T09:00:00Z", "Northwind planning");
+      const after = yield* northwind;
+      expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
+      expect([after.items, after.state]).toEqual([3, "done"]);
+      expect((yield* byTitle).Planning).toBeUndefined();
+      expect(yield* untaggedStates).toEqual([]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a rename into a read group moves the meeting and keeps the group read", () =>
+    Effect.gen(function* () {
+      yield* northwindMail;
+      const before = yield* northwind;
+      yield* Write.changeState([before.id], { _tag: "Read", seq: before.lastSeq });
+      yield* planningInvite;
+      yield* renamePlanning("p1", "2026-10-20T09:00:00Z", "Northwind planning");
+      const after = yield* northwind;
+      expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
+      expect([after.items, after.state, after.newItems]).toEqual([3, "read", 0]);
+      expect(yield* untaggedStates).toEqual([["Northwind", "read"]]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a rename into an unread group keeps its unread state and new count", () =>
+    Effect.gen(function* () {
+      yield* planningInvite;
+      yield* northwindMail;
+      const before = yield* northwind;
+      expect([before.state, before.newItems]).toEqual(["unread", 2]);
+      yield* renamePlanning("p1", "2026-10-20T09:00:00Z", "Northwind planning");
+      const after = yield* northwind;
+      expect([after.items, after.state, after.newItems]).toEqual([3, "unread", 2]);
+      expect((yield* byTitle).Planning).toBeUndefined();
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a title edit adds and drops a matching tag", () =>
+    Effect.gen(function* () {
+      yield* planningInvite;
+      const planning = (yield* byTitle).Planning;
+      if (planning === undefined) throw new Error("no Planning conversation");
+      expect(yield* tagsOf(planning.id)).toEqual([]);
+      yield* renamePlanning("p1", "2026-10-20T09:00:00Z", "Planning offsite");
+      expect(yield* tagsOf(planning.id)).toEqual(["offsite"]);
+      yield* renamePlanning("p1+", "2026-10-21T09:00:00Z", "Planning");
+      expect(yield* tagsOf(planning.id)).toEqual([]);
     }).pipe(Effect.provide(storeLayer())),
   );
 });

@@ -4,7 +4,6 @@ import {
   ClearableView,
   type Counts,
   Event,
-  type Meeting,
   type Row,
 } from "@weir/daemon/Api";
 import { termPattern } from "@weir/daemon/Match";
@@ -142,25 +141,26 @@ const meetingList = Atom.family((range: MeetingRange) => {
 });
 
 export const meetings = Atom.family((range: MeetingRange) =>
-  Atom.make((get) =>
-    AsyncResult.getOrElse(
-      AsyncResult.map(get(meetingList(range)), (list) => list.meetings),
-      (): ReadonlyArray<Meeting> => [],
-    ),
-  ),
+  Atom.make((get) => AsyncResult.map(get(meetingList(range)), (list) => list.meetings)),
 );
 
 export const daySpans = Atom.family((date: string) =>
   Atom.make((get) =>
     Option.match(get(zone), {
-      onNone: () => [],
-      onSome: (where) => meetingSpans(get(meetings(`${date}/${date}`)), date, where),
+      onNone: () => AsyncResult.initial(),
+      onSome: (where) =>
+        AsyncResult.map(get(meetings(`${date}/${date}`)), (list) =>
+          meetingSpans(list, date, where),
+        ),
     }),
   ),
 );
 
 export const todaySpans = Atom.make((get) =>
-  Option.match(get(today), { onNone: () => [], onSome: ({ date }) => get(daySpans(date)) }),
+  Option.match(get(today), {
+    onNone: () => AsyncResult.initial(),
+    onSome: ({ date }) => get(daySpans(date)),
+  }),
 );
 
 const toApiView = Schema.decodeSync(ApiView);
