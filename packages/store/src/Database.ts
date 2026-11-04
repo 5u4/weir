@@ -4,17 +4,18 @@ import * as String from "effect/String";
 import * as Migrator from "effect/sql/Migrator";
 import { migration as migration0001 } from "./migrations/0001_init.ts";
 
+export const migrations = { "0001_init": migration0001 };
+
 export const migrate = Migrator.make({})({
-  loader: Migrator.fromRecord({ "0001_init": migration0001 }),
+  loader: Migrator.fromRecord(migrations),
 });
 
+export const clientLayer = (filename: string) =>
+  SqliteClient.layer({
+    filename,
+    transformQueryNames: String.camelToSnake,
+    transformResultNames: String.snakeToCamel,
+  });
+
 export const layer = (filename: string) =>
-  Layer.effectDiscard(migrate).pipe(
-    Layer.provideMerge(
-      SqliteClient.layer({
-        filename,
-        transformQueryNames: String.camelToSnake,
-        transformResultNames: String.snakeToCamel,
-      }),
-    ),
-  );
+  Layer.effectDiscard(migrate).pipe(Layer.provideMerge(clientLayer(filename)));
