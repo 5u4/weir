@@ -140,7 +140,8 @@ export const alertClause = (alert: Alert, current: DateTime.Utc): AlertClause =>
   );
   return {
     text: `${names} ${oldest === null ? "never synced" : `stopped syncing ${ago(oldest, current)}`}.`,
-    short: `${names} stopped`,
+    short:
+      alert.sources.length === 1 ? `${names} stopped` : `${alert.sources.length} sources stopped`,
     focus: { section: "sources", source: alert.sources[0].id },
   };
 };

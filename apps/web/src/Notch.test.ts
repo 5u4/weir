@@ -188,7 +188,7 @@ describe("alert clause", () => {
       },
       {
         text: "gmail, slack and work stopped syncing 5h ago.",
-        short: "gmail, slack and work stopped",
+        short: "3 sources stopped",
         focus: { section: "sources", source: "gmail" },
       },
     ],

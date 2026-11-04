@@ -211,7 +211,7 @@ function AlertButton({ alert, compact }: { alert: Alert; compact: boolean }) {
       type="button"
       className={
         compact
-          ? `${chipShapeClass} ml-0.5 px-3 font-semibold text-warn-cap hover:bg-cap-hover max-wide:px-2`
+          ? `${chipShapeClass} ml-0.5 max-w-40 px-3 font-semibold text-warn-cap hover:bg-cap-hover max-wide:px-2`
           : "inline-flex items-baseline gap-1.5 font-semibold text-warn-cap hover:underline"
       }
       aria-label={compact ? text : undefined}
@@ -219,7 +219,7 @@ function AlertButton({ alert, compact }: { alert: Alert; compact: boolean }) {
       onClick={() => setFocus(Option.some(focus))}
     >
       <span className={alertDotClass} aria-hidden="true" />
-      {compact ? <span className="max-wide:hidden">{short}</span> : text}
+      {compact ? <span className="min-w-0 truncate max-wide:hidden">{short}</span> : text}
     </button>
   );
 }
