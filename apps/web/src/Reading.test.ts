@@ -4,7 +4,7 @@ import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { scrolled } from "./HeaderFold.ts";
 import { dock, following, reading } from "./Reading.ts";
-import { ConversationId, type Origin, route } from "./Route.ts";
+import { ConversationId, home, type Origin, route } from "./Route.ts";
 import { conversation, dismiss } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
@@ -388,8 +388,13 @@ it("a sync that replaces an item or edits its body keeps its scroll from folding
   registry.dispose();
 });
 
-const openConversation = { view: "untagged", query: "", conversation: Option.some(id) } as const;
-const listShown = { view: "untagged", query: "", conversation: Option.none() } as const;
+const openConversation = {
+  ...home,
+  view: "untagged",
+  query: "",
+  conversation: Option.some(id),
+} as const;
+const listShown = { ...home, view: "untagged", query: "", conversation: Option.none() } as const;
 
 const navigated = async () => {
   const registry = await loaded();

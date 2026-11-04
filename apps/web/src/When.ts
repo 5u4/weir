@@ -2,6 +2,8 @@ import type { Row } from "@weir/daemon/Api";
 
 export type Plan = Row["plan"];
 
+export type Planned = Exclude<Plan, { readonly _tag: "None" }>;
+
 export type Today = { readonly date: string; readonly minute: number };
 
 export type Dated = Extract<Plan, { readonly _tag: "Day" | "Slot" }>;
@@ -54,6 +56,8 @@ export const daysBetween = (from: string, to: string) =>
 
 export const weekdayOf = (date: string) => new Date(epoch(date)).getUTCDay();
 
+export const weekdayName = (date: string) => weekdays[weekdayOf(date)];
+
 const monthLength = (year: number, month: number) =>
   new Date(Date.UTC(year, month, 0)).getUTCDate();
 
@@ -91,7 +95,7 @@ export const planLabel = (plan: Plan, today: string) => {
   }
 };
 
-export const planText = (plan: Exclude<Plan, { readonly _tag: "None" }>, today: string) => {
+export const planText = (plan: Planned, today: string) => {
   switch (plan._tag) {
     case "Tray":
       return "In the Tray";

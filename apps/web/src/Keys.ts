@@ -1,14 +1,16 @@
 import * as Option from "effect/Option";
 import * as Atom from "effect/reactivity/Atom";
 import { shortcut } from "./Dock.ts";
+import { stepped } from "./PlanLayout.ts";
 import { dock } from "./Reading.ts";
 import { ConversationId, route, searchOpen, settingsOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
-import { dismiss, listedRows, picker, searching } from "./Weir.ts";
+import { dismiss, listedRows, picker, searching, toast, today } from "./Weir.ts";
 
 export const keys = Atom.make((get) => {
   const onKey = (event: KeyboardEvent) => {
     const { target } = event;
+    const current = get.registry.get(route);
     const command = shortcut({
       key: event.key,
       modified: event.ctrlKey || event.metaKey || event.altKey,
@@ -16,10 +18,12 @@ export const keys = Atom.make((get) => {
         target instanceof HTMLElement &&
         (target.isContentEditable || target.closest("input, textarea, select") !== null),
       settings: Option.isSome(get.registry.get(settingsOpen)),
+      mode: current.mode,
     });
     if (command === null) return;
-    const current = get.registry.get(route);
     const open = current.conversation;
+    const go = (to: typeof current) =>
+      get.registry.set(route, { _tag: "Go", to, origin: "passive" });
     switch (command) {
       case "Search":
         event.preventDefault();
@@ -40,13 +44,7 @@ export const keys = Atom.make((get) => {
         return;
       case "Close":
         if (current.query !== "") get.registry.set(route, { _tag: "Leave" });
-        else if (Option.isSome(open)) {
-          get.registry.set(route, {
-            _tag: "Go",
-            to: { ...current, conversation: Option.none() },
-            origin: "passive",
-          });
-        }
+        else if (Option.isSome(open)) go({ ...current, conversation: Option.none() });
         return;
       case "Done": {
         const shown = Option.flatMap(open, (id) => get.registry.get(dock(id)));
@@ -62,6 +60,37 @@ export const keys = Atom.make((get) => {
           event.preventDefault();
           get.registry.set(picker, Option.some({ id: open.value, tab: "plan" }));
         }
+        return;
+      }
+      case "PlanMode":
+        go(
+          current.mode === "plan"
+            ? { ...current, mode: "messages", conversation: Option.none() }
+            : Option.getOrElse(
+                Option.flatMap(get.registry.get(toast), ({ show }) => show),
+                () => ({
+                  ...current,
+                  mode: "plan" as const,
+                  query: "",
+                  conversation: Option.none(),
+                }),
+              ),
+        );
+        return;
+      case "Day":
+      case "Month":
+        go({ ...current, scale: command === "Day" ? "day" : "month" });
+        return;
+      case "Today":
+        go({ ...current, date: Option.none() });
+        return;
+      case "Sooner":
+      case "Later": {
+        const now = get.registry.get(today);
+        if (Option.isNone(now)) return;
+        const from = Option.getOrElse(current.date, () => now.value.date);
+        const next = stepped(current.scale, from, command === "Later" ? 1 : -1);
+        go({ ...current, date: next === now.value.date ? Option.none() : Option.some(next) });
         return;
       }
       case "Next":

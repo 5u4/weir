@@ -38,6 +38,7 @@ describe("keyboard shortcuts", () => {
     modified: false,
     editing: false,
     settings: false,
+    mode: "messages",
     ...overrides,
   });
   it.each<[string, Key, Shortcut | null]>([
@@ -72,6 +73,25 @@ describe("keyboard shortcuts", () => {
     [", closes Settings", key({ key: ",", settings: true }), "Settings"],
     ["typing , in a field", key({ key: ",", editing: true }), null],
     ["a modifier with ,", key({ key: ",", modified: true }), null],
+    ["g toggles Plan from Messages", key({ key: "g" }), "PlanMode"],
+    ["g toggles Plan from Plan", key({ key: "g", mode: "plan" }), "PlanMode"],
+    ["d is inert in Messages", key({ key: "d" }), null],
+    ["m is inert in Messages", key({ key: "m" }), null],
+    ["r is inert in Messages", key({ key: "r" }), null],
+    ["t is inert in Messages", key({ key: "t" }), null],
+    ["ArrowLeft is inert in Messages", key({ key: "ArrowLeft" }), null],
+    ["ArrowRight is inert in Messages", key({ key: "ArrowRight" }), null],
+    ["d shows the day in Plan", key({ key: "d", mode: "plan" }), "Day"],
+    ["m shows the month in Plan", key({ key: "m", mode: "plan" }), "Month"],
+    ["t goes to today in Plan", key({ key: "t", mode: "plan" }), "Today"],
+    ["ArrowLeft steps back in Plan", key({ key: "ArrowLeft", mode: "plan" }), "Sooner"],
+    ["ArrowRight steps on in Plan", key({ key: "ArrowRight", mode: "plan" }), "Later"],
+    ["r re-plans in Plan", key({ key: "r", mode: "plan" }), "Plan"],
+    ["p re-plans in Plan", key({ key: "p", mode: "plan" }), "Plan"],
+    ["j moves down in Plan", key({ key: "j", mode: "plan" }), "Next"],
+    ["k moves up in Plan", key({ key: "k", mode: "plan" }), "Previous"],
+    ["typing d in a field in Plan", key({ key: "d", mode: "plan", editing: true }), null],
+    ["d under Settings in Plan", key({ key: "d", mode: "plan", settings: true }), null],
   ])("%s", (_, pressed, expected) => {
     expect(shortcut(pressed)).toBe(expected);
   });

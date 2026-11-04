@@ -29,6 +29,7 @@ import { capture, leave, stay } from "./Flip.ts";
 import { now } from "./Health.ts";
 import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
+import { plannedRows, sequence } from "./PlanLayout.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
 import {
@@ -50,7 +51,7 @@ import {
   shown,
   type Target,
 } from "./Rows.ts";
-import { type Plan, planText, type Today, todayOf } from "./When.ts";
+import { type Planned, planText, type Today, todayOf } from "./When.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -120,6 +121,13 @@ export const tagOrder = Atom.make((get) =>
   ),
 );
 
+export const clockNow = Atom.make((get) =>
+  Option.map(
+    get(clockAnchor),
+    ({ now: anchor, at }) => anchor.epoch_ms + Math.max(0, DateTime.toEpochMillis(get(now)) - at),
+  ),
+);
+
 const toApiView = Schema.decodeSync(ApiView);
 const toClearableView = Schema.decodeSync(ClearableView);
 
@@ -129,6 +137,11 @@ export const viewList = Atom.family((view: View) =>
     reactivityKeys: ["list"],
   }),
 );
+
+export const planList = Weir.query("view", "conversations", {
+  query: { view: { _tag: "Planned" } },
+  reactivityKeys: ["list"],
+});
 
 export const conversation = Atom.family((id: ConversationId) =>
   Weir.query("weir", "conversation", {
@@ -409,16 +422,28 @@ export const searchRows = Atom.make((get) =>
   }),
 );
 
-export const listedRows = Atom.make(
-  (get): ReadonlyArray<Row> =>
-    get(searching) ? get(searchRows) : get(visibleRows(get(route).view)),
+export const planRows = Atom.make((get) =>
+  AsyncResult.getOrElse(
+    AsyncResult.map(get(planList), ({ conversations }) => plannedRows(conversations, get(intents))),
+    () => [],
+  ),
 );
+
+export const listedRows = Atom.make((get): ReadonlyArray<Row> => {
+  if (get(searching)) return get(searchRows);
+  const { mode, view } = get(route);
+  if (mode === "messages") return get(visibleRows(view));
+  return Option.match(get(today), {
+    onNone: () => [],
+    onSome: ({ date }) => sequence(get(planRows), date),
+  });
+});
 
 const listing = Atom.make((get) => {
   const searched = get(searching);
-  const { view } = get(route);
+  const { view, mode } = get(route);
   return {
-    list: searched ? ("search" as const) : view,
+    list: searched ? ("search" as const) : mode === "plan" ? ("plan" as const) : view,
     ids: get(listedRows)
       .map(({ id }) => id)
       .join(),
@@ -428,7 +453,7 @@ const listing = Atom.make((get) => {
 
 export const listMotion = Atom.make((get) => {
   let painted = false;
-  let last: { readonly list: View | "search"; readonly ids: string } | undefined;
+  let last: { readonly list: View | "search" | "plan"; readonly ids: string } | undefined;
   get.subscribe(
     listing,
     (next) => {
@@ -444,8 +469,6 @@ export const listMotion = Atom.make((get) => {
 
 let exiting = false;
 
-export type Planned = Exclude<Plan, { readonly _tag: "None" }>;
-
 export type Dismissal = { readonly target: Target } & (
   | { readonly act: Exclude<Act, "Plan"> }
   | { readonly act: "Plan"; readonly plan: Planned }
@@ -459,9 +482,11 @@ export const dismiss = Weir.runtime
         const client = yield* Weir;
         if (exiting) return;
         const key = String(target.id);
-        const exit = exits(get.registry.get(route).view, act, get.registry.get(searching))
-          ? leave(key)
-          : null;
+        const planning = get.registry.get(route).mode === "plan";
+        const exit =
+          !planning && exits(get.registry.get(route).view, act, get.registry.get(searching))
+            ? leave(key)
+            : null;
         if (exit !== null) {
           exiting = true;
           yield* Effect.promise(() => exit).pipe(
@@ -476,20 +501,25 @@ export const dismiss = Weir.runtime
         const current = get.registry.get(route);
         const { view } = current;
         const open = Option.contains(current.conversation, target.id);
-        if (open && leaves(view, act)) {
+        if (open && (planning ? act !== "Plan" : leaves(view, act))) {
           get.registry.set(route, {
             _tag: "Replace",
             to: {
               ...current,
-              conversation: Option.map(neighbor(get.registry.get(listedRows), target.id), (next) =>
-                ConversationId.make(next.id),
-              ),
+              conversation: planning
+                ? Option.none()
+                : Option.map(neighbor(get.registry.get(listedRows), target.id), (next) =>
+                    ConversationId.make(next.id),
+                  ),
             },
             origin: "passive",
           });
         }
         const before = get.registry.get(intents).get(target.id);
-        const intent = intentFor(act, target);
+        const intent =
+          dismissal.act === "Plan"
+            ? { _tag: "Plan" as const, plan: dismissal.plan }
+            : intentFor(dismissal.act, target);
         get.registry.update(intents, (map) => changed(map, target.id, intent));
         if (get.registry.get(listedRows).some(({ id }) => id === target.id)) stay(key);
         const params = { id: target.id };
@@ -510,17 +540,33 @@ export const dismiss = Weir.runtime
             ),
           ),
         );
-        if (dismissal.act === "Plan") {
+        if (dismissal.act === "Plan" && !planning) {
           const date = Option.map(get.registry.get(today), ({ date }) => date);
           if (Option.isSome(date)) {
-            get.registry.set(toast, Option.some(planText(dismissal.plan, date.value)));
+            const { plan } = dismissal;
+            get.registry.set(
+              toast,
+              Option.some({
+                text: planText(plan, date.value),
+                show: Option.some({
+                  ...get.registry.get(route),
+                  query: "",
+                  conversation: Option.none(),
+                  mode: "plan" as const,
+                  scale: "day" as const,
+                  date: plan._tag === "Tray" ? Option.none() : Option.some(plan.date),
+                }),
+              }),
+            );
           }
         }
         yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [target.id] });
         yield* Effect.ignore(
           Effect.all([
-            get.result(viewList(view), { suspendOnWaiting: true }),
+            planning
+              ? get.result(planList, { suspendOnWaiting: true })
+              : get.result(viewList(view), { suspendOnWaiting: true }),
             ...(Option.contains(get.registry.get(route).conversation, target.id)
               ? [
                   get.result(conversation(ConversationId.make(target.id)), {
@@ -571,17 +617,17 @@ export const picker = Atom.writable(
     ),
 );
 
-const toastShown = Atom.make(Option.none<{ readonly text: string; readonly key: number }>()).pipe(
-  Atom.keepAlive,
-);
+export type Toast = { readonly text: string; readonly show: Option.Option<Route> };
+
+const toastShown = Atom.make(Option.none<Toast & { readonly key: number }>()).pipe(Atom.keepAlive);
 
 export const toast = Atom.writable(
   (get) => get(toastShown),
-  (ctx, text: Option.Option<string>) =>
+  (ctx, next: Option.Option<Toast>) =>
     ctx.set(
       toastShown,
-      Option.map(text, (line) => ({
-        text: line,
+      Option.map(next, (line) => ({
+        ...line,
         key: Option.match(ctx.get(toastShown), { onNone: () => 0, onSome: ({ key }) => key + 1 }),
       })),
     ),

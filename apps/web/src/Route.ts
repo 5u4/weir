@@ -42,6 +42,14 @@ const decodeConversation = Schema.decodeUnknownOption(
   Schema.NumberFromString.pipe(Schema.decodeTo(ConversationId)),
 );
 
+export const Mode = Schema.Literals(["messages", "plan"]);
+export type Mode = typeof Mode.Type;
+
+export const Scale = Schema.Literals(["day", "month"]);
+export type Scale = typeof Scale.Type;
+
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+
 export const Route = Schema.Struct({
   view: param(View, decodeView, String, "untagged"),
   query: param(Schema.String, Option.some, String, ""),
@@ -51,8 +59,37 @@ export const Route = Schema.Struct({
     Option.match({ onNone: () => "", onSome: String }),
     Option.none(),
   ),
-}).pipe(Schema.encodeKeys({ view: "v", query: "q", conversation: "c" }));
+  mode: param(Mode, Schema.decodeUnknownOption(Mode), String, "messages"),
+  scale: param(Scale, Schema.decodeUnknownOption(Scale), String, "day"),
+  date: param(
+    Schema.Option(Schema.String),
+    (raw) =>
+      isoDate.test(raw) && !Number.isNaN(Date.parse(raw))
+        ? Option.some(Option.some(raw))
+        : Option.none(),
+    Option.match({ onNone: () => "", onSome: String }),
+    Option.none(),
+  ),
+}).pipe(
+  Schema.encodeKeys({
+    view: "v",
+    query: "q",
+    conversation: "c",
+    mode: "m",
+    scale: "s",
+    date: "d",
+  }),
+);
 export type Route = typeof Route.Type;
+
+export const home: Route = {
+  view: "untagged",
+  query: "",
+  conversation: Option.none(),
+  mode: "messages",
+  scale: "day",
+  date: Option.none(),
+};
 
 const decodeRoute = Schema.decodeSync(Route);
 const encodeRoute = Schema.encodeSync(Route);
@@ -76,7 +113,12 @@ export type Navigation =
 export const destination = (previous: Route, navigation: Navigation): Route => {
   if (navigation._tag === "Go" || navigation._tag === "Replace") return navigation.to;
   const query = navigation._tag === "Type" ? navigation.query : "";
-  return { ...previous, query, conversation: query === "" ? previous.conversation : Option.none() };
+  return {
+    ...previous,
+    query,
+    mode: query === "" ? previous.mode : "messages",
+    conversation: query === "" ? previous.conversation : Option.none(),
+  };
 };
 
 export type Write = "push" | "replace" | "leave" | "none";
@@ -135,7 +177,13 @@ const sceneOf = ({ settings, route, searching, counts }: Shown): Scene => ({
   settings,
   conversation: route.conversation,
   notch: notchKey(
-    formOf({ settings, reading: Option.isSome(route.conversation), query: route.query, searching }),
+    formOf({
+      settings,
+      reading: Option.isSome(route.conversation),
+      query: route.query,
+      searching,
+      planning: route.mode === "plan",
+    }),
     counts,
   ),
 });

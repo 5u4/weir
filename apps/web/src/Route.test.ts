@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ConversationId,
   destination,
+  home,
   href,
   type Navigation,
   parse,
@@ -11,6 +12,7 @@ import {
 } from "./Route.ts";
 
 const at = (view: Route["view"], query = "", conversation?: number): Route => ({
+  ...home,
   view,
   query,
   conversation:
@@ -53,6 +55,45 @@ describe("route URL", () => {
   ])("encodes %j without defaults and round-trips", (route, expected) => {
     expect(href(route)).toBe(expected);
     expect(parse(new URL(expected, "http://127.0.0.1").search)).toEqual(route);
+  });
+});
+
+describe("plan route URL", () => {
+  const plan = (scale: Route["scale"], date?: string): Route => ({
+    ...home,
+    mode: "plan",
+    scale,
+    date: date === undefined ? Option.none() : Option.some(date),
+  });
+
+  it.each([
+    [plan("day"), "/?m=plan"],
+    [plan("month"), "/?m=plan&s=month"],
+    [plan("day", "2026-10-29"), "/?m=plan&d=2026-10-29"],
+    [
+      { ...plan("day", "2026-10-29"), conversation: Option.some(ConversationId.make(4)) },
+      "/?c=4&m=plan&d=2026-10-29",
+    ],
+  ])("encodes %j and round-trips", (route, expected) => {
+    expect(href(route)).toBe(expected);
+    expect(parse(new URL(expected, "http://127.0.0.1").search)).toEqual(route);
+  });
+
+  it.each([
+    ["?m=calendar", home],
+    ["?m=plan&s=week", plan("day")],
+    ["?m=plan&d=tomorrow", plan("day")],
+    ["?m=plan&d=2026-13-40", plan("day")],
+  ])("falls back to the default for invalid %j", (search, expected) => {
+    expect(parse(search)).toEqual(expected);
+  });
+
+  it("typing a search from Plan returns to Messages", () => {
+    expect(destination(plan("month"), { _tag: "Type", query: "a" })).toEqual({
+      ...plan("month"),
+      mode: "messages",
+      query: "a",
+    });
   });
 });
 

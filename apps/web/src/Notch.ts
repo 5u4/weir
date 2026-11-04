@@ -158,11 +158,13 @@ export const formOf = ({
   reading,
   query,
   searching,
+  planning,
 }: {
   readonly settings: boolean;
   readonly reading: boolean;
   readonly query: string;
   readonly searching: boolean;
+  readonly planning: boolean;
 }): CapForm =>
   settings
     ? "compact"
@@ -172,7 +174,9 @@ export const formOf = ({
         : "result"
       : searching || query !== ""
         ? "search"
-        : "full";
+        : planning
+          ? "compact"
+          : "full";
 
 const notchShape: Record<CapForm, (counts: Counts) => unknown> = {
   full: sentence,

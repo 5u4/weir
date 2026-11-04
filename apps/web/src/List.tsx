@@ -32,7 +32,7 @@ import { ResultList } from "./ResultList.tsx";
 import { ConversationId, href, listTops, route, type View, viewLabel } from "./Route.ts";
 import { face, shown, tagHue } from "./Rows.ts";
 import { clearAll, dismiss, intents, searching, tagOrder, today, viewList } from "./Weir.ts";
-import { dueFlag, planLabel } from "./When.ts";
+import { dueFlag } from "./When.ts";
 
 type RowProps = {
   row: Row;
@@ -54,7 +54,6 @@ function ListRow({ row, view, selected, hue, onDismiss }: RowProps) {
   const last = DateTime.makeUnsafe(row.last_at);
   const { from, mark, preview, who, names } = face(row);
   const cleared = view === "cleared";
-  const planned = row.state === "planned";
   const unread = row.state === "unread" && seen < row.last_seq;
   const state = { unread, selected };
   const flag = Option.flatMap(date, (day) =>
@@ -84,20 +83,11 @@ function ListRow({ row, view, selected, hue, onDismiss }: RowProps) {
           {who !== "" && <span title={names}>{who}</span>}
           <span className={who === "" ? undefined : "before:mx-em-0.5 before:content-dot"}>
             {plural(row.items, "message")}
-            {(unread || planned) && row.new > 0 && `, ${row.new} new`} · {row.source}
+            {unread && row.new > 0 && `, ${row.new} new`} · {row.source}
           </span>
         </span>
         {cleared ? (
-          <span className={rowTimeClass(false)}>
-            {planned
-              ? Option.getOrElse(
-                  Option.flatMap(date, (day) => Option.fromNullishOr(planLabel(row.plan, day))),
-                  () => "Planned",
-                )
-              : row.muted
-                ? "Muted"
-                : "Done"}
-          </span>
+          <span className={rowTimeClass(false)}>{row.muted ? "Muted" : "Done"}</span>
         ) : (
           <time className={rowTimeClass(unread)} dateTime={row.last_at} title={dayAndTime(last)}>
             {shortTime(last, at)}
@@ -110,7 +100,7 @@ function ListRow({ row, view, selected, hue, onDismiss }: RowProps) {
         title={cleared ? undefined : "Done. It leaves the list until something new arrives."}
         onClick={onDismiss}
       >
-        {cleared ? (planned ? "Back to inbox" : "Restore") : "Done"}
+        {cleared ? "Restore" : "Done"}
       </button>
     </li>
   );
@@ -135,8 +125,7 @@ function Empty({ view }: { view: View }) {
 const headMeta = (view: View, rows: ReadonlyArray<Row>) => {
   if (view === "cleared") {
     const muted = rows.filter((row) => row.muted).length;
-    const planned = rows.filter((row) => row.state === "planned").length;
-    return `${rows.length} · ${rows.length - muted - planned} done · ${muted} muted${planned > 0 ? ` · ${planned} planned` : ""}`;
+    return `${rows.length} · ${rows.length - muted} done · ${muted} muted`;
   }
   const unread = rows.filter((row) => row.state === "unread").length;
   const state = unread > 0 ? ` · ${unread} unread` : rows.length > 0 ? " · all read" : "";

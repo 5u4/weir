@@ -1,4 +1,5 @@
 import type { Row } from "@weir/daemon/Api";
+import type { Mode } from "./Route.ts";
 
 export type DockAction = "Done" | "Plan" | "Restore" | "MarkUnread" | "Mute";
 
@@ -15,23 +16,31 @@ export const dockActions = ({ state, read }: Standing): ReadonlyArray<DockAction
 export type Shortcut =
   | "CloseSettings"
   | "Close"
+  | "Day"
   | "Done"
+  | "Later"
+  | "Month"
   | "Next"
   | "Plan"
+  | "PlanMode"
   | "Previous"
   | "Search"
-  | "Settings";
+  | "Settings"
+  | "Sooner"
+  | "Today";
 
 export type Key = {
   readonly key: string;
   readonly modified: boolean;
   readonly editing: boolean;
   readonly settings: boolean;
+  readonly mode: Mode;
 };
 
-const keys: Readonly<Record<string, Shortcut>> = {
+const shared: Readonly<Record<string, Shortcut>> = {
   Escape: "Close",
   e: "Done",
+  g: "PlanMode",
   j: "Next",
   k: "Previous",
   p: "Plan",
@@ -39,8 +48,22 @@ const keys: Readonly<Record<string, Shortcut>> = {
   ",": "Settings",
 };
 
-export const shortcut = ({ key, modified, editing, settings }: Key): Shortcut | null => {
+const keys: Readonly<Record<Mode, Readonly<Record<string, Shortcut>>>> = {
+  messages: shared,
+  plan: {
+    ...shared,
+    r: "Plan",
+    d: "Day",
+    m: "Month",
+    t: "Today",
+    ArrowLeft: "Sooner",
+    ArrowRight: "Later",
+  },
+};
+
+export const shortcut = ({ key, modified, editing, settings, mode }: Key): Shortcut | null => {
   if (settings && key === "Escape") return "CloseSettings";
   if (modified || editing || (settings && key !== "/" && key !== ",")) return null;
-  return Object.hasOwn(keys, key) ? (keys[key] ?? null) : null;
+  const table = keys[mode];
+  return Object.hasOwn(table, key) ? (table[key] ?? null) : null;
 };

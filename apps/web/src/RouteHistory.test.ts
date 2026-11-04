@@ -7,6 +7,7 @@ import { awaitArrivals } from "./Morph.ts";
 import {
   ConversationId,
   capCounts,
+  home,
   href,
   type Navigation,
   route,
@@ -109,7 +110,12 @@ const session = (start: string) => {
 
 const open = (query: string, conversation: number): Navigation => ({
   _tag: "Go",
-  to: { view: "untagged", query, conversation: Option.some(ConversationId.make(conversation)) },
+  to: {
+    ...home,
+    view: "untagged",
+    query,
+    conversation: Option.some(ConversationId.make(conversation)),
+  },
   origin: "passive",
 });
 
@@ -177,7 +183,7 @@ describe("navigating closes Settings", () => {
       "a view link",
       {
         _tag: "Go",
-        to: { view: "cleared", query: "", conversation: Option.none() },
+        to: { ...home, view: "cleared", query: "", conversation: Option.none() },
         origin: "passive",
       },
     ],
@@ -185,7 +191,7 @@ describe("navigating closes Settings", () => {
       "the current view link",
       {
         _tag: "Go",
-        to: { view: "untagged", query: "", conversation: Option.none() },
+        to: { ...home, view: "untagged", query: "", conversation: Option.none() },
         origin: "passive",
       },
     ],
@@ -312,7 +318,7 @@ describe("writes while a view transition is pending", () => {
     registry.set(route, open("", 7));
     registry.set(route, {
       _tag: "Go",
-      to: { view: "untagged", query: "", conversation: Option.none() },
+      to: { ...home, view: "untagged", query: "", conversation: Option.none() },
       origin: "passive",
     });
     await transitions.runAll();
@@ -382,13 +388,18 @@ describe("writes while a view transition is pending", () => {
     const { browser, registry, navigate, shown } = session("/");
     navigate({
       _tag: "Go",
-      to: { view: "cleared", query: "", conversation: Option.none() },
+      to: { ...home, view: "cleared", query: "", conversation: Option.none() },
       origin: "passive",
     });
     const transitions = deferredTransitions();
     registry.set(route, {
       _tag: "Go",
-      to: { view: "cleared", query: "", conversation: Option.some(ConversationId.make(7)) },
+      to: {
+        ...home,
+        view: "cleared",
+        query: "",
+        conversation: Option.some(ConversationId.make(7)),
+      },
       origin: "passive",
     });
     browser.back();
@@ -466,7 +477,7 @@ describe("notch ticks", () => {
     const { navigate, shown, transitions } = notch("/");
     navigate({
       _tag: "Go",
-      to: { view: "cleared", query: "", conversation: Option.none() },
+      to: { ...home, view: "cleared", query: "", conversation: Option.none() },
       origin: "passive",
     });
     await transitions.runAll();
