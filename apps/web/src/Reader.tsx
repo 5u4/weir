@@ -1393,35 +1393,37 @@ function PlanStrip({ id }: { id: ConversationId }) {
   const at = current.value.date;
   const label = planLabel(plan, at);
   const flag = due === null ? null : dueFlag(due.date, at);
+  if (label === null && (flag === null || due === null)) return null;
+  const source = due === null ? null : dueSource(detail.value, due);
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-strip mx-auto flex w-fit max-w-dock gap-1.5 max-wide:bottom-strip-safe"
       role="group"
       aria-label="Plan and due date"
     >
-      <button
-        type="button"
-        className={`pointer-events-auto ${stripChipClass(false)}`}
-        aria-keyshortcuts="p"
-        onClick={() => open(Option.some({ id, tab: "plan" }))}
-      >
-        <CalendarIcon className="size-3.5 text-ink-3" />
-        {label ?? "Not planned"}
-      </button>
-      <button
-        type="button"
-        className={`pointer-events-auto ${stripChipClass(flag?.over === true)}`}
-        onClick={() => open(Option.some({ id, tab: "due" }))}
-      >
-        {flag === null || due === null ? (
-          "Add due date"
-        ) : (
-          <>
-            {flag.text}
-            <span className="font-medium text-ink-3">{dueSource(detail.value, due)}</span>
-          </>
-        )}
-      </button>
+      {label === null ? null : (
+        <button
+          type="button"
+          className={`pointer-events-auto ${stripChipClass(false)}`}
+          aria-keyshortcuts="p"
+          onClick={() => open(Option.some({ id, tab: "plan" }))}
+        >
+          <CalendarIcon className="size-3.5 text-ink-3" />
+          {label}
+        </button>
+      )}
+      {flag === null ? null : (
+        <button
+          type="button"
+          className={`pointer-events-auto ${stripChipClass(flag.over)}`}
+          aria-label={`${flag.text}, ${source}`}
+          title={`${flag.text}, ${source}`}
+          onClick={() => open(Option.some({ id, tab: "due" }))}
+        >
+          {flag.text}
+          <span className="font-medium text-ink-3 max-wide:hidden">{source}</span>
+        </button>
+      )}
     </div>
   );
 }
