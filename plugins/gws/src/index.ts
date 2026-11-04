@@ -6,6 +6,8 @@ import * as Equivalence from "effect/Equivalence";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
 import { calendarPrefix, calendarSync } from "./calendar.ts";
+import { makeFaces } from "./faces/index.ts";
+import { type FaceNet, liveNet } from "./faces/net.ts";
 import {
   abortableSleep,
   type Gws,
@@ -20,6 +22,8 @@ import {
   type Sleep,
 } from "./gws.ts";
 import { toRawItem } from "./item.ts";
+
+export { type FaceNet, liveNet };
 
 const LabelIds = Schema.NonEmptyArray(Schema.String);
 type LabelIds = typeof LabelIds.Type;
@@ -171,6 +175,7 @@ export const createSource = (
   { command, backfill, labels: labelNames, calendar }: GwsConfig,
   sleep: Sleep,
   host: SourceHost,
+  net: FaceNet,
 ): Source => {
   const cli: Gws = { command, sleep };
   const listingPage = async (
@@ -389,11 +394,12 @@ export const createSource = (
         }),
       );
     },
+    faces: makeFaces(net),
   };
 };
 
-export const gws: SourcePlugin<GwsConfig> = {
+export const gwsPlugin = (net: FaceNet): SourcePlugin<GwsConfig> => ({
   id: "gws",
   configSchema: Schema.toStandardSchemaV1(GwsConfig),
-  create: (config, host) => createSource(config, abortableSleep, host),
-};
+  create: (config, host) => createSource(config, abortableSleep, host, net),
+});

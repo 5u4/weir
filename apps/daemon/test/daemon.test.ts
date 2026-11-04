@@ -4,11 +4,12 @@ import { describe, expect, it } from "@effect/vitest";
 import type { RawItem, SourcePlugin } from "@weir/contract/Source";
 import {
   deliver as deliverMail,
+  fixtureFaceNet,
   readCalls,
   remove as removeMail,
   seedMailbox,
 } from "@weir/fixtures";
-import { gws } from "@weir/plugin-gws";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Read from "@weir/store/Read";
 import type { ConversationId } from "@weir/store/Rows";
@@ -489,7 +490,7 @@ sync_every = "100ms"
 command = ["${join(import.meta.dirname, "../node_modules/.bin/fake-gws")}", "--mailbox", "${mailbox}"]
 backfill = "newer_than:30d"
 `);
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const status = yield* eventually(client.status(), ({ sources }) =>
         sources.every(
@@ -545,7 +546,7 @@ describe("gws labels", () => {
       const mailbox = join(home.root, "mailbox");
       seedMailbox(mailbox, { until: "2026-10-23T07:00:00-07:00" });
       writeConfig(gwsSource(mailbox, ["INBOX"]));
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
       const states = client
@@ -593,7 +594,7 @@ describe("gws labels", () => {
       const mailbox = join(home.root, "mailbox");
       seedMailbox(mailbox);
       writeConfig(gwsSource(mailbox, ["INBOX", "SENT"]));
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       yield* eventually(
         client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0])),
@@ -621,7 +622,7 @@ describe("gws labels", () => {
       const mailbox = join(home.root, "mailbox");
       seedMailbox(mailbox);
       writeConfig(gwsSource(mailbox, ["INBOX"], "1h"));
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const stream = client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0]));
 
@@ -656,7 +657,7 @@ describe("gws labels", () => {
       const mailbox = join(home.root, "mailbox");
       seedMailbox(mailbox);
       writeConfig(gwsSource(mailbox, ["INBOX", "Nope"]));
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const failed = yield* eventually(
         client.status().pipe(Effect.map(({ sources }) => sources[0]?.streams[0])),

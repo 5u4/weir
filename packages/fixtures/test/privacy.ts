@@ -6,6 +6,7 @@ const DOCUMENTATION_NETS = ["192.0.2.", "198.51.100.", "203.0.113."];
 const CODE_IDENTIFIERS = ["invoice.created", "InvoiceWriter.create", "webhook.ts"];
 const AUTH_RESULT_PROPERTY = /^(header|smtp|policy)\.[a-z]+$/i;
 const AUTH_RESULT_HEADERS = ["Authentication-Results", "ARC-Authentication-Results"];
+const GMAIL_AUTHSERV_ID = "mx.google.com";
 
 const EMAIL = /[\w.+-]+@((?:[a-z0-9-]+\.)+[a-z0-9-]+)/gi;
 const URL = /\b[a-z][a-z0-9+.-]*:\/\/([^/\s:?#<>()"'\]]+)[^\s<>()"']*/gi;
@@ -48,11 +49,11 @@ export const offendingValues = (text: string, field: Field = "text"): string[] =
     });
   for (const match of rest.matchAll(HOSTNAME)) {
     const host = match[0];
-    const authProperty =
+    const authResult =
       field === "auth-results" &&
-      AUTH_RESULT_PROPERTY.test(host) &&
-      rest[match.index + host.length] === "=";
-    if (CODE_IDENTIFIERS.includes(host) || authProperty || reservedHost(host)) continue;
+      ((AUTH_RESULT_PROPERTY.test(host) && rest[match.index + host.length] === "=") ||
+        host === GMAIL_AUTHSERV_ID);
+    if (CODE_IDENTIFIERS.includes(host) || authResult || reservedHost(host)) continue;
     found.push(host);
   }
   return found;

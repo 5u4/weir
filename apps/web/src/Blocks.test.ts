@@ -11,9 +11,9 @@ import {
   topicKey,
 } from "./Blocks.ts";
 
-const ada = { name: "Ada Lovelace", address: "ada@example.com" };
-const ben = { name: "Ben Foster", address: "ben@example.com" };
-const robin = { name: "Robin Ellis", address: "robin@example.com" };
+const ada = { name: "Ada Lovelace", address: "ada@example.com", verified: false };
+const ben = { name: "Ben Foster", address: "ben@example.com", verified: false };
+const robin = { name: "Robin Ellis", address: "robin@example.com", verified: false };
 
 const item = (seq: number, minute: number, from = ada, from_me = false): ItemSummary => ({
   seq,
@@ -232,6 +232,20 @@ describe("reader blocks", () => {
       "me[4,5]",
       "Ben Foster[6]",
     ]);
+  });
+
+  it("a bubble's sender is verified only when every message in it is", () => {
+    const verifiedAda = { ...ada, verified: true };
+    const chat = detail([
+      item(1, 0, verifiedAda),
+      item(2, 1),
+      item(3, 2, verifiedAda),
+      item(4, 9, verifiedAda),
+    ]);
+    const verified = reader(chat, 4, closedUi, null).flatMap((block) =>
+      block._tag === "Bubbles" ? [block.from.verified] : [],
+    );
+    expect(verified).toEqual([false, true]);
   });
 
   it("Last read splits a group at the first new message", () => {

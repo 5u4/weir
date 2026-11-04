@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import expectedDigestsJson from "../expected-digests.json" with { type: "json" };
 import expected from "../expected-tags.json" with { type: "json" };
 import { applyRevisions, CALENDAR_CHANGES_AT } from "./calendar.ts";
+import { fixtureFaceNet } from "./faces.ts";
 import type { GwsCall } from "./gws.ts";
 import {
   callsFile,
@@ -19,7 +20,7 @@ import {
 import type { Thread } from "./scenarios.ts";
 
 export type { Thread };
-export { CALENDAR_CHANGES_AT };
+export { CALENDAR_CHANGES_AT, fixtureFaceNet };
 
 export const FIXTURE_NOW = "2026-10-25T09:00:00-07:00";
 

@@ -93,8 +93,8 @@ describe("notch sentence", () => {
 
   it("an updates widget links to its view and carries its senders", () => {
     const senders = [
-      { name: "Ada Lovelace", address: "ada@example.com" },
-      { name: "", address: "noreply@github.com" },
+      { source: "gmail", name: "Ada Lovelace", address: "ada@example.com", verified: false },
+      { source: "gmail", name: "", address: "noreply@github.com", verified: true },
     ];
     const { main } = sentence({
       unread: 3,

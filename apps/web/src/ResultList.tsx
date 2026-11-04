@@ -86,7 +86,13 @@ function ResultRow({ result, selected }: { result: Result; selected: boolean }) 
         className={rowLinkClass}
       >
         <span className={`${rowAvClass(state, hue)} row-end-5`}>
-          <Avatar address={from.address} mark={mark} className={rowAvatarClass} />
+          <Avatar
+            source={result.source}
+            address={from.address}
+            verified={from.verified}
+            mark={mark}
+            className={rowAvatarClass}
+          />
         </span>
         <span className={rowTitleClass(state)}>{result.title}</span>
         <time className={rowTimeClass(unread)} dateTime={result.last_at} title={dayAndTime(last)}>

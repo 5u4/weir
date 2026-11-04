@@ -9,7 +9,12 @@ import { ConversationId } from "./Route.ts";
 import { conversation } from "./Weir.ts";
 
 const daemon = vi.hoisted(() => {
-  const party = { name: "Lisa Chen", address: "lisa.chen@northwind.example", me: false };
+  const party = {
+    name: "Lisa Chen",
+    address: "lisa.chen@northwind.example",
+    me: false,
+    verified: true,
+  };
   const state = {
     bodies: new Map<number, string>(),
     digests: [] as Array<{ id: number; from_seq: number; to_seq: number; seqs: Array<number> }>,

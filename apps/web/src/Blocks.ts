@@ -148,6 +148,7 @@ const group = (
     } else {
       groups[groups.length - 1] = {
         ...current,
+        from: item.from.verified ? current.from : item.from,
         items: [...current.items, item],
         heres: current.heres === null ? null : [...current.heres, at],
       };

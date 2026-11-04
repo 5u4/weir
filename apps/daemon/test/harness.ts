@@ -255,6 +255,7 @@ export const rawItem = (externalId: string, overrides: Partial<RawItem>): RawIte
   occurredAt: "2026-10-20T09:00:00Z",
   title: null,
   from: { name: "Ada", address: "ada@example.com" },
+  fromVerified: false,
   format: "markdown",
   body: "",
   bodyNew: "",
@@ -271,9 +272,13 @@ export interface FakeSource {
   pendingDeletions: Array<string>;
   syncCalls: number;
   failingStreams: Set<string>;
+  faces: Source["faces"];
 }
 
-export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
+export const fakeSource = (
+  items: ReadonlyArray<RawItem>,
+  faces?: NonNullable<Source["faces"]>,
+): FakeSource => ({
   streams: async () => [mailStream],
   items,
   pending: [],
@@ -281,6 +286,7 @@ export const fakeSource = (items: ReadonlyArray<RawItem>): FakeSource => ({
   pendingDeletions: [],
   syncCalls: 0,
   failingStreams: new Set(),
+  faces,
 });
 
 export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
@@ -310,6 +316,7 @@ export const fakePlugin = (state: FakeSource): SourcePlugin<unknown> => ({
         backfill: "done",
       };
     },
+    ...(state.faces === undefined ? {} : { faces: state.faces }),
   }),
 });
 

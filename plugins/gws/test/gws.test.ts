@@ -7,6 +7,7 @@ import {
   deliverThreads,
   expireHistory,
   FIXTURE_NOW,
+  fixtureFaceNet,
   readCalls,
   relabel,
   remove,
@@ -26,8 +27,9 @@ import { gfm } from "micromark-extension-gfm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import scenarios from "../../../packages/fixtures/scenarios.json" with { type: "json" };
 import { abortableSleep, GwsError, Message, type MessagePart, type Sleep } from "../src/gws.ts";
-import { createSource, type GwsConfig, gws } from "../src/index.ts";
+import { createSource, type GwsConfig, gwsPlugin } from "../src/index.ts";
 
+const gws = gwsPlugin(fixtureFaceNet());
 const FAKE_GWS = join(import.meta.dirname, "../node_modules/.bin/fake-gws");
 const ME = "robin.ellis@example.com";
 const EVERY_LABEL: GwsConfig["labels"] = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"];
@@ -739,6 +741,7 @@ describe("gws quota backoff", () => {
       { command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels: EVERY_LABEL },
       sleep,
       host,
+      fixtureFaceNet(),
     );
   const failing = (error: object, sleep: Sleep) =>
     createSource(
@@ -749,6 +752,7 @@ describe("gws quota backoff", () => {
       },
       sleep,
       host,
+      fixtureFaceNet(),
     );
 
   it("retries a quota error after 2, 4, 8, 16, 32, 60, 60 and 60 s, then fails the page", async () => {

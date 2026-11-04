@@ -1,4 +1,4 @@
-import { type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
+import { Faces, type Source, StreamDescriptor, SyncPage } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { ConversationId, StreamRow } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
@@ -28,6 +28,7 @@ export type Written = (conversationIds: ReadonlyArray<ConversationId>) => Effect
 const strict = { onExcessProperty: "error" } as const;
 const decodeStreams = Schema.decodeUnknownEffect(Schema.Array(StreamDescriptor), strict);
 const decodePage = Schema.decodeUnknownEffect(SyncPage, strict);
+const decodeFaces = Schema.decodeUnknownEffect(Faces, strict);
 
 const callSource = <A>(sourceId: string, call: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
@@ -41,6 +42,24 @@ const callSource = <A>(sourceId: string, call: (signal: AbortSignal) => Promise<
 
 export const errorMessage = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
+
+export type FaceSource = Source & { readonly faces: NonNullable<Source["faces"]> };
+
+export const hasFaces = (source: Source): source is FaceSource =>
+  typeof source.faces === "function";
+
+export const lookupFaces = (
+  sourceId: string,
+  source: FaceSource,
+  addresses: ReadonlyArray<string>,
+) =>
+  callSource(sourceId, (signal) => source.faces(addresses, signal)).pipe(
+    Effect.flatMap((reply) =>
+      decodeFaces(reply).pipe(
+        Effect.mapError((failure) => new SourceError({ sourceId, message: failure.message })),
+      ),
+    ),
+  );
 
 const writePage = Effect.fnUntraced(function* (
   stream: StreamRow,

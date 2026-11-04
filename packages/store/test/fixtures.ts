@@ -29,6 +29,7 @@ export const rawItem = (externalId: string, overrides: Partial<Fixture> = {}): F
   occurredAt: "2026-10-28T09:00:00Z",
   title: null,
   from: { name: "Ada", address: "ada@example.com" },
+  fromVerified: false,
   format: "markdown",
   body: "",
   bodyNew: "",

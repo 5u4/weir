@@ -41,7 +41,7 @@ const row = (id: number, plan: Plan, planned_at: string | null = null): Row => (
   new: 0,
   items: 1,
   participants: 1,
-  from: { name: "Ada", address: "ada@example.com", me: false },
+  from: { name: "Ada", address: "ada@example.com", me: false, verified: false },
   preview: "",
   senders: [],
   plan,

@@ -61,15 +61,18 @@ describe("privacy", () => {
     ]);
   });
 
-  it("exempts authentication properties only at property positions of authentication headers", () => {
+  it("exempts authentication properties and Gmail's authserv-id only inside authentication headers", () => {
     const headers = [
       { name: "Authentication-Results", value: "mx.example; spf=pass smtp.mailfrom=a@example.com" },
       { name: "Authentication-Results", value: "mx.example; spf=pass (relayed by smtp.com)" },
       { name: "X-Note", value: "smtp.mailfrom=a@example.com" },
+      { name: "Authentication-Results", value: "mx.google.com; dmarc=pass header.from=a.example" },
+      { name: "Received", value: "by mx.google.com" },
     ];
     expect(privacyReport("headers", headers)).toEqual([
       "smtp.com @ headers [1].value",
       "smtp.mailfrom @ headers [2].value",
+      "mx.google.com @ headers [4].value",
     ]);
   });
 });

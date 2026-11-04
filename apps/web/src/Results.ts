@@ -25,8 +25,15 @@ export const inGroup = (result: Pick<Result, "state" | "tags">, view: View) => {
 
 const sendersOf = (results: ReadonlyArray<Result>) => {
   const seen = new Map<string, Sender>();
-  for (const { from } of results) {
-    if (!from.me && !seen.has(from.address)) seen.set(from.address, from);
+  for (const { from, source } of results) {
+    if (!from.me && !seen.has(from.address)) {
+      seen.set(from.address, {
+        source,
+        name: from.name,
+        address: from.address,
+        verified: from.verified,
+      });
+    }
   }
   return [...seen.values()].slice(0, 3);
 };

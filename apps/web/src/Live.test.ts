@@ -103,4 +103,9 @@ describe("refetches per event", () => {
     } satisfies Event;
     expect(refetches(failed, Option.some(3))).toEqual({ ...nothing, status: true });
   });
+
+  it("a resolved face refetches nothing, so no list, search or cap re-runs", () => {
+    const faces = { type: "faces", source: "gmail", addresses: ["ada@example.com"] } as const;
+    expect(refetches(faces, Option.some(3))).toEqual(nothing);
+  });
 });

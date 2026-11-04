@@ -101,6 +101,7 @@ const toEventItem = (
       name: event.organizer?.displayName ?? "",
       address: (event.organizer?.email ?? "").toLowerCase(),
     },
+    fromVerified: false,
     format: "markdown",
     body: htmlBody(description).trim(),
     bodyNew: htmlBodyNew(description).trim(),

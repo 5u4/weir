@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
-import { FIXTURE_NOW, seedThreads, setDelay } from "@weir/fixtures";
-import { gws } from "@weir/plugin-gws";
+import { FIXTURE_NOW, fixtureFaceNet, seedThreads, setDelay } from "@weir/fixtures";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Database from "@weir/store/Database";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -72,7 +72,7 @@ describe("interrupting a sync pass", () => {
     Effect.gen(function* () {
       const { home, port, writeConfig } = makeHome("");
       const messageIds = slowMailbox(home, writeConfig);
-      yield* Layer.build(Http.layer(home, { gws }));
+      yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const events = yield* openEvents(port);
       expect(midBackfill(yield* eventually(client.status(), midBackfill, 400))).toBe(true);

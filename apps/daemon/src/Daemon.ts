@@ -3,7 +3,6 @@ import * as BunFileSystem from "@effect/platform-bun/BunFileSystem";
 import * as BunPath from "@effect/platform-bun/BunPath";
 import type { Config } from "@weir/contract/Config";
 import * as Digester from "@weir/digest/Digester";
-import { gws } from "@weir/plugin-gws";
 import * as Read from "@weir/store/Read";
 import type { AiScope } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
@@ -22,9 +21,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { type ConfigInvalid, defaultPort } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import * as Events from "./Events.ts";
+import * as Faces from "./Faces.ts";
 import type { WeirHome } from "./Home.ts";
-
-export const plugins: Scheduler.PluginRegistry = { gws };
 
 export const aiScopes = (config: Config): Array<AiScope> => [
   ...config.tag.filter(({ ai }) => ai).map(({ name }) => ({ kind: "tag" as const, name })),
@@ -51,6 +49,7 @@ export class Daemon extends Context.Service<
     readonly state: Effect.Effect<State>;
     readonly reload: Effect.Effect<State, ConfigInvalid>;
     readonly digester: Effect.Effect<Option.Option<Digester.Digester>>;
+    readonly faces: Effect.Effect<Option.Option<Faces.FaceResolver>>;
     readonly events: Events.Events;
   }
 >()("@weir/daemon/Daemon") {}
@@ -72,6 +71,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
         listings: new Map(),
       });
       const digester = yield* Ref.make(Option.none<Digester.Digester>());
+      const faces = yield* Ref.make(Option.none<Faces.FaceResolver>());
       const scheduler = yield* FiberHandle.make<void, never>();
       const reloading = yield* Semaphore.make(1);
       const events = yield* Events.make;
@@ -134,6 +134,10 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
               Effect.catch((error) => Effect.logError("startup digest check failed", error)),
             );
           }
+          const resolver = yield* Faces.make(sources, events.publish);
+          yield* Effect.acquireRelease(Ref.set(faces, Option.some(resolver)), () =>
+            Ref.set(faces, Option.none()),
+          );
           yield* Scheduler.run(
             sources,
             config.tag,
@@ -215,6 +219,7 @@ export const layer = (home: WeirHome, registry: Scheduler.PluginRegistry) =>
           Effect.uninterruptible,
         ),
         digester: Ref.get(digester),
+        faces: Ref.get(faces),
         events,
       });
     }),

@@ -45,6 +45,7 @@ import {
   type DigestRun,
   type EventChange as EventChangeJson,
   type EventDetail,
+  faceAddress,
   type GroupTest,
   type Line,
   type Meetings,
@@ -57,6 +58,7 @@ import {
 } from "./Api.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import { aiScopes, Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
+import * as Faces from "./Faces.ts";
 import { DaemonFile, type WeirHome } from "./Home.ts";
 import { isLoopbackRequest } from "./Loopback.ts";
 import { segments, senderLabel, termPattern } from "./Match.ts";
@@ -499,7 +501,7 @@ const counts = Effect.fnUntraced(function* (config: Config) {
       open: count?.open ?? 0,
       senders: senders
         .filter((sender) => sender.tag === tag)
-        .map(({ name, address }) => ({ name, address })),
+        .map(({ source, name, address, verified }) => ({ source, name, address, verified })),
     };
   };
   return {
@@ -709,7 +711,11 @@ const weirHandlers = HttpApiBuilder.group(
                       seq: item.seq,
                       kind: item.kind,
                       occurred_at: DateTime.formatIso(item.occurredAt),
-                      from: { name: item.fromName, address: item.fromAddress },
+                      from: {
+                        name: item.fromName,
+                        address: item.fromAddress,
+                        verified: item.fromVerified,
+                      },
                       from_me: item.fromMe,
                       title: item.title,
                       format: item.format,
@@ -844,12 +850,52 @@ const eventsHandlers = HttpApiBuilder.group(
   }),
 );
 
+const ownFetchSites: Record<string, true> = { "same-origin": true, none: true };
+
+const facesHandlers = HttpApiBuilder.group(
+  Api,
+  "faces",
+  Effect.fnUntraced(function* (handlers) {
+    const daemon = yield* Daemon;
+    const withSql = Effect.provideService(SqlClient.SqlClient, yield* SqlClient.SqlClient);
+    const refuseForeign = <E, R>(
+      request: HttpServerRequest.HttpServerRequest,
+      respond: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+    ) => {
+      const site = request.headers["sec-fetch-site"];
+      return site === undefined || ownFetchSites[site] === true
+        ? respond
+        : Effect.succeed(HttpServerResponse.empty({ status: 403 }));
+    };
+    return handlers.handleAll({
+      face: ({ request, query: { source, address, verified } }) =>
+        refuseForeign(
+          request,
+          daemon.faces.pipe(
+            Effect.flatMap((resolver) =>
+              Faces.lookup(
+                resolver,
+                { source, address: faceAddress(address) },
+                verified !== undefined,
+              ),
+            ),
+            Effect.map(Faces.respond),
+            withSql,
+          ),
+        ),
+      faceImage: ({ request, params: { hash } }) =>
+        refuseForeign(request, Faces.image(hash).pipe(withSql)),
+    });
+  }),
+);
+
 const handlers = Layer.mergeAll(
   weirHandlers,
   viewHandlers,
   stateHandlers,
   digestHandlers,
   eventsHandlers,
+  facesHandlers,
 );
 
 const advertise = (home: WeirHome) =>

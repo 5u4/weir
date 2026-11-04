@@ -62,8 +62,24 @@ describe("read", () => {
       ]);
 
       const [row] = yield* conversations({ _tag: "Untagged" });
-      expect(row?.from).toEqual({ ...bob, me: false });
-      expect(yield* unreadSenders(3)).toEqual([{ tag: null, ...bob }]);
+      expect(row?.from).toEqual({ ...bob, me: false, verified: false });
+      expect(yield* unreadSenders(3)).toEqual([
+        { tag: null, source: "mail", ...bob, verified: false },
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a sender seen in two sources carries the source of their newest unread item", () =>
+    Effect.gen(function* () {
+      const ada = { name: "Ada", address: "ada@example.com" };
+      const { stream: mail } = yield* upsertStream("mail", mailStream);
+      const { stream: work } = yield* upsertStream("work", { ...mailStream, id: "work" });
+      yield* writeRaw(mail, [rawItem("m1", { from: ada, occurredAt: "2026-10-28T09:00:00Z" })]);
+      yield* writeRaw(work, [rawItem("w1", { from: ada, occurredAt: "2026-10-28T09:10:00Z" })]);
+
+      expect(yield* unreadSenders(3)).toEqual([
+        { tag: null, source: "work", ...ada, verified: false },
+      ]);
     }).pipe(Effect.provide(storeLayer())),
   );
 });

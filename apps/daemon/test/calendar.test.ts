@@ -1,13 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
-import { FIXTURE_NOW, seedMailbox } from "@weir/fixtures";
-import { gws } from "@weir/plugin-gws";
+import { FIXTURE_NOW, fixtureFaceNet, seedMailbox } from "@weir/fixtures";
+import { gwsPlugin } from "@weir/plugin-gws";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Http from "../src/Http.ts";
 import { adjustableClock, apiClient, eventually, makeHome } from "./harness.ts";
+
+const gws = gwsPlugin(fixtureFaceNet());
 
 process.env.TZ = "America/Los_Angeles";
 

@@ -22,10 +22,14 @@ import { ConversationId } from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
-const rachel = { name: "Rachel Gomez", address: "rachel.gomez@northwind.example" };
-const ben = { name: "Ben Foster", address: "ben.foster@example.com" };
-const lisa = { name: "Lisa Chen", address: "lisa.chen@northwind.example" };
-const daniel = { name: "", address: "dan.ellis@mail.example" };
+const rachel = {
+  name: "Rachel Gomez",
+  address: "rachel.gomez@northwind.example",
+  verified: true,
+};
+const ben = { name: "Ben Foster", address: "ben.foster@example.com", verified: false };
+const lisa = { name: "Lisa Chen", address: "lisa.chen@northwind.example", verified: true };
+const daniel = { name: "", address: "dan.ellis@mail.example", verified: false };
 
 const item = (seq: number, from: ItemSummary["from"], body_new: string): ItemSummary => ({
   seq,
@@ -182,6 +186,7 @@ const rendered = (
         createElement(BlockView, {
           key: at,
           id,
+          source: of.source,
           block,
           watch: () => () => {},
           mark: { seen: lastSeq(of), unread: () => {} },
@@ -345,7 +350,11 @@ describe("landing on a hit", () => {
 const newsletterBody =
   scenarios.threads.find(({ id }) => id === "newsletter-trailhead")?.messages[0]?.text ?? "";
 const newsletter = detail([
-  item(1, { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example" }, newsletterBody),
+  item(
+    1,
+    { name: "Trailhead Weekly", address: "issues@trailhead-weekly.example", verified: false },
+    newsletterBody,
+  ),
 ]);
 
 describe("HTML body", () => {
@@ -426,7 +435,9 @@ describe("newsletter body", () => {
     }
     expect(markup).toContain("&lt;b&gt;raw tags&lt;/b&gt;");
     expect(markup).toContain('title="https://trailhead-weekly.example/issues/48/offline-sync');
-    const images = [...markup.matchAll(/<img\b[^>]*>/g)].map(([tag]) => tag);
+    const images = [...markup.matchAll(/<img\b[^>]*>/g)]
+      .map(([tag]) => tag)
+      .filter((tag) => !tag.includes(' src="/faces?'));
     expect(images).toHaveLength(4);
     for (const tag of images) {
       expect(tag).toMatch(/ src="https:\/\/cdn\.trailhead-weekly\.example\//);

@@ -107,6 +107,118 @@ describe("from header", () => {
   });
 });
 
+describe("from verification", () => {
+  const gmailBmo =
+    'mx.google.com; dkim=pass header.i=@bmo.com header.s=pp2020 header.b=X; arc=pass (i=1 spf=pass spfdomain=bmo.com dkim=pass dkdomain=bmo.com dmarc=pass fromdomain=bmo.com); spf=pass (google.com: domain of advisors@bmo.com designates 67.231.150.52 as permitted sender) smtp.mailfrom="advisors@bmo.com"; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bmo.com';
+  const upstream =
+    "mx.microsoft.com 1; dkim=none (message not signed) header.d=none;dmarc=none action=none header.from=bmo.com;";
+  const verifiedWith = (from: string, ...results: ReadonlyArray<readonly [string, string]>) =>
+    itemOf(
+      { ...text("text/plain", "hi"), headers: results.map(([name, value]) => ({ name, value })) },
+      from,
+    ).fromVerified;
+
+  it.each([
+    [
+      "Gmail's DMARC pass above an upstream relay's result",
+      "BrokerEdge <advisors@bmo.com>",
+      [
+        ["Authentication-Results", gmailBmo],
+        ["authentication-results", upstream],
+      ],
+    ],
+    [
+      "a pass for the organizational domain of a subdomain sender",
+      "Wealthsimple <hello@o.wealthsimple.com>",
+      [
+        [
+          "Authentication-Results",
+          'mx.google.com; dkim=pass header.i=@o.wealthsimple.com header.s=scph0422 header.b=X; spf=pass (google.com: domain of msprvs1=x@o.wealthsimple.com designates 223.165.123.229 as permitted sender) smtp.mailfrom="msprvs1=x@o.wealthsimple.com"; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=wealthsimple.com',
+        ],
+      ],
+    ],
+    [
+      "a pass in another letter case",
+      "GitHub <noreply@GitHub.com>",
+      [
+        [
+          "AUTHENTICATION-RESULTS",
+          "MX.Google.com; DMARC=Pass (p=QUARANTINE sp=REJECT dis=NONE) Header.From=GITHUB.com",
+        ],
+      ],
+    ],
+  ] as const)("trusts %s", (_, from, results) => {
+    expect(verifiedWith(from, ...results)).toBe(true);
+  });
+
+  it.each([
+    ["mail with no Authentication-Results, as Gmail-to-Gmail mail arrives", "ada@gmail.com", []],
+    [
+      "a pass that appears only inside a comment",
+      "advisors@bmo.com",
+      [
+        [
+          "Authentication-Results",
+          "mx.google.com; arc=pass (i=1 (nested) dmarc=pass fromdomain=bmo.com); dmarc=fail (p=REJECT) header.from=bmo.com",
+        ],
+      ],
+    ],
+    [
+      "a pass smuggled inside a quoted value",
+      "advisors@bmo.com",
+      [
+        [
+          "Authentication-Results",
+          'mx.google.com; spf=pass smtp.mailfrom="x; dmarc=pass header.from=bmo.com"@evil.example; dmarc=fail header.from=bmo.com',
+        ],
+      ],
+    ],
+    [
+      "an upstream pass when it is the first result",
+      "advisors@bmo.com",
+      [
+        [
+          "authentication-results",
+          "mx.microsoft.com 1; dmarc=pass action=none header.from=bmo.com",
+        ],
+        ["Authentication-Results", gmailBmo],
+      ],
+    ],
+    [
+      "a look-alike authserv-id",
+      "advisors@bmo.com",
+      [["Authentication-Results", "mx.google.com.evil.example; dmarc=pass header.from=bmo.com"]],
+    ],
+    [
+      "a DMARC fail",
+      "news@bluebits.ca",
+      [
+        [
+          "Authentication-Results",
+          "mx.google.com; dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=bluebits.ca",
+        ],
+      ],
+    ],
+    [
+      "a domain without DMARC",
+      "news@plain.example",
+      [["Authentication-Results", "mx.google.com; spf=pass smtp.mailfrom=news@plain.example"]],
+    ],
+    [
+      "a pass for some other domain",
+      "Northwind <rachel@northwind.example>",
+      [["Authentication-Results", "mx.google.com; dmarc=pass header.from=evil.example"]],
+    ],
+    [
+      "a pass for a sibling subdomain",
+      "hello@o.wealthsimple.com",
+      [["Authentication-Results", "mx.google.com; dmarc=pass header.from=x.wealthsimple.com"]],
+    ],
+  ] as const)("does not trust %s", (_, from, results) => {
+    expect(verifiedWith(from, ...results)).toBe(false);
+  });
+});
+
 describe("body format", () => {
   const alternative = (plain: string, html: string): MessagePart => ({
     mimeType: "multipart/alternative",

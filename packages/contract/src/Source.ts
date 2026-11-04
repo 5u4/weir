@@ -27,7 +27,11 @@ export const Party = Schema.Struct({
 });
 export type Party = typeof Party.Type;
 
-export const RowParty = Schema.Struct({ ...Party.fields, me: Schema.Boolean });
+export const RowParty = Schema.Struct({
+  ...Party.fields,
+  me: Schema.Boolean,
+  verified: Schema.Boolean,
+});
 export type RowParty = typeof RowParty.Type;
 
 export const BodyFormat = Schema.Literals(["markdown", "html"]);
@@ -98,6 +102,7 @@ const itemFields = {
   occurredAt: IsoDateTimeWithOffset,
   title: Schema.NullOr(Schema.String),
   from: Party,
+  fromVerified: Schema.Boolean,
   link: Schema.NullOr(Schema.String),
   raw: Schema.Unknown,
   event: Schema.optionalKey(RawEvent),
@@ -129,9 +134,71 @@ export const SyncPage = Schema.Struct({
 });
 export type SyncPage = typeof SyncPage.Type;
 
+export const maxFaceBytes = 256 * 1024;
+
+export const FaceMime = Schema.Literals([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+]);
+export type FaceMime = typeof FaceMime.Type;
+
+const ascii = (text: string) => Array.from(text, (char) => char.charCodeAt(0));
+
+const hasAt = (bytes: Uint8Array, at: number, expected: ReadonlyArray<number>) =>
+  expected.every((byte, index) => bytes[at + index] === byte);
+
+const utf8Bom = [0xef, 0xbb, 0xbf];
+const svgWhitespace = new Set(ascii(" \t\r\n"));
+const svgWindow = 1024;
+
+const looksLikeSvg = (bytes: Uint8Array) => {
+  let at = hasAt(bytes, 0, utf8Bom) ? utf8Bom.length : 0;
+  while (at < bytes.length && svgWhitespace.has(bytes[at] ?? 0)) at++;
+  return (
+    bytes[at] === 0x3c && new TextDecoder().decode(bytes.subarray(0, svgWindow)).includes("<svg")
+  );
+};
+
+const looksLike: Record<FaceMime, (bytes: Uint8Array) => boolean> = {
+  "image/png": (bytes) => hasAt(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  "image/jpeg": (bytes) => hasAt(bytes, 0, [0xff, 0xd8, 0xff]),
+  "image/gif": (bytes) => hasAt(bytes, 0, ascii("GIF87a")) || hasAt(bytes, 0, ascii("GIF89a")),
+  "image/webp": (bytes) => hasAt(bytes, 0, ascii("RIFF")) && hasAt(bytes, 8, ascii("WEBP")),
+  "image/svg+xml": looksLikeSvg,
+};
+
+export const FaceKind = Schema.Literals(["portrait", "logo"]);
+export type FaceKind = typeof FaceKind.Type;
+
+const FoundFace = Schema.Struct({
+  status: Schema.Literal("found"),
+  kind: FaceKind,
+  mime: FaceMime,
+  bytes: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(maxFaceBytes)),
+}).check(
+  Schema.makeFilter(
+    ({ mime, bytes }: { readonly mime: FaceMime; readonly bytes: Uint8Array }) =>
+      looksLike[mime](bytes) || `bytes are not ${mime}`,
+  ),
+);
+
+export const Face = Schema.Union([
+  FoundFace,
+  Schema.Struct({ status: Schema.Literal("missing") }),
+  Schema.Struct({ status: Schema.Literal("failed"), error: Schema.String }),
+]);
+export type Face = typeof Face.Type;
+
+export const Faces = Schema.Record(Schema.String, Face);
+export type Faces = typeof Faces.Type;
+
 export interface Source {
   streams(): Promise<ReadonlyArray<StreamDescriptor>>;
   sync(streamId: string, cursor: string | null, signal: AbortSignal): Promise<SyncPage>;
+  faces?(addresses: ReadonlyArray<string>, signal: AbortSignal): Promise<Faces>;
 }
 
 export interface SourceHost {
