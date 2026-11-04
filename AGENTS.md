@@ -57,7 +57,6 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 
 ## Pull requests
 
-- Never open one unless the developer explicitly asks.
 - Use conventional commit titles in plain language: `fix(web): new chats no longer spike CPU`.
 - State the problem in a sentence or two, then how it was fixed.
 - Rebase onto the latest main before opening.
