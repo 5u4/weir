@@ -161,6 +161,7 @@ type Segment =
       readonly _tag: "Digested";
       readonly digest: Digest;
       readonly items: ReadonlyArray<ItemSummary>;
+      readonly events: ReadonlyArray<ItemSummary>;
     }
   | { readonly _tag: "Tail"; readonly items: ReadonlyArray<ItemSummary> };
 
@@ -176,7 +177,13 @@ const segments = (detail: Detail): ReadonlyArray<Segment> => {
   for (const digest of detail.digests.toSorted((a, b) => a.from_seq - b.from_seq)) {
     const run = take((seq) => seq < digest.from_seq);
     if (run.length > 0) out.push({ _tag: "Run", items: run, before: digest });
-    out.push({ _tag: "Digested", digest, items: take((seq) => seq <= digest.to_seq) });
+    const covered = take((seq) => seq <= digest.to_seq);
+    out.push({
+      _tag: "Digested",
+      digest,
+      items: covered.filter(({ kind }) => kind !== "event"),
+      events: covered.filter(({ kind }) => kind === "event"),
+    });
   }
   const tail = items.slice(at);
   if (tail.length > 0) out.push({ _tag: "Tail", items: tail });
@@ -232,6 +239,38 @@ export const reader = (
     return [{ _tag: "Skeleton", items: count }];
   };
 
+  const digestBlock = (digest: Digest, items: ReadonlyArray<ItemSummary>): Block => {
+    if (shape(digest) === "row") return { _tag: "DigestRow", digest, items };
+    const bySeq = new Map(items.map((item) => [item.seq, item]));
+    const fold = <Key extends TopicKey | UncitedKey>(
+      key: Key,
+      covered: ReadonlyArray<ItemSummary>,
+    ): Fold<Key> => {
+      const open = ui.originals.has(key);
+      return {
+        key,
+        open,
+        items: covered,
+        groups: open ? group(covered, () => false, null) : [],
+      };
+    };
+    const cited = new Set(digest.topics.flatMap(({ seqs }) => seqs));
+    const uncited = items.filter(({ seq }) => !cited.has(seq));
+    return {
+      _tag: "DigestCard",
+      digest,
+      items,
+      topics: digest.topics.map((topic, index) => ({
+        ...fold(
+          topicKey(digest, index),
+          topic.seqs.flatMap((seq) => bySeq.get(seq) ?? []),
+        ),
+        topic,
+      })),
+      uncited: uncited.length === 0 ? null : fold(uncitedKey(digest), uncited),
+    };
+  };
+
   for (const seg of segs) {
     switch (seg._tag) {
       case "Run": {
@@ -263,41 +302,11 @@ export const reader = (
           } else {
             blocks.push({ _tag: "EarlierFold", digests: [digest], items });
           }
-          break;
+        } else {
+          mark(digest.to_seq > frozenSeen);
+          blocks.push(digestBlock(digest, items));
         }
-        mark(digest.to_seq > frozenSeen);
-        if (shape(digest) === "row") {
-          blocks.push({ _tag: "DigestRow", digest, items });
-          break;
-        }
-        const bySeq = new Map(items.map((item) => [item.seq, item]));
-        const fold = <Key extends TopicKey | UncitedKey>(
-          key: Key,
-          covered: ReadonlyArray<ItemSummary>,
-        ): Fold<Key> => {
-          const open = ui.originals.has(key);
-          return {
-            key,
-            open,
-            items: covered,
-            groups: open ? group(covered, () => false, null) : [],
-          };
-        };
-        const cited = new Set(digest.topics.flatMap(({ seqs }) => seqs));
-        const uncited = items.filter(({ seq }) => !cited.has(seq));
-        blocks.push({
-          _tag: "DigestCard",
-          digest,
-          items,
-          topics: digest.topics.map((topic, index) => ({
-            ...fold(
-              topicKey(digest, index),
-              topic.seqs.flatMap((seq) => bySeq.get(seq) ?? []),
-            ),
-            topic,
-          })),
-          uncited: uncited.length === 0 ? null : fold(uncitedKey(digest), uncited),
-        });
+        bubbles(seg.events);
         break;
       }
       case "Tail": {

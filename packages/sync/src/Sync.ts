@@ -52,18 +52,15 @@ const writePage = Effect.fnUntraced(function* (
   const removed = new Set(page.deletions);
   const upserts = page.upserts.filter(({ externalId }) => !removed.has(externalId));
   const priors = yield* Read.priorEvents(
-    stream.id,
-    upserts.flatMap(({ event }) => (event === undefined ? [] : [event.eventId])),
+    stream,
+    upserts.flatMap(({ event }) => (event === undefined ? [] : [event])),
   );
-  const drafts = upserts.flatMap((item) => {
-    const draft = Write.draft(
-      stream,
-      item,
-      item.event === undefined ? undefined : priors.get(item.event.eventId),
-      page.kind === "live",
-    );
+  const drafted = upserts.flatMap((item) => {
+    const draft = Write.draft(stream, item, priors, page.kind === "live");
     return draft === null ? [] : [draft];
   });
+  const refreshed = yield* Write.refreshItems(drafted.filter(({ refresh }) => refresh !== null));
+  const drafts = drafted.filter(({ refresh }) => refresh === null);
   const { keys, moved } = yield* joinThreads(stream, drafts, deleted.threads, groups);
   const written = yield* Write.writeItems(
     stream,
@@ -112,7 +109,13 @@ const writePage = Effect.fnUntraced(function* (
   }
   yield* Write.replaceOccurrences(stream.sourceId, page.occurrences ?? []);
   yield* Write.saveCursor(stream.id, page.cursor, page.backfill);
-  return [...new Set([...recompute, ...written.map(({ conversationId }) => conversationId)])];
+  return [
+    ...new Set([
+      ...recompute,
+      ...refreshed,
+      ...written.map(({ conversationId }) => conversationId),
+    ]),
+  ];
 });
 
 export const syncStream = Effect.fnUntraced(function* (

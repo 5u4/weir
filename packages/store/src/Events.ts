@@ -1,14 +1,22 @@
 import type { EventTime, RawEvent } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import type { EventChange, EventDetailRow } from "./Rows.ts";
+import type { EventChange, EventDetailRow, EventOccurrenceRow, Seq } from "./Rows.ts";
 
 export type EventDraft = Omit<EventDetailRow, "itemSeq">;
 
-export type PriorEvent = Pick<
-  EventDetailRow,
-  "startAt" | "endAt" | "allDay" | "location" | "status"
->;
+export interface EventPriors {
+  readonly details: ReadonlyMap<string, EventDetailRow>;
+  readonly occurrences: ReadonlyMap<string, EventOccurrenceRow>;
+}
+
+export const noPriors: EventPriors = { details: new Map(), occurrences: new Map() };
+
+export type EventOutcome =
+  | { readonly _tag: "Item"; readonly event: EventDraft }
+  | { readonly _tag: "Refresh"; readonly itemSeq: Seq; readonly event: EventDraft };
+
+type PriorEvent = Omit<EventDetailRow, "itemSeq" | "eventId" | "change">;
 
 export const utcOf = (time: string, allDay: boolean): DateTime.Utc =>
   DateTime.makeUnsafe(allDay ? `${time}T00:00:00Z` : time);
@@ -24,6 +32,44 @@ const later = (time: string, allDay: boolean, millis: number) =>
 
 const sameInstant = (left: string, right: string, allDay: boolean) =>
   DateTime.toEpochMillis(utcOf(left, allDay)) === DateTime.toEpochMillis(utcOf(right, allDay));
+
+const scheduledOf = (event: RawEvent, priors: EventPriors): PriorEvent | undefined => {
+  const master = event.seriesId === null ? undefined : priors.details.get(event.seriesId);
+  const shared = {
+    seriesId: event.seriesId,
+    recurring: false,
+    timeZone: master?.timeZone ?? null,
+    location: master?.location ?? null,
+    attendees: master?.attendees ?? [],
+  };
+  const occurrence = priors.occurrences.get(event.eventId);
+  if (occurrence !== undefined) {
+    return {
+      ...shared,
+      startAt: occurrence.startAt,
+      endAt: occurrence.endAt,
+      startUtc: occurrence.startUtc,
+      endUtc: occurrence.endUtc,
+      allDay: occurrence.allDay,
+      status: occurrence.status,
+    };
+  }
+  if (event.originalStart === null || master === undefined) return undefined;
+  const endAt = later(
+    event.originalStart,
+    master.allDay,
+    DateTime.toEpochMillis(master.endUtc) - DateTime.toEpochMillis(master.startUtc),
+  );
+  return {
+    ...shared,
+    startAt: event.originalStart,
+    endAt,
+    startUtc: utcOf(event.originalStart, master.allDay),
+    endUtc: utcOf(endAt, master.allDay),
+    allDay: master.allDay,
+    status: "confirmed",
+  };
+};
 
 const changeOf = (
   event: RawEvent,
@@ -67,28 +113,34 @@ const changeOf = (
 
 export const eventDraft = (
   event: RawEvent,
-  prior: PriorEvent | undefined,
+  priors: EventPriors,
   live: boolean,
-): EventDraft | null => {
+): EventOutcome | null => {
+  const cancelled = event.status === "cancelled";
+  const detail = priors.details.get(event.eventId);
+  const prior = detail ?? (cancelled ? scheduledOf(event, priors) : undefined);
   const time =
     event.time ??
     (prior === undefined ? null : { start: prior.startAt, end: prior.endAt, allDay: prior.allDay });
   if (time === null) return null;
   const change = changeOf(event, time, prior, live);
-  if (change === "unchanged") return null;
-  return {
+  const sparse = cancelled && prior !== undefined ? prior : undefined;
+  const draft = {
     eventId: event.eventId,
-    seriesId: event.seriesId,
-    recurring: event.recurring,
+    seriesId: event.seriesId ?? sparse?.seriesId ?? null,
+    recurring: event.recurring || (sparse?.recurring ?? false),
     startAt: time.start,
     endAt: time.end,
     startUtc: utcOf(time.start, time.allDay),
     endUtc: utcOf(time.end, time.allDay),
     allDay: time.allDay,
-    timeZone: event.timeZone,
-    location: event.status === "cancelled" && prior !== undefined ? prior.location : event.location,
-    attendees: event.attendees,
+    timeZone: event.timeZone ?? sparse?.timeZone ?? null,
+    location: sparse === undefined ? event.location : sparse.location,
+    attendees:
+      sparse !== undefined && event.attendees.length === 0 ? sparse.attendees : event.attendees,
     status: event.status,
-    change,
   };
+  if (change !== "unchanged") return { _tag: "Item", event: { ...draft, change } };
+  if (detail === undefined) return null;
+  return { _tag: "Refresh", itemSeq: detail.itemSeq, event: { ...draft, change: detail.change } };
 };

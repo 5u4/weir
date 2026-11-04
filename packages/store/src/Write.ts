@@ -10,9 +10,10 @@ import type {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
-import { type EventDraft, eventDraft, type PriorEvent, utcOf } from "./Events.ts";
+import { type EventDraft, type EventPriors, eventDraft, utcOf } from "./Events.ts";
 import * as Read from "./Read.ts";
 import {
   AiKind,
@@ -58,6 +59,7 @@ export interface ItemDraft {
   readonly link: string | null;
   readonly raw: unknown;
   readonly event: EventDraft | null;
+  readonly refresh: Seq | null;
   readonly [drafted]: true;
 }
 
@@ -132,12 +134,12 @@ const ownAddresses = (stream: StreamRow) =>
 export const draft = (
   stream: StreamRow,
   item: RawItem,
-  prior: PriorEvent | undefined,
+  priors: EventPriors,
   live: boolean,
 ): ItemDraft | null => {
   const derived = derive(item);
-  const event = item.event === undefined ? null : eventDraft(item.event, prior, live);
-  if (item.event !== undefined && event === null) return null;
+  const outcome = item.event === undefined ? null : eventDraft(item.event, priors, live);
+  if (item.event !== undefined && outcome === null) return null;
   return {
     sourceId: stream.sourceId,
     externalId: item.externalId,
@@ -153,7 +155,8 @@ export const draft = (
     ...derived,
     link: item.link,
     raw: item.raw,
-    event,
+    event: outcome?.event ?? null,
+    refresh: outcome?._tag === "Refresh" ? outcome.itemSeq : null,
   } as ItemDraft;
 };
 
@@ -470,6 +473,48 @@ export const writeItems = Effect.fnUntraced(function* (
       return written;
     }),
   );
+});
+
+const RefreshedItem = ItemInsert.mapFields((fields) =>
+  Struct.pick(fields, [
+    "syncedAt",
+    "title",
+    "fromName",
+    "fromAddress",
+    "fromMe",
+    "format",
+    "bodyNew",
+    "text",
+    "textNew",
+    "link",
+    "raw",
+  ]),
+);
+const RefreshedEvent = EventDetailRow.mapFields((fields) =>
+  Struct.omit(fields, ["itemSeq", "change"]),
+);
+
+export const refreshItems = Effect.fnUntraced(function* (items: ReadonlyArray<ItemDraft>) {
+  const sql = yield* SqlClient.SqlClient;
+  const syncedAt = yield* DateTime.now;
+  const seqs = yield* Effect.forEach(items, (item) =>
+    Effect.gen(function* () {
+      if (item.refresh === null || item.event === null) return [];
+      const row = yield* Schema.encodeEffect(RefreshedItem)({ ...item, syncedAt });
+      const detail = yield* Schema.encodeEffect(RefreshedEvent)(item.event);
+      yield* sql`UPDATE item SET ${sql.update(row)} WHERE seq = ${item.refresh}`;
+      yield* sql`UPDATE event_detail SET ${sql.update(detail)} WHERE item_seq = ${item.refresh}`;
+      return [item.refresh];
+    }),
+  ).pipe(Effect.map((nested) => nested.flat()));
+  if (seqs.length === 0) return [];
+  yield* indexItems(sql.in("item.seq", seqs));
+  const conversations = yield* decodeConversationIds(
+    yield* sql`SELECT DISTINCT conversation_id AS id FROM item WHERE ${sql.in("seq", seqs)}`,
+  );
+  const ids = conversations.map(({ id }) => id);
+  yield* recomputeConversations(ids);
+  return ids;
 });
 
 export const softDeleteItems = Effect.fnUntraced(function* (

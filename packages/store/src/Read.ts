@@ -1,10 +1,12 @@
 import { CalendarDate } from "@weir/contract/Digest";
+import type { RawEvent } from "@weir/contract/Source";
 import * as Arr from "effect/Array";
 import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import { type EventPriors, noPriors } from "./Events.ts";
 import {
   AiStateRow,
   ConversationId,
@@ -14,6 +16,7 @@ import {
   DigestRow,
   DigestRunRow,
   EventDetailRow,
+  EventOccurrenceRow,
   ItemLiteRow,
   ItemRow,
   ListedConversationRow,
@@ -563,20 +566,43 @@ export const eventDetails = Effect.fnUntraced(function* (seqs: ReadonlyArray<Seq
   );
 });
 
+const decodeOccurrences = Schema.decodeUnknownEffect(Schema.Array(EventOccurrenceRow));
+
 export const priorEvents = Effect.fnUntraced(function* (
-  streamId: StreamId,
-  eventIds: ReadonlyArray<string>,
+  stream: StreamRow,
+  events: ReadonlyArray<RawEvent>,
 ) {
-  if (eventIds.length === 0) return new Map<string, EventDetailRow>();
+  if (events.length === 0) return noPriors;
   const sql = yield* SqlClient.SqlClient;
-  const rows = yield* decodeEventDetails(
+  const ids = [
+    ...new Set(
+      events.flatMap(({ eventId, seriesId }) =>
+        seriesId === null ? [eventId] : [eventId, seriesId],
+      ),
+    ),
+  ];
+  const details = yield* decodeEventDetails(
     yield* sql`SELECT event_detail.* FROM event_detail
       JOIN item ON item.seq = event_detail.item_seq
-      WHERE item.stream_id = ${streamId} AND item.deleted_at IS NULL
-        AND ${sql.in("event_detail.event_id", eventIds)}
+      WHERE item.stream_id = ${stream.id} AND item.deleted_at IS NULL
+        AND ${sql.in("event_detail.event_id", ids)}
       ORDER BY event_detail.item_seq`,
   );
-  return new Map(rows.map((row) => [row.eventId, row]));
+  const cancelled = events.filter(({ status }) => status === "cancelled");
+  const occurrences =
+    cancelled.length === 0
+      ? []
+      : yield* decodeOccurrences(
+          yield* sql`SELECT * FROM event_occurrence WHERE source_id = ${stream.sourceId}
+            AND ${sql.in(
+              "event_id",
+              cancelled.map(({ eventId }) => eventId),
+            )}`,
+        );
+  return {
+    details: new Map(details.map((row) => [row.eventId, row])),
+    occurrences: new Map(occurrences.map((row) => [row.eventId, row])),
+  } satisfies EventPriors;
 });
 
 export const eventOnly = Effect.fnUntraced(function* (
@@ -621,7 +647,10 @@ export const meetings = Effect.fnUntraced(function* (from: DateTime.Utc, to: Dat
       FROM latest
       WHERE series_id IS NULL AND end_utc >= ${start} AND start_utc <= ${end}
       UNION ALL
-      SELECT series_item.conversation_id, series.item_seq, occurrence.event_id,
+      SELECT coalesce(exception.conversation_id, master.conversation_id, series_item.conversation_id)
+          AS conversation_id,
+        coalesce(exception.item_seq, master.item_seq, series.item_seq) AS item_seq,
+        occurrence.event_id,
         occurrence.series_id,
         coalesce(exception.title, master.title, series_item.title, '') AS title,
         occurrence.start_at, occurrence.end_at, occurrence.start_utc, occurrence.end_utc,
@@ -634,10 +663,13 @@ export const meetings = Effect.fnUntraced(function* (from: DateTime.Utc, to: Dat
         AND series.series_id = occurrence.series_id
       JOIN item series_item ON series_item.seq = series.item_seq
       LEFT JOIN latest exception ON exception.source_id = occurrence.source_id
+        AND exception.series_id = occurrence.series_id
         AND exception.event_id = occurrence.event_id
       LEFT JOIN latest master ON master.source_id = occurrence.source_id
         AND master.event_id = occurrence.series_id
       WHERE occurrence.status = 'confirmed'
+        AND coalesce(exception.status, 'confirmed') = 'confirmed'
+        AND coalesce(master.status, 'confirmed') = 'confirmed'
         AND occurrence.end_utc >= ${start} AND occurrence.start_utc <= ${end}
       ORDER BY start_utc, item_seq`,
   );

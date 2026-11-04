@@ -1,9 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import type { RawEvent, RawItem, StreamDescriptor } from "@weir/contract/Source";
+import type { Occurrence, RawEvent, RawItem, StreamDescriptor } from "@weir/contract/Source";
 import * as Read from "@weir/store/Read";
 import type { ConversationId } from "@weir/store/Rows";
 import * as Write from "@weir/store/Write";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type { Groups } from "../src/Groups.ts";
 import { syncStream } from "../src/Sync.ts";
 import type { Tags } from "../src/Tags.ts";
@@ -190,6 +192,259 @@ describe("calendar changes", () => {
         null,
         { _tag: "Relocated", fromLocation: "Room 1" },
       ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+});
+
+const SERIES = "one";
+const dates = ["2026-10-26", "2026-10-27", "2026-10-28"];
+const slot = (date: string): Occurrence => ({
+  eventId: `${SERIES}_${date}`,
+  start: `${date}T09:30:00-07:00`,
+  end: `${date}T10:00:00-07:00`,
+  allDay: false,
+  status: "confirmed",
+});
+const inSeries = (item: RawItem): RawItem => ({ ...item, threadId: SERIES });
+const sparseCancel = (eventId: string, originalStart: string | null): RawItem => ({
+  ...inSeries(
+    meeting(eventId, "2026-10-21T09:00:00Z", "", {
+      seriesId: originalStart === null ? null : SERIES,
+      time: null,
+      timeZone: null,
+      location: null,
+      status: "cancelled",
+      originalStart,
+    }),
+  ),
+  title: null,
+});
+const seriesMaster = (updated: string, title: string, event: Partial<RawEvent> = {}) =>
+  meeting(SERIES, updated, title, {
+    seriesId: SERIES,
+    recurring: true,
+    time: { start: "2026-10-26T09:30:00-07:00", end: "2026-10-26T10:00:00-07:00", allDay: false },
+    location: "Lisa's office",
+    attendees: [{ name: "Lisa", email: "lisa@example.com", response: "accepted" }],
+    ...event,
+  });
+
+const seriesBackfill = sync(
+  calendarStream,
+  new Map<string | null, Step>([
+    [
+      null,
+      page({
+        cursor: "s1",
+        kind: "backfill",
+        upserts: [seriesMaster("2026-10-01T09:00:00Z", "Weekday 1:1")],
+        occurrences: [{ seriesId: SERIES, occurrences: dates.map(slot) }],
+      }),
+    ],
+  ]),
+);
+
+const liveStep = (upserts: ReadonlyArray<RawItem>, occurrences?: ReadonlyArray<Occurrence>) =>
+  sync(
+    calendarStream,
+    new Map<string | null, Step>([
+      [
+        "s1",
+        page({
+          cursor: "s2",
+          upserts: [...upserts],
+          ...(occurrences === undefined
+            ? {}
+            : { occurrences: [{ seriesId: SERIES, occurrences }] }),
+        }),
+      ],
+    ]),
+  );
+
+const seriesMeetings = Read.meetings(
+  DateTime.makeUnsafe("2026-10-25T00:00:00Z"),
+  DateTime.makeUnsafe("2026-11-08T00:00:00Z"),
+).pipe(Effect.map((rows) => rows.filter(({ seriesId }) => seriesId === SERIES)));
+
+const seriesConversation = Effect.gen(function* () {
+  const row = (yield* byTitle)["Weekday 1:1"];
+  if (row === undefined) throw new Error("no series conversation");
+  return row;
+});
+
+const detailsOf = (id: ConversationId) =>
+  Effect.gen(function* () {
+    const items = yield* Read.liveItems({ conversationIds: [id] });
+    return yield* Read.eventDetails(items.map(({ seq }) => seq));
+  });
+
+describe("recurring series", () => {
+  it.effect("a sparse cancelled occurrence is a Cancelled item that wakes a Done series", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      const before = yield* seriesConversation;
+      expect(before.state).toBe("done");
+      yield* liveStep(
+        [
+          sparseCancel(`${SERIES}_2026-10-27`, "2026-10-27T09:30:00-07:00"),
+          sparseCancel(`${SERIES}_2026-11-04`, "2026-11-04T09:30:00-07:00"),
+        ],
+        [slot("2026-10-26"), slot("2026-10-28")],
+      );
+      const after = yield* seriesConversation;
+      expect(after.state).toBe("unread");
+      expect(after.items).toBe(3);
+      const cancelled = (yield* detailsOf(after.id)).filter(({ status }) => status === "cancelled");
+      expect(
+        cancelled.map(({ eventId, seriesId, startAt, endAt, location, change }) => [
+          eventId,
+          seriesId,
+          startAt,
+          endAt,
+          location,
+          change,
+        ]),
+      ).toEqual([
+        [
+          `${SERIES}_2026-10-27`,
+          SERIES,
+          "2026-10-27T09:30:00-07:00",
+          "2026-10-27T10:00:00-07:00",
+          "Lisa's office",
+          { _tag: "Cancelled" },
+        ],
+        [
+          `${SERIES}_2026-11-04`,
+          SERIES,
+          "2026-11-04T09:30:00-07:00",
+          "2026-11-04T10:00:00-07:00",
+          "Lisa's office",
+          { _tag: "Cancelled" },
+        ],
+      ]);
+      expect((yield* seriesMeetings).map(({ startAt }) => startAt)).toEqual([
+        "2026-10-26T09:30:00-07:00",
+        "2026-10-28T09:30:00-07:00",
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a sparse cancelled occurrence keeps a planned series planned with one new item", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      const before = yield* seriesConversation;
+      yield* Write.changeState([before.id], { _tag: "Plan", plan: { _tag: "Tray" } });
+      const plannedNew = (yield* seriesConversation).newItems;
+      yield* liveStep([sparseCancel(`${SERIES}_2026-10-27`, "2026-10-27T09:30:00-07:00")]);
+      const after = yield* seriesConversation;
+      expect(after.state).toBe("planned");
+      expect(after.newItems).toBe(plannedNew + 1);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a title, description and attendee edit updates the card without a new item", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      const before = yield* seriesConversation;
+      const listBefore = yield* untaggedStates;
+      const [itemBefore] = yield* Read.liveItems({ conversationIds: [before.id] });
+      const attendees = [
+        { name: "Lisa", email: "lisa@example.com", response: "accepted" },
+        { name: "Omar", email: "omar@example.com", response: "needsAction" },
+      ];
+      yield* liveStep([
+        {
+          ...seriesMaster("2026-10-20T09:00:00Z", "Weekday 1:1 with Omar", { attendees }),
+          body: "Agenda v2",
+        },
+      ]);
+      const after = Option.getOrThrow(yield* Read.conversation(before.id));
+      expect([after.lastSeq, after.seenSeq, after.clearedSeq, after.state, after.items]).toEqual([
+        before.lastSeq,
+        before.seenSeq,
+        before.clearedSeq,
+        before.state,
+        before.items,
+      ]);
+      expect(yield* untaggedStates).toEqual(listBefore);
+      const items = yield* Read.liveItems({ conversationIds: [before.id] });
+      expect(items.map(({ seq, title, text }) => [seq, title, text])).toEqual([
+        [itemBefore?.seq, "Weekday 1:1 with Omar", "Agenda v2"],
+      ]);
+      const [detail] = yield* detailsOf(before.id);
+      expect(detail?.attendees).toEqual(attendees);
+      expect(detail?.change).toBeNull();
+      expect((yield* seriesMeetings).map(({ title }) => title)).toEqual([
+        "Weekday 1:1 with Omar",
+        "Weekday 1:1 with Omar",
+        "Weekday 1:1 with Omar",
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a sparse cancelled master stays in its series and drops every occurrence", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      expect(yield* seriesMeetings).toHaveLength(3);
+      yield* liveStep([sparseCancel(SERIES, null)]);
+      const after = yield* seriesConversation;
+      const details = yield* detailsOf(after.id);
+      expect(
+        details.map(({ seriesId, recurring, status }) => [seriesId, recurring, status]),
+      ).toEqual([
+        [SERIES, true, "confirmed"],
+        [SERIES, true, "cancelled"],
+      ]);
+      expect(yield* seriesMeetings).toEqual([]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
+  it.effect("a moved occurrence shows at its new time and opens the exception item", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      const [master] = yield* Read.liveItems({
+        conversationIds: [(yield* seriesConversation).id],
+      });
+      const movedTime = {
+        start: "2026-10-28T11:00:00-07:00",
+        end: "2026-10-28T11:30:00-07:00",
+        allDay: false,
+      };
+      yield* liveStep(
+        [
+          inSeries(
+            meeting(`${SERIES}_2026-10-28`, "2026-10-20T10:00:00Z", "Weekday 1:1 (moved)", {
+              seriesId: SERIES,
+              time: movedTime,
+              location: "Lisa's office",
+              originalStart: "2026-10-28T09:30:00-07:00",
+            }),
+          ),
+        ],
+        [slot("2026-10-26"), slot("2026-10-27"), { ...slot("2026-10-28"), ...movedTime }],
+      );
+      const items = yield* Read.liveItems({
+        conversationIds: [(yield* seriesConversation).id],
+      });
+      const exception = items.find(({ seq }) => seq !== master?.seq);
+      const rows = yield* seriesMeetings;
+      expect(
+        rows.map(({ startAt, title, itemSeq, change }) => [startAt, title, itemSeq, change]),
+      ).toEqual([
+        ["2026-10-26T09:30:00-07:00", "Weekday 1:1", master?.seq, null],
+        ["2026-10-27T09:30:00-07:00", "Weekday 1:1", master?.seq, null],
+        [
+          "2026-10-28T11:00:00-07:00",
+          "Weekday 1:1 (moved)",
+          exception?.seq,
+          {
+            _tag: "Moved",
+            fromStart: "2026-10-28T09:30:00-07:00",
+            fromEnd: "2026-10-28T10:00:00-07:00",
+          },
+        ],
+      ]);
+      expect(rows.some(({ startAt }) => startAt === "2026-10-28T09:30:00-07:00")).toBe(false);
     }).pipe(Effect.provide(storeLayer())),
   );
 });

@@ -139,14 +139,14 @@ const meetings = Effect.fnUntraced(function* (from: string, to: string) {
     DateTime.toUtc(
       DateTime.makeZonedUnsafe(`${date}T00:00:00`, { timeZone, adjustForTimeZone: true }),
     );
+  const dayAfter = DateTime.formatIsoDateUtc(
+    DateTime.add(DateTime.makeUnsafe(`${to}T00:00:00Z`), { days: 1 }),
+  );
   const start = dayStart(from);
-  const end = DateTime.add(dayStart(to), { days: 1 });
+  const end = dayStart(dayAfter);
   const found = yield* Read.meetings(
     DateTime.subtract(start, { days: 1 }),
     DateTime.add(end, { days: 1 }),
-  );
-  const dayAfter = DateTime.formatIsoDateUtc(
-    DateTime.add(DateTime.makeUnsafe(`${to}T00:00:00Z`), { days: 1 }),
   );
   return {
     meetings: found

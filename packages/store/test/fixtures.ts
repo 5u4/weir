@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RawItem, StreamDescriptor } from "@weir/contract/Source";
 import * as Database from "../src/Database.ts";
+import { noPriors } from "../src/Events.ts";
 import type { StreamRow } from "../src/Rows.ts";
 import { draft, writeItems } from "../src/Write.ts";
 
@@ -40,7 +41,7 @@ export const writeRaw = (stream: StreamRow, items: ReadonlyArray<Fixture>) =>
   writeItems(
     stream,
     items.flatMap((item) => {
-      const drafted = draft(stream, item, undefined, true);
+      const drafted = draft(stream, item, noPriors, true);
       return drafted === null
         ? []
         : [{ ...drafted, key: item.key ?? item.threadId ?? item.containerId }];
