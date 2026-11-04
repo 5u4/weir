@@ -7,8 +7,23 @@
   }
 
   .plan [data-dragging] {
-    z-index: var(--z-index-dock);
-    translate: var(--dx) var(--dy);
+    opacity: var(--opacity-half);
+  }
+
+  .plan-lift {
+    position: fixed;
+    top: var(--y);
+    left: var(--x);
+    z-index: var(--z-index-cap);
+    width: var(--w);
+    height: var(--h);
+    pointer-events: none;
+  }
+}
+
+@layer utilities {
+  :root[data-grabbing],
+  :root[data-grabbing] * {
     cursor: grabbing;
   }
 }
