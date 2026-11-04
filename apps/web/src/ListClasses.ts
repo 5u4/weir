@@ -33,3 +33,6 @@ export const rowTimeClass = (unread: boolean) =>
 
 export const rowLineClass = (unread: boolean) =>
   `col-start-2 col-end-4 min-w-0 truncate text-sm ${unread ? "text-ink-2" : "text-ink-3"}`;
+
+export const dueFlagClass = (over: boolean) =>
+  `after:mx-em-0.5 after:font-normal after:text-ink-3 after:content-dot ${over ? "font-semibold text-warn" : ""}`;

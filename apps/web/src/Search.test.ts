@@ -33,6 +33,9 @@ const daemon = vi.hoisted(() => {
     from: { name: "Ada Lovelace", address: "ada@example.com", me: false },
     preview: "Ada: hello",
     senders: [],
+    plan: { _tag: "None" },
+    planned_at: null,
+    due: null,
     hits: [],
   });
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -51,6 +54,8 @@ const daemon = vi.hoisted(() => {
         tags: [{ name: "Me", unread: 0, open: 0, senders: [] }],
         untagged: { unread: 0, open: 0, senders: [] },
         cleared: 0,
+        planned: { count: 0, dues: [] },
+        now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
       });
     }
     if (url.pathname === "/search") {

@@ -6,6 +6,7 @@ import { alertOf, health } from "./Health.ts";
 import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
 import { formOf } from "./Notch.ts";
+import { Toast } from "./Picker.tsx";
 import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
 import { route, searchOpen, settingsOpen } from "./Route.ts";
@@ -109,6 +110,7 @@ export function App() {
           )}
         </section>
       </div>
+      <Toast />
       <Cap form={form} alert={alert} />
     </>
   );

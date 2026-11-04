@@ -1,4 +1,4 @@
-import { Topic, Trigger } from "@weir/contract/Digest";
+import { CalendarDate, Topic, Trigger } from "@weir/contract/Digest";
 import { BodyFormat, RowParty, StreamDescriptor } from "@weir/contract/Source";
 import * as Schema from "effect/Schema";
 
@@ -99,8 +99,36 @@ export const ConversationStateRow = Schema.Struct({
 });
 export type ConversationStateRow = typeof ConversationStateRow.Type;
 
-export const ConversationState = Schema.Literals(["unread", "read", "done", "muted"]);
+export const ConversationState = Schema.Literals(["unread", "read", "done", "muted", "planned"]);
 export type ConversationState = typeof ConversationState.Type;
+
+export const Plan = Schema.Union([
+  Schema.TaggedStruct("None", {}),
+  Schema.TaggedStruct("Tray", {}),
+  Schema.TaggedStruct("Day", { date: CalendarDate }),
+  Schema.TaggedStruct("Slot", {
+    date: CalendarDate,
+    start: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1439 })),
+    minutes: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
+]);
+export type Plan = typeof Plan.Type;
+
+export const DueOverride = Schema.Union([
+  Schema.TaggedStruct("None", {}),
+  Schema.TaggedStruct("Date", { date: CalendarDate }),
+  Schema.TaggedStruct("Cleared", {}),
+]);
+export type DueOverride = typeof DueOverride.Type;
+
+export const RowDue = Schema.Struct({
+  date: CalendarDate,
+  by: Schema.Union([
+    Schema.TaggedStruct("Ai", { seq: Schema.Int }),
+    Schema.TaggedStruct("User", {}),
+  ]),
+});
+export type RowDue = typeof RowDue.Type;
 
 export const ListedConversationRow = Schema.Struct({
   ...ConversationRow.fields,
@@ -119,6 +147,9 @@ export const ListedConversationRow = Schema.Struct({
   lastFromMe: Schema.BooleanFromBit,
   lastTextNew: Schema.String,
   coveringHeadline: Schema.NullOr(Schema.String),
+  plan: Schema.fromJsonString(Plan),
+  plannedAt: Schema.NullOr(UtcIso),
+  due: Schema.NullOr(Schema.fromJsonString(RowDue)),
 });
 export type ListedConversationRow = typeof ListedConversationRow.Type;
 

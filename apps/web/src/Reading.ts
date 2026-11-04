@@ -192,6 +192,7 @@ export const reading = Atom.family((id: ConversationId) =>
 
 export type Dock = {
   readonly actions: ReadonlyArray<DockAction>;
+  readonly state: Detail["state"]["state"];
   readonly target: Target;
   readonly open: Detail["open"];
 };
@@ -209,9 +210,12 @@ export const dock = Atom.family((id: ConversationId) =>
           ? "done"
           : intent._tag === "Mute"
             ? "muted"
-            : "read";
+            : intent._tag === "Plan"
+              ? "planned"
+              : "read";
     return Option.some({
       actions: dockActions({ state, read: get(reading(id)).seen >= last }),
+      state,
       target: { id, last_seq: last, cleared_seq: detail.value.state.cleared_seq },
       open: detail.value.open,
     });

@@ -6,6 +6,7 @@ import type { View } from "./Route.ts";
 export type Intent =
   | { readonly _tag: "Done"; readonly lastSeq: number }
   | { readonly _tag: "Mute" }
+  | { readonly _tag: "Plan" }
   | { readonly _tag: "Restore"; readonly clearedSeq: number };
 
 export type Act = Intent["_tag"];
@@ -24,6 +25,8 @@ export const intentFor = (act: Act, target: Target): Intent => {
       return { _tag: "Done", lastSeq: target.last_seq };
     case "Mute":
       return { _tag: "Mute" };
+    case "Plan":
+      return { _tag: "Plan" };
     case "Restore":
       return { _tag: "Restore", clearedSeq: target.cleared_seq };
   }

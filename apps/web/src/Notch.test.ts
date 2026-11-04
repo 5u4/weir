@@ -25,6 +25,8 @@ const counts = (
   tags: tags.map(([name, unread, open]) => ({ name, ...view(unread, open) })),
   untagged: view(...untagged),
   cleared,
+  planned: { count: 0, dues: [] },
+  now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
 });
 
 const widgetText = ({ kind, name, count }: Widget) => {
@@ -99,6 +101,8 @@ describe("notch sentence", () => {
       tags: [{ name: "GitHub", unread: 3, open: 4, senders }],
       untagged: view(0),
       cleared: 0,
+      planned: { count: 0, dues: [] },
+      now: { epoch_ms: Date.parse("2026-10-25T09:00:00-07:00"), zone: "America/Los_Angeles" },
     });
     expect(main._tag === "Updates" && main.clause[0]?.widget).toEqual({
       kind: "updates",

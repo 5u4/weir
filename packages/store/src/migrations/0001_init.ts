@@ -64,7 +64,24 @@ export const migration = Effect.gen(function* () {
     conversation_id INTEGER PRIMARY KEY,
     seen_seq INTEGER,
     cleared_seq INTEGER,
-    muted INTEGER
+    muted INTEGER,
+    plan_kind TEXT CHECK (plan_kind IN ('tray', 'day', 'slot')),
+    plan_date TEXT,
+    plan_start INTEGER,
+    plan_minutes INTEGER,
+    planned_at TEXT,
+    due_kind TEXT CHECK (due_kind IN ('date', 'cleared')),
+    due_date TEXT,
+    CHECK (CASE plan_kind
+      WHEN 'tray' THEN plan_date IS NULL AND plan_start IS NULL AND plan_minutes IS NULL
+        AND planned_at IS NOT NULL
+      WHEN 'day' THEN plan_date IS NOT NULL AND plan_start IS NULL AND plan_minutes IS NULL
+        AND planned_at IS NOT NULL
+      WHEN 'slot' THEN plan_date IS NOT NULL AND plan_start BETWEEN 0 AND 1439
+        AND plan_minutes > 0 AND planned_at IS NOT NULL
+      ELSE plan_date IS NULL AND plan_start IS NULL AND plan_minutes IS NULL AND planned_at IS NULL
+    END),
+    CHECK (CASE due_kind WHEN 'date' THEN due_date IS NOT NULL ELSE due_date IS NULL END)
   )`;
   yield* sql`CREATE TABLE ai_state (
     kind TEXT,

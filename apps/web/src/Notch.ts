@@ -24,6 +24,7 @@ export type Sentence = {
     | { readonly _tag: "CaughtUp" }
     | { readonly _tag: "Updates"; readonly clause: Clause };
   readonly tail: ReadonlyArray<Clause>;
+  readonly planned: Counts["planned"];
 };
 
 type Summary = {
@@ -109,8 +110,12 @@ export const sentence = (counts: Counts): Sentence => {
         : []),
       enumerate([clearedWidget(counts)], "", "."),
     ],
+    planned: counts.planned,
   };
 };
+
+export const overdue = (planned: Counts["planned"], today: string) =>
+  planned.dues.filter((due) => due < today).length;
 
 export type AlertClause = {
   readonly text: string;

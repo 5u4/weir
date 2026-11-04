@@ -18,7 +18,9 @@ import {
   DigestInsert,
   DigestRow,
   DigestRunInsert,
+  type DueOverride,
   ItemInsert,
+  type Plan,
   Seq,
   StreamId,
   StreamInsert,
@@ -483,33 +485,48 @@ export type StateChange =
   | { readonly _tag: "Unread"; readonly seq?: Seq }
   | { readonly _tag: "Done"; readonly seq: Seq }
   | { readonly _tag: "Mute" }
-  | { readonly _tag: "Restore" };
+  | { readonly _tag: "Restore" }
+  | { readonly _tag: "Plan"; readonly plan: Plan }
+  | { readonly _tag: "Due"; readonly due: DueOverride };
 
-const stateAssignments = (sql: SqlClient.SqlClient, change: StateChange) => {
+const planAssignments = (sql: SqlClient.SqlClient, plan: Plan, plannedAt: string) => {
+  const [kind, date, start, minutes] =
+    plan._tag === "None"
+      ? [null, null, null, null]
+      : plan._tag === "Tray"
+        ? ["tray", null, null, null]
+        : plan._tag === "Day"
+          ? ["day", plan.date, null, null]
+          : ["slot", plan.date, plan.start, plan.minutes];
+  return sql`plan_kind = ${kind}, plan_date = ${date}, plan_start = ${start},
+    plan_minutes = ${minutes}, planned_at = ${kind === null ? null : plannedAt}`;
+};
+
+const stateAssignments = (sql: SqlClient.SqlClient, change: StateChange, plannedAt: string) => {
   const last = sql`conversation.last_seq`;
+  const unplan = planAssignments(sql, { _tag: "None" }, plannedAt);
   switch (change._tag) {
     case "Read":
       return sql`seen_seq = max(seen_seq, min(${change.seq}, ${last}))`;
     case "Unread":
       return sql`seen_seq = max(0, min(${change.seq ?? last}, ${last}) - 1)`;
     case "Done":
-      return sql`cleared_seq = max(cleared_seq, min(${change.seq}, ${last}))`;
+      return sql`cleared_seq = max(cleared_seq, min(${change.seq}, ${last})), ${unplan}`;
     case "Mute":
       return sql`muted = 1`;
     case "Restore":
-      return sql`muted = 0, cleared_seq = 0, seen_seq = max(seen_seq, ${last})`;
+      return sql`muted = 0, cleared_seq = 0, seen_seq = max(seen_seq, ${last}), ${unplan}`;
+    case "Plan":
+      return planAssignments(sql, change.plan, plannedAt);
+    case "Due":
+      return change.due._tag === "Date"
+        ? sql`due_kind = 'date', due_date = ${change.due.date}`
+        : sql`due_kind = ${change.due._tag === "Cleared" ? "cleared" : null}, due_date = NULL`;
   }
 };
 
-interface StateSnapshot {
-  readonly conversationId: number;
-  readonly seenSeq: number;
-  readonly clearedSeq: number;
-  readonly muted: number;
-}
-
-const stateKey = ({ seenSeq, clearedSeq, muted }: StateSnapshot) =>
-  `${seenSeq}:${clearedSeq}:${muted}`;
+const stateColumns = `conversation_id, seen_seq, cleared_seq, muted,
+  plan_kind, plan_date, plan_start, plan_minutes, due_kind, due_date`;
 
 export const changeState = Effect.fnUntraced(function* (
   conversationIds: ReadonlyArray<ConversationId>,
@@ -517,28 +534,29 @@ export const changeState = Effect.fnUntraced(function* (
 ) {
   if (conversationIds.length === 0) return [];
   const sql = yield* SqlClient.SqlClient;
+  const plannedAt = yield* Schema.encodeEffect(UtcIso)(yield* DateTime.now);
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`INSERT INTO conversation_state (conversation_id, seen_seq, cleared_seq, muted)
         SELECT id, 0, 0, 0 FROM conversation WHERE ${sql.in("id", conversationIds)}
         ON CONFLICT (conversation_id) DO NOTHING`;
+      const snapshot = ({ conversationId, ...state }: Record<string, unknown>) =>
+        [Number(conversationId), JSON.stringify(state)] as const;
       const before = new Map(
-        (yield* sql<StateSnapshot>`SELECT conversation_id, seen_seq, cleared_seq, muted
+        (yield* sql<Record<string, unknown>>`SELECT ${sql.literal(stateColumns)}
           FROM conversation_state
-          WHERE ${sql.in("conversation_id", conversationIds)}`).map((row) => [
-          row.conversationId,
-          stateKey(row),
-        ]),
+          WHERE ${sql.in("conversation_id", conversationIds)}`).map(snapshot),
       );
-      const after = yield* sql<StateSnapshot>`UPDATE conversation_state
-        SET ${stateAssignments(sql, change)}
+      const after = yield* sql<Record<string, unknown>>`UPDATE conversation_state
+        SET ${stateAssignments(sql, change, plannedAt)}
         FROM conversation
         WHERE conversation.id = conversation_state.conversation_id
           AND ${sql.in("conversation_state.conversation_id", conversationIds)}
-        RETURNING conversation_id, seen_seq, cleared_seq, muted`;
+        RETURNING ${sql.literal(stateColumns)}`;
       return after
-        .filter((row) => before.get(row.conversationId) !== stateKey(row))
-        .map((row) => ConversationId.make(row.conversationId))
+        .map(snapshot)
+        .filter(([id, state]) => before.get(id) !== state)
+        .map(([id]) => ConversationId.make(id))
         .sort((left, right) => left - right);
     }),
   );

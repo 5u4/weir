@@ -1,11 +1,13 @@
 import type { Row } from "@weir/daemon/Api";
 
-export type DockAction = "Done" | "Restore" | "MarkUnread" | "Mute";
+export type DockAction = "Done" | "Plan" | "Restore" | "MarkUnread" | "Mute";
 
 export type Standing = { readonly state: Row["state"]; readonly read: boolean };
 
 export const dockActions = ({ state, read }: Standing): ReadonlyArray<DockAction> => [
   state === "done" || state === "muted" ? "Restore" : "Done",
+  ...(state === "muted" ? [] : (["Plan"] as const)),
+  ...(state === "planned" ? (["Restore"] as const) : []),
   ...(read ? (["MarkUnread"] as const) : []),
   ...(state === "muted" ? [] : (["Mute"] as const)),
 ];
@@ -15,6 +17,7 @@ export type Shortcut =
   | "Close"
   | "Done"
   | "Next"
+  | "Plan"
   | "Previous"
   | "Search"
   | "Settings";
@@ -31,6 +34,7 @@ const keys: Readonly<Record<string, Shortcut>> = {
   e: "Done",
   j: "Next",
   k: "Previous",
+  p: "Plan",
   "/": "Search",
   ",": "Settings",
 };

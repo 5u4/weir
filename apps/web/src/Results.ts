@@ -13,7 +13,7 @@ export type ResultGroup = {
 };
 
 export const cleared = (result: Pick<Result, "state">) =>
-  result.state === "done" || result.state === "muted";
+  result.state === "done" || result.state === "muted" || result.state === "planned";
 
 export const inGroup = (result: Pick<Result, "state" | "tags">, view: View) => {
   if (view === "cleared") return cleared(result);

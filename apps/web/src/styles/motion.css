@@ -259,6 +259,20 @@
       flash-press var(--duration-enter) var(--ease-spring) var(--duration-base) backwards;
   }
 
+  [data-roll][data-bump] {
+    animation:
+      roll-up var(--duration-spring) var(--duration-base) var(--ease-standard) backwards,
+      bump var(--duration-enter) var(--ease-spring) var(--duration-spring);
+  }
+
+  [data-picker] {
+    animation: picker-in var(--duration-spring) var(--ease-spring) backwards;
+  }
+
+  [data-toast] {
+    animation: toast-life var(--duration-toast) var(--ease-standard) forwards;
+  }
+
   @variant motion-reduce {
     [data-roll],
     [data-roll="down"] {
@@ -275,6 +289,18 @@
 
     [data-flash] {
       animation: flash var(--duration-flash) var(--ease-standard);
+    }
+
+    [data-roll][data-bump] {
+      animation: vt-fade-in var(--duration-base) var(--ease-standard) backwards;
+    }
+
+    [data-picker] {
+      animation: vt-fade-in var(--duration-fast) linear backwards;
+    }
+
+    [data-toast] {
+      animation: toast-fade var(--duration-toast) linear forwards;
     }
   }
 
@@ -662,5 +688,50 @@
   to {
     opacity: 0;
     translate: 0 calc(var(--spacing-2\.5) * -1);
+  }
+}
+
+@keyframes bump {
+  40% {
+    scale: var(--scale-bump);
+  }
+}
+
+@keyframes picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-2)) scale(var(--scale-press));
+  }
+}
+
+@keyframes toast-life {
+  from {
+    opacity: 0;
+    translate: 0 var(--spacing-2);
+  }
+
+  8%,
+  90% {
+    opacity: 1;
+    translate: none;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-fade {
+  from {
+    opacity: 0;
+  }
+
+  5%,
+  92% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
   }
 }

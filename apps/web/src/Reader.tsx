@@ -50,6 +50,7 @@ import { clockTime, dayAndTime, dayLabel, now, plural } from "./Health.ts";
 import { type Hit, hitKey, matches } from "./Hits.ts";
 import { Highlighted, Prose, proseClass } from "./Marked.tsx";
 import { monogram } from "./Notch.ts";
+import { CalendarIcon, Picker } from "./Picker.tsx";
 import {
   dock,
   following,
@@ -66,7 +67,17 @@ import {
 import { fieldLabels } from "./Results.ts";
 import { type ConversationId, route } from "./Route.ts";
 import { homeTag, tagHue } from "./Rows.ts";
-import { conversation, digestRun, dismiss, runDigest, searchPattern, tagOrder } from "./Weir.ts";
+import {
+  conversation,
+  digestRun,
+  dismiss,
+  picker,
+  runDigest,
+  searchPattern,
+  tagOrder,
+  today,
+} from "./Weir.ts";
+import { dueFlag, planLabel } from "./When.ts";
 
 type Controls = {
   readonly run: Run;
@@ -1340,6 +1351,7 @@ function Conversation({
 
 const dockLabels: Record<DockAction, string> = {
   Done: "Done",
+  Plan: "Plan",
   Restore: "Restore",
   MarkUnread: "Mark unread",
   Mute: "Mute",
@@ -1348,13 +1360,87 @@ const dockLabels: Record<DockAction, string> = {
 const dockItemClass =
   "h-9.5 items-center gap-2 rounded-full text-sm whitespace-nowrap no-underline transition-press-bg duration-fast";
 
+const dockKeys: Partial<Record<DockAction, string>> = { Done: "e", Plan: "p" };
+
+const stripChipClass = (warn: boolean) =>
+  `inline-flex h-7 items-center gap-1.5 rounded-full bg-dock px-3 text-xs font-semibold whitespace-nowrap elevation-float backdrop-blur-dock backdrop-saturate-dock transition-tint hover:bg-hover active:scale-press ${warn ? "text-warn" : "text-ink"}`;
+
+const dueSource = (detail: Detail, due: NonNullable<Detail["state"]["due"]>) => {
+  if (due.by._tag === "User") return "set by you";
+  const { seq } = due.by;
+  const item = detail.items.find((each) => each.seq === seq);
+  if (item === undefined) return "from the digest";
+  const name = item.from_me
+    ? "you"
+    : (item.from.name.trim().split(/\s+/)[0] ?? "") || (item.from.address.split("@")[0] ?? "");
+  const day = DateTime.formatLocal(DateTime.makeUnsafe(item.occurred_at), { weekday: "short" });
+  return `from ${name} ${day}`;
+};
+
+function PlanStrip({ id }: { id: ConversationId }) {
+  const detail = useAtomValue(conversation(id));
+  const current = useAtomValue(today);
+  const shown = useAtomValue(dock(id));
+  const open = useAtomSet(picker);
+  if (
+    !AsyncResult.isSuccess(detail) ||
+    Option.isNone(current) ||
+    !Option.exists(shown, ({ actions }) => actions.includes("Plan"))
+  ) {
+    return null;
+  }
+  const { plan, due } = detail.value.state;
+  const at = current.value.date;
+  const label = planLabel(plan, at);
+  const flag = due === null ? null : dueFlag(due.date, at);
+  if (label === null && (flag === null || due === null)) return null;
+  const source = due === null ? null : dueSource(detail.value, due);
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-strip mx-auto flex w-fit max-w-dock gap-1.5 max-wide:bottom-strip-safe"
+      role="group"
+      aria-label="Plan and due date"
+    >
+      {label === null ? null : (
+        <button
+          type="button"
+          className={`pointer-events-auto ${stripChipClass(false)}`}
+          aria-keyshortcuts="p"
+          onClick={() => open(Option.some({ id, tab: "plan" }))}
+        >
+          <CalendarIcon className="size-3.5 text-ink-3" />
+          {label}
+        </button>
+      )}
+      {flag === null ? null : (
+        <button
+          type="button"
+          className={`pointer-events-auto ${stripChipClass(flag.over)}`}
+          aria-label={`${flag.text}, ${source}`}
+          title={`${flag.text}, ${source}`}
+          onClick={() => open(Option.some({ id, tab: "due" }))}
+        >
+          {flag.text}
+          <span className="font-medium text-ink-3 max-wide:hidden">{source}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+const dockIcons = {
+  Plan: "M3 4.5h10v8.5H3zM3 7h10M5.5 3v3M10.5 3v3",
+  MarkUnread: "M2.5 4.5h11v8h-11zM2.5 4.5L8 9l5.5-4.5",
+};
+
 function Dock({ id }: { id: ConversationId }) {
   const shown = useAtomValue(dock(id));
   const [current, navigate] = useAtom(route);
   const { unread } = useAtomValue(reading(id));
   const run = useAtomSet(dismiss);
+  const [plan, setPicker] = useAtom(picker);
   if (Option.isNone(shown)) return null;
-  const { actions, target, open } = shown.value;
+  const { actions, target, open, state } = shown.value;
   return (
     <div
       className="r-dock absolute inset-x-0 bottom-4 mx-auto flex w-fit max-w-dock items-center gap-1 rounded-full bg-dock p-1.5 elevation-float backdrop-blur-dock backdrop-saturate-dock max-wide:bottom-dock-safe max-wide:gap-0.5"
@@ -1381,17 +1467,39 @@ function Dock({ id }: { id: ConversationId }) {
         <button
           key={action}
           type="button"
-          className={`${dockItemClass} inline-flex font-semibold active:scale-press ${action === "Done" || action === "Restore" ? "bg-capbg px-5 text-cap-1 hover:bg-primary-hover" : "px-4 text-ink hover:bg-hover max-wide:px-3.5"}`}
-          aria-keyshortcuts={action === "Done" ? "e" : undefined}
-          onClick={() => (action === "MarkUnread" ? unread(null) : run({ act: action, target }))}
+          className={`${dockItemClass} inline-flex font-semibold active:scale-press ${action === "Done" || (action === "Restore" && state !== "planned") ? "bg-capbg px-5 text-cap-1 hover:bg-primary-hover" : "px-4 text-ink hover:bg-hover max-wide:px-3.5"}`}
+          aria-keyshortcuts={dockKeys[action]}
+          aria-label={action in dockIcons ? dockLabels[action] : undefined}
+          title={action in dockIcons ? dockLabels[action] : undefined}
+          aria-expanded={action === "Plan" ? Option.isSome(plan) : undefined}
+          onClick={() => {
+            if (action === "MarkUnread") unread(null);
+            else if (action === "Plan") setPicker(Option.some({ id, tab: "plan" }));
+            else run({ act: action, target });
+          }}
         >
-          {dockLabels[action]}
-          {action === "Done" && (
+          {action === "Plan" || action === "MarkUnread" ? (
+            <>
+              <span className="max-wide:hidden">{dockLabels[action]}</span>
+              <svg
+                className={`hidden size-4.5 stroke-1.6 ${iconClass} max-wide:block`}
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <path d={dockIcons[action]} />
+              </svg>
+            </>
+          ) : action === "Restore" && state === "planned" ? (
+            "Back to inbox"
+          ) : (
+            dockLabels[action]
+          )}
+          {dockKeys[action] !== undefined && (
             <kbd
               className="rounded-sm px-1 py-0.5 font-sans text-2xs leading-none font-semibold opacity-muted shadow-ring-current max-wide:hidden"
               aria-hidden="true"
             >
-              e
+              {dockKeys[action]}
             </kbd>
           )}
         </button>
@@ -1421,6 +1529,7 @@ function Dock({ id }: { id: ConversationId }) {
 // Settings hides the reader instead of unmounting it, so closing Settings returns to the same reading state
 // and scroll position.
 export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) {
+  const planning = Option.exists(useAtomValue(picker), (open) => open.id === id);
   const result = useAtomValue(conversation(id));
   const { frozen, seen, dispatch, watch, unread } = useAtomValue(reading(id));
   const [, setPins] = useAtom(pins(id));
@@ -1482,7 +1591,13 @@ export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) 
           )
         )}
       </div>
-      {!hidden && <Dock id={id} />}
+      {!hidden && (
+        <>
+          <PlanStrip id={id} />
+          {planning && <Picker id={id} />}
+          <Dock id={id} />
+        </>
+      )}
     </>
   );
 }

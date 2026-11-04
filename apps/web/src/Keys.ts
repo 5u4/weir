@@ -4,7 +4,7 @@ import { shortcut } from "./Dock.ts";
 import { dock } from "./Reading.ts";
 import { ConversationId, route, searchOpen, settingsOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
-import { dismiss, listedRows, searching } from "./Weir.ts";
+import { dismiss, listedRows, picker, searching } from "./Weir.ts";
 
 export const keys = Atom.make((get) => {
   const onKey = (event: KeyboardEvent) => {
@@ -52,6 +52,15 @@ export const keys = Atom.make((get) => {
         const shown = Option.flatMap(open, (id) => get.registry.get(dock(id)));
         if (Option.isSome(shown) && shown.value.actions.includes("Done")) {
           get.registry.set(dismiss, { act: "Done", target: shown.value.target });
+        }
+        return;
+      }
+      case "Plan": {
+        if (Option.isNone(open)) return;
+        const shown = get.registry.get(dock(open.value));
+        if (Option.isSome(shown) && shown.value.actions.includes("Plan")) {
+          event.preventDefault();
+          get.registry.set(picker, Option.some({ id: open.value, tab: "plan" }));
         }
         return;
       }

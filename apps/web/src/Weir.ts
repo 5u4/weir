@@ -1,7 +1,15 @@
-import { Api, View as ApiView, ClearableView, Event, type Row } from "@weir/daemon/Api";
+import {
+  Api,
+  View as ApiView,
+  ClearableView,
+  type Counts,
+  Event,
+  type Row,
+} from "@weir/daemon/Api";
 import { termPattern } from "@weir/daemon/Match";
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -18,11 +26,20 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Digest from "./Digest.ts";
 import { capture, leave, stay } from "./Flip.ts";
+import { now } from "./Health.ts";
 import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
-import { ConversationId, capCounts, route, searchGroup, settingsOpen, type View } from "./Route.ts";
+import {
+  ConversationId,
+  capCounts,
+  type Route,
+  route,
+  searchGroup,
+  settingsOpen,
+  type View,
+} from "./Route.ts";
 import {
   type Act,
   exits,
@@ -33,6 +50,7 @@ import {
   shown,
   type Target,
 } from "./Rows.ts";
+import { type Plan, planText, type Today, todayOf } from "./When.ts";
 
 export class Weir extends AtomHttpApi.Service<Weir>()("Weir", {
   api: Api,
@@ -66,15 +84,34 @@ export const reload = Weir.runtime.fn<void>()(
 
 export const counts = Weir.query("view", "counts", { reactivityKeys: ["counts"] });
 
+const clockAnchor = Atom.make(
+  Option.none<{ readonly now: Counts["now"]; readonly at: number }>(),
+).pipe(Atom.keepAlive);
+
 export const capCountsFeed = Atom.make((get) => {
   get.subscribe(
     counts,
     (result) => {
-      if (AsyncResult.isSuccess(result) && !result.waiting) get.set(capCounts, result.value);
+      if (!AsyncResult.isSuccess(result) || result.waiting) return;
+      get.set(
+        clockAnchor,
+        Option.some({
+          now: result.value.now,
+          at: DateTime.toEpochMillis(DateTime.nowUnsafe()),
+        }),
+      );
+      get.set(capCounts, result.value);
     },
     { immediate: true },
   );
 });
+
+export const today = Atom.make((get) =>
+  Option.map(
+    get(clockAnchor),
+    ({ now: anchor, at }): Today => todayOf(anchor, DateTime.toEpochMillis(get(now)) - at),
+  ),
+);
 
 export const tagOrder = Atom.make((get) =>
   AsyncResult.getOrElse(
@@ -278,7 +315,7 @@ export const runDigest = Weir.runtime
           return;
         }
         const release = land(outcome.digests.map((digest) => digest.id));
-        yield* Reactivity.invalidate(["list"]);
+        yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [id] });
         yield* Effect.ignore(get.result(conversation(id), { suspendOnWaiting: true }));
         settle(Digest.idle);
@@ -407,10 +444,18 @@ export const listMotion = Atom.make((get) => {
 
 let exiting = false;
 
+export type Planned = Exclude<Plan, { readonly _tag: "None" }>;
+
+export type Dismissal = { readonly target: Target } & (
+  | { readonly act: Exclude<Act, "Plan"> }
+  | { readonly act: "Plan"; readonly plan: Planned }
+);
+
 export const dismiss = Weir.runtime
-  .fn<{ readonly act: Act; readonly target: Target }>()(
-    ({ act, target }, get) =>
+  .fn<Dismissal>()(
+    (dismissal, get) =>
       Effect.gen(function* () {
+        const { act, target } = dismissal;
         const client = yield* Weir;
         if (exiting) return;
         const key = String(target.id);
@@ -449,11 +494,13 @@ export const dismiss = Weir.runtime
         if (get.registry.get(listedRows).some(({ id }) => id === target.id)) stay(key);
         const params = { id: target.id };
         const request =
-          act === "Done"
-            ? client.done({ params, payload: { seq: target.last_seq } })
-            : act === "Mute"
-              ? client.mute({ params })
-              : client.restore({ params });
+          dismissal.act === "Plan"
+            ? client.plan({ params, payload: { plan: dismissal.plan } })
+            : act === "Done"
+              ? client.done({ params, payload: { seq: target.last_seq } })
+              : act === "Mute"
+                ? client.mute({ params })
+                : client.restore({ params });
         yield* inTurn(target.id)(request).pipe(
           Effect.onError(() =>
             Effect.sync(() =>
@@ -463,6 +510,12 @@ export const dismiss = Weir.runtime
             ),
           ),
         );
+        if (dismissal.act === "Plan") {
+          const date = Option.map(get.registry.get(today), ({ date }) => date);
+          if (Option.isSome(date)) {
+            get.registry.set(toast, Option.some(planText(dismissal.plan, date.value)));
+          }
+        }
         yield* Reactivity.invalidate(["counts", "list"]);
         yield* Reactivity.invalidate({ conversation: [target.id] });
         yield* Effect.ignore(
@@ -484,6 +537,55 @@ export const dismiss = Weir.runtime
     { concurrent: true },
   )
   .pipe(Atom.keepAlive);
+
+export type DueOverride =
+  | { readonly _tag: "None" }
+  | { readonly _tag: "Date"; readonly date: string }
+  | { readonly _tag: "Cleared" };
+
+export const setDue = Weir.runtime
+  .fn<{ readonly id: number; readonly due: DueOverride }>()(
+    ({ id, due }) =>
+      Effect.gen(function* () {
+        const client = yield* Weir;
+        yield* inTurn(id)(client.due({ params: { id }, payload: { due } }));
+        yield* Reactivity.invalidate(["counts", "list"]);
+        yield* Reactivity.invalidate({ conversation: [id] });
+      }),
+    { concurrent: true },
+  )
+  .pipe(Atom.keepAlive);
+
+export type PickerTab = "plan" | "due";
+
+const pickerShown = Atom.make(
+  Option.none<{ readonly id: ConversationId; readonly tab: PickerTab; readonly at: Route }>(),
+).pipe(Atom.keepAlive);
+
+export const picker = Atom.writable(
+  (get) => Option.filter(get(pickerShown), ({ at }) => at === get(route)),
+  (ctx, next: Option.Option<{ readonly id: ConversationId; readonly tab: PickerTab }>) =>
+    ctx.set(
+      pickerShown,
+      Option.map(next, (open) => ({ ...open, at: ctx.get(route) })),
+    ),
+);
+
+const toastShown = Atom.make(Option.none<{ readonly text: string; readonly key: number }>()).pipe(
+  Atom.keepAlive,
+);
+
+export const toast = Atom.writable(
+  (get) => get(toastShown),
+  (ctx, text: Option.Option<string>) =>
+    ctx.set(
+      toastShown,
+      Option.map(text, (line) => ({
+        text: line,
+        key: Option.match(ctx.get(toastShown), { onNone: () => 0, onSome: ({ key }) => key + 1 }),
+      })),
+    ),
+);
 
 export const clearAll = Weir.runtime
   .fn<{

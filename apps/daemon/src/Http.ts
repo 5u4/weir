@@ -317,6 +317,9 @@ const row = (conversation: ListedConversationRow): Row => ({
   from: conversation.from,
   preview: preview(conversation),
   senders: conversation.senders,
+  plan: conversation.plan,
+  planned_at: conversation.plannedAt === null ? null : DateTime.formatIso(conversation.plannedAt),
+  due: conversation.due,
 });
 
 const hitLinesPerConversation = 3;
@@ -413,6 +416,8 @@ const counts = Effect.fnUntraced(function* (config: Config) {
   const tagCounts = yield* Read.tagCounts();
   const senders = yield* Read.unreadSenders(sendersPerView);
   const totals = yield* Read.stateTotals();
+  const plannedDues = yield* Read.plannedDues();
+  const now = yield* DateTime.nowInCurrentZone;
   const summaryOf = (tag: string | null) => {
     const count = tagCounts.find((candidate) => candidate.tag === tag);
     return {
@@ -428,6 +433,14 @@ const counts = Effect.fnUntraced(function* (config: Config) {
     tags: config.tag.map(({ name }) => ({ name, ...summaryOf(name) })),
     untagged: summaryOf(null),
     cleared: totals.cleared,
+    planned: {
+      count: plannedDues.length,
+      dues: plannedDues.flatMap(({ due }) => (due === null ? [] : [due])),
+    },
+    now: {
+      epoch_ms: DateTime.toEpochMillis(now),
+      zone: DateTime.zoneToString(now.zone),
+    },
   } satisfies Counts;
 });
 
@@ -461,6 +474,7 @@ const viewHandlers = HttpApiBuilder.group(
         daemon.state.pipe(
           Effect.flatMap(({ config }) => counts(config)),
           withSql,
+          Effect.provide(DateTime.layerCurrentZoneLocal),
           Effect.orDie,
         ),
     });
@@ -494,6 +508,8 @@ const stateHandlers = HttpApiBuilder.group(
         respond(id, { _tag: "Done", seq: Seq.make(seq) }),
       mute: ({ params: { id } }) => respond(id, { _tag: "Mute" }),
       restore: ({ params: { id } }) => respond(id, { _tag: "Restore" }),
+      plan: ({ params: { id }, payload: { plan } }) => respond(id, { _tag: "Plan", plan }),
+      due: ({ params: { id }, payload: { due } }) => respond(id, { _tag: "Due", due }),
       clear: ({ payload: { view, seq } }) =>
         Effect.gen(function* () {
           yield* knownView((yield* daemon.state).config, view);
@@ -595,6 +611,9 @@ const weirHandlers = HttpApiBuilder.group(
               cleared_seq: state.clearedSeq,
               muted: state.muted,
               state: state.state,
+              plan: state.plan,
+              planned_at: state.plannedAt === null ? null : DateTime.formatIso(state.plannedAt),
+              due: state.due,
             },
             items: items.flatMap((item) => {
               const stream = streams.get(item.seq);

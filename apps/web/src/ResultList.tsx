@@ -29,7 +29,16 @@ import { queryText } from "./Query.ts";
 import { cleared, fieldLabels, type Result } from "./Results.ts";
 import { ConversationId, route, searchGroup, viewLabel } from "./Route.ts";
 import { face, tagHue } from "./Rows.ts";
-import { found, pickedGroup, searchQuery, searchResult, searchRows, tagOrder } from "./Weir.ts";
+import {
+  found,
+  pickedGroup,
+  searchQuery,
+  searchResult,
+  searchRows,
+  tagOrder,
+  today,
+} from "./Weir.ts";
+import { planLabel } from "./When.ts";
 
 function Hit({ hit }: { hit: Result["hits"][number] }) {
   return (
@@ -56,6 +65,7 @@ function ResultRow({ result, selected }: { result: Result; selected: boolean }) 
   const [current] = useAtom(route);
   const tags = useAtomValue(tagOrder);
   const at = useAtomValue(now);
+  const day = useAtomValue(today);
   const last = DateTime.makeUnsafe(result.last_at);
   const { from, mark } = face(result);
   const hue = tagHue(tags, current.view, result);
@@ -88,7 +98,16 @@ function ResultRow({ result, selected }: { result: Result; selected: boolean }) 
             <span
               className={`rounded-sm px-1.5 py-px text-2xs font-semibold text-ink-2 shadow-ring-g-line ${tagged ? "ml-em-0.6" : ""}`}
             >
-              {result.state === "muted" ? "Muted" : "Done"}
+              {result.state === "muted"
+                ? "Muted"
+                : result.state === "planned"
+                  ? Option.getOrElse(
+                      Option.flatMap(day, ({ date }) =>
+                        Option.fromNullishOr(planLabel(result.plan, date)),
+                      ),
+                      () => "Planned",
+                    )
+                  : "Done"}
             </span>
           )}
           <span className={tagged || settled ? "ml-em-0.6" : undefined}>

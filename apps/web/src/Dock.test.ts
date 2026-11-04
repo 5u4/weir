@@ -10,16 +10,21 @@ import {
 
 describe("dock actions for the open conversation", () => {
   it.each<[string, Standing, ReadonlyArray<DockAction>]>([
-    ["unread", { state: "unread", read: false }, ["Done", "Mute"]],
-    ["read", { state: "read", read: true }, ["Done", "MarkUnread", "Mute"]],
+    ["unread", { state: "unread", read: false }, ["Done", "Plan", "Mute"]],
+    ["read", { state: "read", read: true }, ["Done", "Plan", "MarkUnread", "Mute"]],
     [
       "unread, just read to the end",
       { state: "unread", read: true },
-      ["Done", "MarkUnread", "Mute"],
+      ["Done", "Plan", "MarkUnread", "Mute"],
     ],
-    ["read, then marked unread", { state: "read", read: false }, ["Done", "Mute"]],
-    ["done and read", { state: "done", read: true }, ["Restore", "MarkUnread", "Mute"]],
-    ["done with unread messages", { state: "done", read: false }, ["Restore", "Mute"]],
+    ["read, then marked unread", { state: "read", read: false }, ["Done", "Plan", "Mute"]],
+    ["done and read", { state: "done", read: true }, ["Restore", "Plan", "MarkUnread", "Mute"]],
+    ["done with unread messages", { state: "done", read: false }, ["Restore", "Plan", "Mute"]],
+    [
+      "planned and read",
+      { state: "planned", read: true },
+      ["Done", "Plan", "Restore", "MarkUnread", "Mute"],
+    ],
     ["muted and read", { state: "muted", read: true }, ["Restore", "MarkUnread"]],
     ["muted with unread messages", { state: "muted", read: false }, ["Restore"]],
   ])("%s", (_, standing, expected) => {
@@ -40,6 +45,8 @@ describe("keyboard shortcuts", () => {
     ["j moves down", key({ key: "j" }), "Next"],
     ["k moves up", key({ key: "k" }), "Previous"],
     ["Esc closes the conversation", key({ key: "Escape" }), "Close"],
+    ["p plans", key({ key: "p" }), "Plan"],
+    ["typing p in a field", key({ key: "p", editing: true }), null],
     ["only a lowercase e", key({ key: "E" }), null],
     ["other keys do nothing", key({ key: "x" }), null],
     ["a key named like an object property", key({ key: "constructor" }), null],
