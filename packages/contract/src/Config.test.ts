@@ -47,7 +47,7 @@ const failure = (input: unknown) => Effect.runSync(Effect.flip(decodeConfig(inpu
 const withTag = (tag: Record<string, unknown>) => ({ ...specExample, tag: [tag] });
 
 describe("Config", () => {
-  it("decodes the design's example config", () => {
+  it("decodes the example config", () => {
     const config = decode(specExample);
     expect(config.source).toEqual([
       {

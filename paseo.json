@@ -1,11 +1,5 @@
 {
   "worktree": {
     "setup": ["bun install --frozen-lockfile", "bun run vendor:effect"]
-  },
-  "scripts": {
-    "prototype": {
-      "type": "service",
-      "command": "cd design/prototype && PORT=$PASEO_PORT bun ux/serve.ts"
-    }
   }
 }
