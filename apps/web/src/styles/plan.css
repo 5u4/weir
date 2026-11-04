@@ -19,7 +19,9 @@
     height: var(--h);
     pointer-events: none;
   }
+}
 
+@layer utilities {
   :root[data-grabbing],
   :root[data-grabbing] * {
     cursor: grabbing;
