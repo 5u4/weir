@@ -2,10 +2,8 @@
 
 ## Stage
 
-Single user: the operator is the only one running weir, so no database needs to survive a schema
-change. Change the schema by editing the first migration (`0001`) in place; the operator deletes
-`~/.weir` when a change needs it. APIs and in-memory types change in place too: migrate every caller
-and delete the old path in the same change, with no compatibility shims.
+Single user: the operator is the only one running weir. APIs and in-memory types change in place:
+migrate every caller and delete the old path in the same change, with no compatibility shims.
 
 ## Layout
 
