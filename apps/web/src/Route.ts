@@ -50,6 +50,12 @@ export type Scale = typeof Scale.Type;
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
+const isCalendarDate = (raw: string) => {
+  if (!isoDate.test(raw)) return false;
+  const time = Date.parse(raw);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === raw;
+};
+
 export const Route = Schema.Struct({
   view: param(View, decodeView, String, "untagged"),
   query: param(Schema.String, Option.some, String, ""),
@@ -63,10 +69,7 @@ export const Route = Schema.Struct({
   scale: param(Scale, Schema.decodeUnknownOption(Scale), String, "day"),
   date: param(
     Schema.Option(Schema.String),
-    (raw) =>
-      isoDate.test(raw) && !Number.isNaN(Date.parse(raw))
-        ? Option.some(Option.some(raw))
-        : Option.none(),
+    (raw) => (isCalendarDate(raw) ? Option.some(Option.some(raw)) : Option.none()),
     Option.match({ onNone: () => "", onSome: String }),
     Option.none(),
   ),

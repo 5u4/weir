@@ -84,6 +84,8 @@ describe("plan route URL", () => {
     ["?m=plan&s=week", plan("day")],
     ["?m=plan&d=tomorrow", plan("day")],
     ["?m=plan&d=2026-13-40", plan("day")],
+    ["?m=plan&d=2026-02-30", plan("day")],
+    ["?m=plan&d=2026-04-31", plan("day")],
   ])("falls back to the default for invalid %j", (search, expected) => {
     expect(parse(search)).toEqual(expected);
   });

@@ -44,6 +44,7 @@ import {
 import {
   type Act,
   exits,
+  type Intent,
   type Intents,
   intentFor,
   leaves,
@@ -362,6 +363,8 @@ export const inTurn =
 
 export const intents = Atom.make<Intents>(new Map()).pipe(Atom.keepAlive);
 
+const confirmed = new Map<number, Intent>();
+
 const changed = <A>(map: ReadonlyMap<number, A>, id: number, value: A | undefined) => {
   const next = new Map(map);
   if (value === undefined) next.delete(id);
@@ -515,10 +518,9 @@ export const dismiss = Weir.runtime
             origin: "passive",
           });
         }
-        const before = get.registry.get(intents).get(target.id);
-        const intent =
+        const intent: Intent =
           dismissal.act === "Plan"
-            ? { _tag: "Plan" as const, plan: dismissal.plan }
+            ? { _tag: "Plan", plan: dismissal.plan }
             : intentFor(dismissal.act, target);
         get.registry.update(intents, (map) => changed(map, target.id, intent));
         if (get.registry.get(listedRows).some(({ id }) => id === target.id)) stay(key);
@@ -535,11 +537,14 @@ export const dismiss = Weir.runtime
           Effect.onError(() =>
             Effect.sync(() =>
               get.registry.update(intents, (map) =>
-                map.get(target.id) === intent ? changed(map, target.id, before) : map,
+                map.get(target.id) === intent
+                  ? changed(map, target.id, confirmed.get(target.id))
+                  : map,
               ),
             ),
           ),
         );
+        confirmed.set(target.id, intent);
         if (dismissal.act === "Plan" && !planning) {
           const date = Option.map(get.registry.get(today), ({ date }) => date);
           if (Option.isSome(date)) {
@@ -576,6 +581,7 @@ export const dismiss = Weir.runtime
               : []),
           ]),
         );
+        if (confirmed.get(target.id) === intent) confirmed.delete(target.id);
         get.registry.update(intents, (map) =>
           map.get(target.id) === intent ? changed(map, target.id, undefined) : map,
         );

@@ -191,11 +191,11 @@ describe("dragging on the timeline", () => {
 
 describe("month", () => {
   it("shows six weeks from the Monday on or before the first", () => {
-    const days = monthGrid("2026-10");
-    expect(days).toHaveLength(42);
-    expect(days[0]).toBe("2026-09-28");
-    expect(days[3]).toBe("2026-10-01");
-    expect(days[41]).toBe("2026-11-08");
+    const weeks = monthGrid("2026-10");
+    expect(weeks.map((week) => week.length)).toEqual([7, 7, 7, 7, 7, 7]);
+    expect(weeks[0]?.[0]).toBe("2026-09-28");
+    expect(weeks[0]?.[3]).toBe("2026-10-01");
+    expect(weeks[5]?.[6]).toBe("2026-11-08");
   });
 
   it("a day lists timed plans by time, then day plans, carried-over plans on today", () => {

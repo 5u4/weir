@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { Link } from "./Link.tsx";
-import { dueFlagClass } from "./ListClasses.ts";
+import { dueFlagClass, emptyBigClass, emptyClass } from "./ListClasses.ts";
 import { overdue } from "./Notch.ts";
 import {
   type Block,
@@ -184,7 +184,7 @@ const useHands = (date: string): Hands => {
         stop();
         if (!current.moved) return;
         dragged.at = up.timeStamp;
-        const { plan } = current;
+        const { plan } = hit(current, up.clientX, up.clientY, date);
         if (plan !== null && JSON.stringify(plan) !== JSON.stringify(current.row.plan)) {
           run({ act: "Plan", target: current.row, plan });
         }
@@ -301,7 +301,7 @@ function Tray({
   const open = Option.getOrNull(at.conversation);
   return (
     <aside
-      className={`flex min-h-0 flex-none flex-col gap-2 rounded-3xl p-3 transition-bg @plan:mb-4 @plan:bg-hover ${hands.drag?.over === "tray" ? "bg-g-hover" : ""}`}
+      className={`flex min-h-0 flex-none flex-col gap-2 rounded-3xl p-3 transition-bg @plan:mb-4 @plan:flex-initial @plan:bg-hover ${hands.drag?.over === "tray" ? "bg-g-hover" : ""}`}
       data-drop="tray"
       aria-label="Tray"
     >
@@ -672,6 +672,8 @@ function MonthChip({
   );
 }
 
+const weekClass = "col-span-full grid grid-cols-subgrid";
+
 function MonthGrid({
   rows,
   at,
@@ -690,68 +692,74 @@ function MonthGrid({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 scrollbar-thin">
       <div className="grid grid-cols-7 gap-1" role="grid" aria-label={monthTitle(month)}>
-        {weekHeads.map((head) => (
-          <span
-            key={head}
-            role="columnheader"
-            className="px-1.5 pb-1 text-2xs font-semibold text-ink-3"
-          >
-            {head}
-          </span>
-        ))}
-        {monthGrid(month).map((date) => {
-          const entries = monthEntries(rows, date, current.date);
-          const shown = entries.slice(0, 3);
-          const key = `day:${date}`;
-          return (
-            <div
-              key={date}
-              role="gridcell"
-              data-drop={key}
-              data-over={hands.drag?.over === key || undefined}
-              aria-label={`${dayLong(date)}, ${entries.length} planned`}
-              className={`flex min-h-cell min-w-0 flex-col gap-1 rounded-xl p-1.5 transition-bg data-over:bg-g-hover max-wide:min-h-cell-sm max-wide:p-1 ${monthOf(date) === month ? "bg-hover" : "opacity-half"}`}
+        <div role="row" className={weekClass}>
+          {weekHeads.map((head) => (
+            <span
+              key={head}
+              role="columnheader"
+              className="px-1.5 pb-1 text-2xs font-semibold text-ink-3"
             >
-              <button
-                type="button"
-                className={`grid size-6 place-items-center rounded-circle text-xs font-semibold tabular-nums transition-tint hover:bg-g-hover ${date === current.date ? "bg-ink text-island hover:bg-ink" : date < current.date ? "text-ink-4" : "text-ink-2"}`}
-                aria-label={`Open ${dayLong(date)}`}
-                onClick={() =>
-                  navigate({
-                    _tag: "Go",
-                    to: {
-                      ...at,
-                      scale: "day",
-                      date: date === current.date ? Option.none() : Option.some(date),
-                    },
-                    origin: "passive",
-                  })
-                }
-              >
-                {Number(date.slice(8, 10))}
-              </button>
-              {shown.length > 0 && (
-                <ul className="m-0 flex min-w-0 list-none flex-col gap-0.5 p-0">
-                  {shown.map((row) => (
-                    <MonthChip
-                      key={row.id}
-                      row={row}
-                      at={at}
-                      date={current.date}
-                      hands={hands}
-                      selected={open === row.id}
-                    />
-                  ))}
-                </ul>
-              )}
-              {entries.length > shown.length && (
-                <span className="px-1 text-2xs font-semibold text-ink-3">
-                  +{entries.length - shown.length} more
-                </span>
-              )}
-            </div>
-          );
-        })}
+              {head}
+            </span>
+          ))}
+        </div>
+        {monthGrid(month).map((week) => (
+          <div key={week[0]} role="row" className={weekClass}>
+            {week.map((date) => {
+              const entries = monthEntries(rows, date, current.date);
+              const shown = entries.slice(0, 3);
+              const key = `day:${date}`;
+              return (
+                <div
+                  key={date}
+                  role="gridcell"
+                  data-drop={key}
+                  data-over={hands.drag?.over === key || undefined}
+                  aria-label={`${dayLong(date)}, ${entries.length} planned`}
+                  className={`flex min-h-cell min-w-0 flex-col gap-1 rounded-xl p-1.5 transition-bg data-over:bg-g-hover max-wide:min-h-cell-sm max-wide:p-1 ${monthOf(date) === month ? "bg-hover" : "opacity-half"}`}
+                >
+                  <button
+                    type="button"
+                    className={`grid size-6 place-items-center rounded-circle text-xs font-semibold tabular-nums transition-tint hover:bg-g-hover ${date === current.date ? "bg-ink text-island hover:bg-ink" : date < current.date ? "text-ink-4" : "text-ink-2"}`}
+                    aria-label={`Open ${dayLong(date)}`}
+                    onClick={() =>
+                      navigate({
+                        _tag: "Go",
+                        to: {
+                          ...at,
+                          scale: "day",
+                          date: date === current.date ? Option.none() : Option.some(date),
+                        },
+                        origin: "passive",
+                      })
+                    }
+                  >
+                    {Number(date.slice(8, 10))}
+                  </button>
+                  {shown.length > 0 && (
+                    <ul className="m-0 flex min-w-0 list-none flex-col gap-0.5 p-0">
+                      {shown.map((row) => (
+                        <MonthChip
+                          key={row.id}
+                          row={row}
+                          at={at}
+                          date={current.date}
+                          hands={hands}
+                          selected={open === row.id}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  {entries.length > shown.length && (
+                    <span className="px-1 text-2xs font-semibold text-ink-3">
+                      +{entries.length - shown.length} more
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -847,7 +855,9 @@ export function PlanView() {
   const [at] = useAtom(route);
   const current = useAtomValue(today);
   const rows = useAtomValue(planRows);
-  const loaded = !AsyncResult.isInitial(useAtomValue(planList));
+  const result = useAtomValue(planList);
+  const loaded = !AsyncResult.isInitial(result);
+  const failed = AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result));
   const date = Option.getOrElse(at.date, () =>
     Option.match(current, { onNone: () => "", onSome: ({ date: day }) => day }),
   );
@@ -860,26 +870,32 @@ export function PlanView() {
   return (
     <Shell reading={reading}>
       <PlanBar at={at} date={date} now={current.value} />
-      <div
-        className={`flex min-h-0 flex-1 flex-col gap-2 px-6 max-wide:px-0 @plan:grid @plan:grid-cols-plan @plan:gap-6 ${loaded ? "" : "opacity-none"}`}
-      >
-        <section className="order-2 flex min-h-0 flex-1 flex-col @plan:order-1">
-          {at.scale === "day" ? (
-            <>
-              <DayHeading rows={rows} date={date} now={current.value} />
-              <DayTimeline rows={rows} at={at} date={date} now={current.value} hands={hands} />
-            </>
-          ) : (
-            <>
-              <MonthHeading rows={rows} month={month} now={current.value} />
-              <MonthGrid rows={rows} at={at} month={month} now={current.value} hands={hands} />
-            </>
-          )}
-        </section>
-        <div className="order-1 min-h-0 @plan:order-2 @plan:flex @plan:flex-col @plan:pt-2">
-          <Tray rows={rows} at={at} date={current.value.date} hands={hands} />
+      {failed ? (
+        <div className={emptyClass}>
+          <p className={emptyBigClass}>Can't load plans.</p>
         </div>
-      </div>
+      ) : (
+        <div
+          className={`flex min-h-0 flex-1 flex-col gap-2 px-6 max-wide:px-0 @plan:grid @plan:grid-cols-plan @plan:gap-6 ${loaded ? "" : "opacity-none"}`}
+        >
+          <section className="order-2 flex min-h-0 flex-1 flex-col @plan:order-1">
+            {at.scale === "day" ? (
+              <>
+                <DayHeading rows={rows} date={date} now={current.value} />
+                <DayTimeline rows={rows} at={at} date={date} now={current.value} hands={hands} />
+              </>
+            ) : (
+              <>
+                <MonthHeading rows={rows} month={month} now={current.value} />
+                <MonthGrid rows={rows} at={at} month={month} now={current.value} hands={hands} />
+              </>
+            )}
+          </section>
+          <div className="order-1 min-h-0 @plan:order-2 @plan:flex @plan:flex-col @plan:pt-2">
+            <Tray rows={rows} at={at} date={current.value.date} hands={hands} />
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }

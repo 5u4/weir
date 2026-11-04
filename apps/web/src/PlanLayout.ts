@@ -151,7 +151,9 @@ export const toDay = (row: PlannedRow, date: string, today: string): Planned =>
 export const monthGrid = (month: string) => {
   const first = `${month}-01`;
   const start = addDays(first, -((weekdayOf(first) + 6) % 7));
-  return Array.from({ length: 42 }, (_, at) => addDays(start, at));
+  return Array.from({ length: 6 }, (_, week) =>
+    Array.from({ length: 7 }, (_, day) => addDays(start, week * 7 + day)),
+  );
 };
 
 export const stepped = (scale: Scale, date: string, by: 1 | -1) =>

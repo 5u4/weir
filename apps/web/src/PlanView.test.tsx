@@ -1,10 +1,14 @@
+import { RegistryProvider } from "@effect/atom-react/RegistryContext";
 import type { Row } from "@weir/daemon/Api";
+import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { plannedRows } from "./PlanLayout.ts";
-import { PlanBlock, PlanCard } from "./PlanView.tsx";
+import { PlanBlock, PlanCard, PlanView } from "./PlanView.tsx";
 import { home } from "./Route.ts";
+import { planList, today } from "./Weir.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
@@ -104,5 +108,25 @@ describe("plan block", () => {
     const flag = /<span class="([^"]*)">Due [^<]*<\/span>/.exec(block("2026-10-30"));
     expect(flag?.[0]).toContain("Due Oct 30");
     expect(flag?.[1]).not.toContain("warn");
+  });
+});
+
+describe("plan view", () => {
+  it("a plan list that never loaded says it failed instead of showing nothing planned", () => {
+    const markup = renderToStaticMarkup(
+      <RegistryProvider
+        initialValues={[
+          [planList, AsyncResult.failure(Cause.fail("unreachable"))],
+          [today, Option.some({ date: "2026-10-26", minute: 600 })],
+        ]}
+      >
+        <PlanView />
+      </RegistryProvider>,
+    )
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&#x27;/g, "'");
+    expect(markup).toContain("Can't load plans.");
+    expect(markup).not.toContain("Nothing planned");
+    expect(markup).not.toContain("Tray");
   });
 });

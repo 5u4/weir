@@ -366,6 +366,26 @@ it("a Mute the daemon refuses puts the row back", async () => {
   registry.dispose();
 });
 
+it("two plans the daemon refuses in a row leave the row at its confirmed plan", async () => {
+  daemon.location.search = "?m=plan";
+  const registry = AtomRegistry.make();
+  const target = row(1, 5);
+  const first = { _tag: "Day", date: "2026-10-29" } as const;
+  const second = { _tag: "Day", date: "2026-10-30" } as const;
+
+  registry.set(dismiss, { act: "Plan", target, plan: first });
+  registry.set(dismiss, { act: "Plan", target, plan: second });
+  expect(registry.get(intents).get(1)).toEqual({ _tag: "Plan", plan: second });
+
+  await vi.waitFor(() =>
+    expect(
+      daemon.requests.filter((request) => request === "POST /conversations/1/plan"),
+    ).toHaveLength(2),
+  );
+  await vi.waitFor(() => expect(registry.get(intents).has(1)).toBe(false));
+  registry.dispose();
+});
+
 it("Done on a visible row waits for its exit before the row leaves, and drops a second Done meanwhile", async () => {
   daemon.rows.set(1, row(1, 5));
   daemon.rows.set(2, row(2, 6));
