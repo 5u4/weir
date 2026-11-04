@@ -63,6 +63,16 @@ describe("faces", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("reports an address whose face kind changed with the same image", () =>
+    Effect.gen(function* () {
+      const mark = svg("mark");
+      yield* putFaces("gws", [found("ada@example.com", mark)], at);
+      expect(
+        yield* putFaces("gws", [{ ...found("ada@example.com", mark), kind: "logo" }], at),
+      ).toEqual(["ada@example.com"]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("a missing face is remembered with the time it was looked up", () =>
     Effect.gen(function* () {
       yield* putFaces("gws", [missing("bo@example.com")], at);

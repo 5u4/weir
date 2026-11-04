@@ -1,11 +1,12 @@
 import { derive } from "@weir/body/Body";
 import { groupKeyPrefix, groupNameOf } from "@weir/contract/Config";
-import type {
-  BodyFormat,
-  RawItem,
-  SeriesOccurrences,
-  StreamDescriptor,
-  SyncPage,
+import {
+  type BodyFormat,
+  FaceKind,
+  type RawItem,
+  type SeriesOccurrences,
+  type StreamDescriptor,
+  type SyncPage,
 } from "@weir/contract/Source";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -841,7 +842,13 @@ export const writeDigest = Effect.fnUntraced(function* (
 });
 
 const decodeStoredFaces = Schema.decodeUnknownEffect(
-  Schema.Array(Schema.Struct({ address: Schema.String, hash: Schema.NullOr(FaceHash) })),
+  Schema.Array(
+    Schema.Struct({
+      address: Schema.String,
+      hash: Schema.NullOr(FaceHash),
+      kind: Schema.NullOr(FaceKind),
+    }),
+  ),
 );
 
 export const putFaces = Effect.fnUntraced(function* (
@@ -881,12 +888,12 @@ export const putFaces = Effect.fnUntraced(function* (
     Effect.gen(function* () {
       const previous = new Map(
         (yield* decodeStoredFaces(
-          yield* sql`SELECT address, hash FROM face WHERE source_id = ${sourceId}
+          yield* sql`SELECT address, hash, kind FROM face WHERE source_id = ${sourceId}
             AND ${sql.in(
               "address",
               faces.map(({ address }) => address),
             )}`,
-        )).map(({ address, hash }) => [address, hash]),
+        )).map(({ address, hash, kind }) => [address, { hash, kind }]),
       );
       if (blobs.size > 0) {
         yield* sql`INSERT INTO face_blob ${sql.insert([...blobs.values()])}
@@ -897,13 +904,16 @@ export const putFaces = Effect.fnUntraced(function* (
           hash = excluded.hash,
           kind = excluded.kind,
           fetched_at = excluded.fetched_at`;
-      const released = [...previous.values()].filter((hash) => hash !== null);
+      const released = [...previous.values()].flatMap(({ hash }) => (hash === null ? [] : [hash]));
       if (released.length > 0) {
         yield* sql`DELETE FROM face_blob WHERE ${sql.in("hash", released)}
           AND NOT EXISTS (SELECT 1 FROM face WHERE face.hash = face_blob.hash)`;
       }
       return faces
-        .filter(({ address, hash }) => (previous.get(address) ?? null) !== hash)
+        .filter(({ address, hash, kind }) => {
+          const before = previous.get(address) ?? { hash: null, kind: null };
+          return before.hash !== hash || before.kind !== kind;
+        })
         .map(({ address }) => address);
     }),
   );
