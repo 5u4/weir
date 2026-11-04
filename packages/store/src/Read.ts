@@ -351,14 +351,14 @@ export const conversations = Effect.fnUntraced(function* (query: RowQuery) {
           AS items,
         (SELECT count(DISTINCT lower(item.from_address)) FROM item
           WHERE item.conversation_id = c.id AND item.deleted_at IS NULL) AS participants,
-        (SELECT json_object('name', item.from_name, 'address', item.from_address,
-            'me', json(iif(item.from_me, 'true', 'false')),
+        (SELECT json_object('name', pick.from_name, 'address', pick.from_address,
+            'me', json(iif(pick.from_me, 'true', 'false')),
             'verified', json(iif((SELECT sum(other.from_verified) = count(*) FROM item other
               WHERE other.conversation_id = c.id AND other.deleted_at IS NULL
-                AND lower(other.from_address) = lower(item.from_address)), 'true', 'false')))
-          FROM item
-          WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
-          ORDER BY item.from_me, item.seq DESC LIMIT 1) AS "from",
+                AND lower(other.from_address) = lower(pick.from_address)), 'true', 'false')))
+          FROM (SELECT item.from_name, item.from_address, item.from_me FROM item
+            WHERE item.conversation_id = c.id AND item.deleted_at IS NULL
+            ORDER BY item.from_me, item.seq DESC LIMIT 1) AS pick) AS "from",
         (SELECT json_group_array(json_object('name', name, 'address', address,
             'me', json(iif(me, 'true', 'false')), 'verified', json(iif(verified, 'true', 'false'))))
           FROM
