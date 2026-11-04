@@ -10,6 +10,7 @@ import {
   useCallback,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "./Link.tsx";
 import { dueFlagClass, emptyBigClass, emptyClass } from "./ListClasses.ts";
 import { isCancelled } from "./Meeting.ts";
@@ -65,6 +66,7 @@ type Drag = {
   readonly offset: number;
   readonly dx: number;
   readonly dy: number;
+  readonly box: DOMRect;
   readonly moved: boolean;
   readonly over: string | null;
   readonly plan: Planned | null;
@@ -163,6 +165,7 @@ const useHands = (date: string): Hands => {
         offset: block?.offset ?? 0,
         dx: 0,
         dy: 0,
+        box: event.currentTarget.getBoundingClientRect(),
         moved: false,
         over: null,
         plan: null,
@@ -175,12 +178,14 @@ const useHands = (date: string): Hands => {
         removeEventListener("pointermove", move);
         removeEventListener("pointerup", drop);
         removeEventListener("pointercancel", stop);
+        delete document.documentElement.dataset.grabbing;
         setDrag(null);
       };
       const move = (moved: globalThis.PointerEvent) => {
         const dx = moved.clientX - current.x;
         const dy = moved.clientY - current.y;
         if (!current.moved && Math.hypot(dx, dy) < dragThreshold) return;
+        if (current.kind === "move") document.documentElement.dataset.grabbing = "";
         update({
           ...current,
           dx,
@@ -217,14 +222,46 @@ const handlers = {
   onDragStart: (event: MouseEvent) => event.preventDefault(),
 };
 
-const lifted = (hands: Hands, id: number, inPlace: boolean) => {
+const lifting = (drag: Drag | null, id: number, inPlace: boolean): drag is Drag =>
+  drag !== null && drag.row.id === id && drag.moved && !inPlace && drag.kind === "move";
+
+const lifted = (hands: Hands, id: number, inPlace: boolean) =>
+  lifting(hands.drag, id, inPlace) ? { "data-dragging": "" } : {};
+
+function Lift({
+  hands,
+  id,
+  inPlace,
+  className,
+  children,
+}: {
+  hands: Hands;
+  id: number;
+  inPlace: boolean;
+  className: string;
+  children: ReactNode;
+}) {
   const drag = hands.drag;
-  if (drag === null || drag.row.id !== id || !drag.moved || inPlace) return {};
-  return {
-    "data-dragging": "",
-    style: { "--dx": `${drag.dx}px`, "--dy": `${drag.dy}px` } as CSSProperties,
-  };
-};
+  if (!lifting(drag, id, inPlace)) return null;
+  return createPortal(
+    <div
+      aria-hidden="true"
+      inert
+      className={`plan-lift ${className}`}
+      style={
+        {
+          "--x": `${drag.box.left + drag.dx}px`,
+          "--y": `${drag.box.top + drag.dy}px`,
+          "--w": `${drag.box.width}px`,
+          "--h": `${drag.box.height}px`,
+        } as CSSProperties
+      }
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
 
 const openRoute = (at: Route, id: number): Route => ({
   ...at,
@@ -325,13 +362,8 @@ function Tray({
       </p>
       {tray.length > 0 && (
         <div className="-mx-3 flex gap-2 overflow-x-auto overscroll-x-contain px-3 pb-1 scrollbar-none @plan:mx-0 @plan:flex-col @plan:overflow-x-visible @plan:overflow-y-auto @plan:px-0 @plan:scrollbar-thin">
-          {tray.map((row) => (
-            <div
-              key={row.id}
-              className="w-card flex-none @plan:w-auto"
-              {...handlers}
-              {...lifted(hands, row.id, false)}
-            >
+          {tray.map((row) => {
+            const card = (
               <PlanCard
                 row={row}
                 to={openRoute(at, row.id)}
@@ -340,8 +372,26 @@ function Tray({
                 selected={open === row.id}
                 grab={hands.grab}
               />
-            </div>
-          ))}
+            );
+            return (
+              <div
+                key={row.id}
+                className="w-card flex-none @plan:w-auto"
+                {...handlers}
+                {...lifted(hands, row.id, false)}
+              >
+                {card}
+                <Lift
+                  hands={hands}
+                  id={row.id}
+                  inPlace={false}
+                  className="rounded-2xl elevation-float"
+                >
+                  {card}
+                </Lift>
+              </div>
+            );
+          })}
         </div>
       )}
     </aside>
@@ -421,21 +471,56 @@ export function PlanBlock({
   inPlace: boolean;
 }) {
   const { row, start, minutes, solid, from, lane, lanes } = block;
-  const lift = lifted(hands, row.id, inPlace);
   const short = minutes < 45;
   const due = row.due === null ? null : dueFlag(row.due.date, today);
+  const faceClass = `overflow-hidden rounded-lg text-xs leading-tight select-none ${solid ? "bg-capbg text-cap-1" : "border border-dashed border-ink-4 bg-island text-ink"} ${selected ? "shadow-ring-thick-ink" : ""}`;
+  const face = (
+    <Link
+      origin="active"
+      to={openRoute(at, row.id)}
+      current={selected}
+      className={`flex h-full min-w-0 gap-x-2 px-2 py-1 no-underline ${short ? "items-center" : "flex-col"} ${solid ? "text-cap-1" : "text-ink"}`}
+    >
+      <span
+        className={`flex flex-none items-center gap-1.5 tabular-nums ${solid ? "text-cap-2" : "text-ink-3"}`}
+      >
+        <time>
+          {clock(start)}–{clock(start + minutes)}
+        </time>
+        {!solid && (
+          <span className="rounded-full bg-hover px-1.5 font-semibold text-ink-2">
+            {from === null ? "any time" : carriedLabel(from, date)}
+          </span>
+        )}
+      </span>
+      <span className="min-w-0 truncate font-semibold">{row.title}</span>
+      {row.new > 0 && (
+        <span
+          className={`flex-none self-start rounded-full px-1.5 font-semibold ${solid ? "bg-cap-hover text-cap-1" : "bg-hover text-ink-2"}`}
+        >
+          {row.new} new
+        </span>
+      )}
+      {due !== null && (
+        <span
+          className={`flex-none self-start rounded-full px-1.5 font-semibold ${due.over ? (solid ? "bg-cap-hover text-warn-cap" : "bg-hover text-warn") : solid ? "bg-cap-hover text-cap-2" : "bg-hover text-ink-3"}`}
+        >
+          {due.text}
+        </span>
+      )}
+    </Link>
+  );
   return (
     <article
       data-k={row.id}
-      data-dragging={lift["data-dragging"]}
-      className={`absolute top-slot left-lane h-slot w-lane overflow-hidden rounded-lg text-xs leading-tight select-none data-dragging:elevation-float ${solid ? "bg-capbg text-cap-1" : "border border-dashed border-ink-4 bg-island text-ink"} ${selected ? "shadow-ring-thick-ink" : ""}`}
+      {...lifted(hands, row.id, inPlace)}
+      className={`absolute top-slot left-lane h-slot w-lane ${faceClass}`}
       style={
         {
           "--start": start,
           "--span": minutes,
           "--lane": lane,
           "--lanes": lanes,
-          ...lift.style,
         } as CSSProperties
       }
       onPointerDown={(event) => {
@@ -447,40 +532,7 @@ export function PlanBlock({
       }}
       {...handlers}
     >
-      <Link
-        origin="active"
-        to={openRoute(at, row.id)}
-        current={selected}
-        className={`flex h-full min-w-0 gap-x-2 px-2 py-1 no-underline ${short ? "items-center" : "flex-col"} ${solid ? "text-cap-1" : "text-ink"}`}
-      >
-        <span
-          className={`flex flex-none items-center gap-1.5 tabular-nums ${solid ? "text-cap-2" : "text-ink-3"}`}
-        >
-          <time>
-            {clock(start)}–{clock(start + minutes)}
-          </time>
-          {!solid && (
-            <span className="rounded-full bg-hover px-1.5 font-semibold text-ink-2">
-              {from === null ? "any time" : carriedLabel(from, date)}
-            </span>
-          )}
-        </span>
-        <span className="min-w-0 truncate font-semibold">{row.title}</span>
-        {row.new > 0 && (
-          <span
-            className={`flex-none self-start rounded-full px-1.5 font-semibold ${solid ? "bg-cap-hover text-cap-1" : "bg-hover text-ink-2"}`}
-          >
-            {row.new} new
-          </span>
-        )}
-        {due !== null && (
-          <span
-            className={`flex-none self-start rounded-full px-1.5 font-semibold ${due.over ? (solid ? "bg-cap-hover text-warn-cap" : "bg-hover text-warn") : solid ? "bg-cap-hover text-cap-2" : "bg-hover text-ink-3"}`}
-          >
-            {due.text}
-          </span>
-        )}
-      </Link>
+      {face}
       {solid && (
         <span
           aria-hidden="true"
@@ -488,6 +540,9 @@ export function PlanBlock({
           onPointerDown={(event) => hands.grab(event, row, "block", "resize", { start, offset: 0 })}
         />
       )}
+      <Lift hands={hands} id={row.id} inPlace={inPlace} className="rounded-lg elevation-float">
+        <div className={`size-full ${faceClass}`}>{face}</div>
+      </Lift>
     </article>
   );
 }
@@ -762,36 +817,43 @@ function MonthChip({
   const solid = row.plan._tag === "Slot" && row.plan.date >= date;
   const due = row.due === null ? null : dueFlag(row.due.date, date);
   const label = due === null ? undefined : `${row.title}, ${due.text}`;
+  const faceClass = `min-w-0 overflow-hidden rounded-md select-none ${solid ? "bg-capbg text-cap-1" : "border border-dashed border-ink-4 bg-island text-ink"} ${selected ? "shadow-ring-thick-ink" : ""}`;
+  const face = (
+    <Link
+      origin="active"
+      to={openRoute(at, row.id)}
+      current={selected}
+      className={`flex h-5 min-w-0 items-center gap-1 px-1.5 text-2xs font-semibold no-underline max-wide:px-1 ${solid ? "text-cap-1" : "text-ink"}`}
+      description={label}
+    >
+      {solid && row.plan._tag === "Slot" && (
+        <time className="flex-none text-cap-2 tabular-nums max-wide:hidden">
+          {clock(row.plan.start)}
+        </time>
+      )}
+      <span className="min-w-0 truncate">{row.title}</span>
+      {due?.over === true && (
+        <span
+          aria-label={due.text}
+          className={`size-1.5 flex-none rounded-circle ${solid ? "bg-warn-cap" : "bg-warn"}`}
+        />
+      )}
+      {row.new > 0 && (
+        <span className="size-1.5 flex-none rounded-circle bg-ok" aria-label={`${row.new} new`} />
+      )}
+    </Link>
+  );
   return (
     <li
-      className={`min-w-0 overflow-hidden rounded-md select-none data-dragging:elevation-float ${solid ? "bg-capbg text-cap-1" : "border border-dashed border-ink-4 bg-island text-ink"} ${selected ? "shadow-ring-thick-ink" : ""}`}
+      className={faceClass}
       onPointerDown={(event) => hands.grab(event, row, "chip")}
       {...handlers}
       {...lifted(hands, row.id, false)}
     >
-      <Link
-        origin="active"
-        to={openRoute(at, row.id)}
-        current={selected}
-        className={`flex h-5 min-w-0 items-center gap-1 px-1.5 text-2xs font-semibold no-underline max-wide:px-1 ${solid ? "text-cap-1" : "text-ink"}`}
-        description={label}
-      >
-        {solid && row.plan._tag === "Slot" && (
-          <time className="flex-none text-cap-2 tabular-nums max-wide:hidden">
-            {clock(row.plan.start)}
-          </time>
-        )}
-        <span className="min-w-0 truncate">{row.title}</span>
-        {due?.over === true && (
-          <span
-            aria-label={due.text}
-            className={`size-1.5 flex-none rounded-circle ${solid ? "bg-warn-cap" : "bg-warn"}`}
-          />
-        )}
-        {row.new > 0 && (
-          <span className="size-1.5 flex-none rounded-circle bg-ok" aria-label={`${row.new} new`} />
-        )}
-      </Link>
+      {face}
+      <Lift hands={hands} id={row.id} inPlace={false} className="rounded-md elevation-float">
+        <div className={`size-full ${faceClass}`}>{face}</div>
+      </Lift>
     </li>
   );
 }
