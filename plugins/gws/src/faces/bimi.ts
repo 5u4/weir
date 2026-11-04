@@ -8,6 +8,7 @@ const maxPemBytes = 128 * 1024;
 const bimiVersion = /^\s*v\s*=\s*BIMI1\s*(;|$)/;
 const dmarcVersion = /^\s*v\s*=\s*DMARC1\s*(;|$)/;
 const enforcing: Record<string, true> = { quarantine: true, reject: true };
+const policies: Record<string, true> = { none: true, quarantine: true, reject: true };
 
 type Discovery =
   | { readonly kind: "absent" }
@@ -33,10 +34,20 @@ const record = async (
   return tags.size === pairs.length ? { kind: "present", tags } : { kind: "invalid" };
 };
 
+const dmarc = async (net: FaceNet, domain: string, signal: AbortSignal): Promise<Discovery> => {
+  const found = await record(net, `_dmarc.${domain}`, dmarcVersion, signal);
+  if (found.kind !== "present") return found;
+  const sp = found.tags.get("sp");
+  return policies[found.tags.get("p")?.toLowerCase() ?? ""] === true &&
+    (sp === undefined || policies[sp.toLowerCase()] === true)
+    ? found
+    : { kind: "invalid" };
+};
+
 const enforced = async (net: FaceNet, domain: string, org: string, signal: AbortSignal) => {
-  const own = await record(net, `_dmarc.${domain}`, dmarcVersion, signal);
+  const own = await dmarc(net, domain, signal);
   if (own.kind === "invalid") return false;
-  const parent = org === domain ? own : await record(net, `_dmarc.${org}`, dmarcVersion, signal);
+  const parent = org === domain ? own : await dmarc(net, org, signal);
   if (parent.kind === "invalid") return false;
   const parentTags = parent.kind === "present" ? parent.tags : undefined;
   const tags = own.kind === "present" ? own.tags : parentTags;

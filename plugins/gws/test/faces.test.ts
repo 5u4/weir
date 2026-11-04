@@ -165,6 +165,41 @@ describe("gws faces", () => {
     });
   });
 
+  it.each([
+    ["v=DMARC1; sp=reject", []],
+    ["v=DMARC1; p=invalid; sp=reject", []],
+    ["v=DMARC1; p=reject; sp=bogus", []],
+    ["v=DMARC1; p=reject", ["v=DMARC1; p=bogus"]],
+  ])(
+    "answers missing when the organizational record is %s and the subdomain publishes %j",
+    async (org, own) => {
+      const { faces } = recorded({
+        txt: (name, signal) => {
+          if (name === "_dmarc.northwind.example") return Promise.resolve([org]);
+          if (name === "_dmarc.mail.northwind.example") return Promise.resolve(own);
+          return fixtureFaceNet().txt(name, signal);
+        },
+      });
+      expect(await faces(["billing@mail.northwind.example"], running)).toEqual({
+        "billing@mail.northwind.example": { status: "missing" },
+      });
+    },
+  );
+
+  it("answers found for a subdomain covered by an organizational sp=reject", async () => {
+    const { faces } = recorded({
+      txt: (name, signal) => {
+        if (name === "_dmarc.northwind.example")
+          return Promise.resolve(["v=DMARC1; p=quarantine; sp=reject"]);
+        if (name === "_dmarc.mail.northwind.example") return Promise.resolve([]);
+        return fixtureFaceNet().txt(name, signal);
+      },
+    });
+    expect(await faces(["billing@mail.northwind.example"], running)).toMatchObject({
+      "billing@mail.northwind.example": { status: "found" },
+    });
+  });
+
   it("answers missing when a domain publishes two BIMI records", async () => {
     const record = "v=BIMI1; a=https://northwind.example/vmc.pem";
     const { faces } = recorded({
