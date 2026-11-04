@@ -3,7 +3,7 @@ import * as DateTime from "effect/DateTime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { health } from "./Health.ts";
-import { StatusView } from "./Status.tsx";
+import { SettingsView } from "./Settings.tsx";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://weir.test", search: "" }));
 
@@ -17,6 +17,7 @@ const stream = (overrides: Partial<Stream> = {}): Stream => ({
   name: "inbox",
   kind: "message",
   last_sync_at: hoursAgo(3),
+  last_ok_at: hoursAgo(3),
   last_error: null,
   backfill: "done",
   items: 12,
@@ -43,9 +44,13 @@ const status = (sources: ReadonlyArray<Source>): Status => ({
   digest: null,
 });
 
+const markupOf = (value: Status) =>
+  renderToStaticMarkup(
+    <SettingsView status={value} health={health(value)} focus={{ section: "appearance" }} />,
+  );
+
 const text = (sources: ReadonlyArray<Source>) => {
-  const value = status(sources);
-  const markup = renderToStaticMarkup(<StatusView status={value} health={health(value)} />);
+  const markup = markupOf(status(sources));
   const list = /id="sv-h-src">Sources<\/h3>([\s\S]*?)<\/section>/.exec(markup)?.[1] ?? "";
   return list
     .replace(/<\/(li|p|span|b)>/g, " ")
@@ -54,7 +59,16 @@ const text = (sources: ReadonlyArray<Source>) => {
     .trim();
 };
 
-describe("status sources", () => {
+describe("settings sections", () => {
+  it("reads Settings, then Appearance, Sources, Digests and Config", () => {
+    const markup = markupOf(status([source()]));
+    expect([...markup.matchAll(/<h[23][^>]*>([^<]*)<\/h[23]>/g)].map(([, title]) => title)).toEqual(
+      ["Settings", "Appearance", "Sources", "Digests", "Config"],
+    );
+  });
+});
+
+describe("settings sources", () => {
   it.each<[string, ReadonlyArray<Source>, string]>([
     [
       "a synced stream shows its sync time",

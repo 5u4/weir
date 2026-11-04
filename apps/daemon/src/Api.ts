@@ -49,6 +49,7 @@ export const StreamStatus = Schema.Struct({
   name: Schema.String,
   kind: Schema.String,
   last_sync_at: Schema.NullOr(Schema.String),
+  last_ok_at: Schema.NullOr(Schema.String),
   last_error: Schema.NullOr(Schema.String),
   backfill: Schema.Literals(["running", "done"]),
   items: Schema.Int,

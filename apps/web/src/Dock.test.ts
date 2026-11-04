@@ -32,7 +32,7 @@ describe("keyboard shortcuts", () => {
     key: "e",
     modified: false,
     editing: false,
-    status: false,
+    settings: false,
     ...overrides,
   });
   it.each<[string, Key, Shortcut | null]>([
@@ -48,19 +48,23 @@ describe("keyboard shortcuts", () => {
     ["Esc in a field", key({ key: "Escape", editing: true }), null],
     ["a modifier with e", key({ modified: true }), null],
     ["a modifier with j", key({ key: "j", modified: true }), null],
-    ["Esc closes Status first", key({ key: "Escape", status: true }), "CloseStatus"],
+    ["Esc closes Settings first", key({ key: "Escape", settings: true }), "CloseSettings"],
     [
-      "Esc closes Status from a field",
-      key({ key: "Escape", status: true, editing: true }),
-      "CloseStatus",
+      "Esc closes Settings from a field",
+      key({ key: "Escape", settings: true, editing: true }),
+      "CloseSettings",
     ],
-    ["e under Status", key({ status: true }), null],
-    ["j under Status", key({ key: "j", status: true }), null],
+    ["e under Settings", key({ settings: true }), null],
+    ["j under Settings", key({ key: "j", settings: true }), null],
     ["/ opens search", key({ key: "/" }), "Search"],
-    ["/ opens search from Status", key({ key: "/", status: true }), "Search"],
+    ["/ opens search from Settings", key({ key: "/", settings: true }), "Search"],
     ["typing / in a field", key({ key: "/", editing: true }), null],
-    ["typing / in a field under Status", key({ key: "/", editing: true, status: true }), null],
+    ["typing / in a field under Settings", key({ key: "/", editing: true, settings: true }), null],
     ["a modifier with /", key({ key: "/", modified: true }), null],
+    [", opens Settings", key({ key: "," }), "Settings"],
+    [", closes Settings", key({ key: ",", settings: true }), "Settings"],
+    ["typing , in a field", key({ key: ",", editing: true }), null],
+    ["a modifier with ,", key({ key: ",", modified: true }), null],
   ])("%s", (_, pressed, expected) => {
     expect(shortcut(pressed)).toBe(expected);
   });

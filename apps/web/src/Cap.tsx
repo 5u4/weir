@@ -3,9 +3,10 @@ import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { Fragment, type MouseEvent, useCallback, useRef, useState } from "react";
 import { Avatars } from "./Avatar.tsx";
-import { plural } from "./Health.ts";
+import { type Alert, now, plural } from "./Health.ts";
 import { Link } from "./Link.tsx";
 import {
+  alertClause,
   type CapForm,
   type Clause,
   chips,
@@ -28,10 +29,10 @@ import {
   route,
   searchGroup,
   searchOpen,
-  statusOpen,
+  settingsOpen,
   type View,
 } from "./Route.ts";
-import { CloseIcon, StatusIcon } from "./Status.tsx";
+import { CloseIcon } from "./Settings.tsx";
 import { found, pickedGroup, searching, searchQuery, searchResult, tagOrder } from "./Weir.ts";
 
 const measureCap = (cap: HTMLDivElement) => {
@@ -200,27 +201,24 @@ const toolClass = (on: boolean) =>
 const chipShapeClass =
   "inline-flex h-9 flex-none items-center gap-1.5 rounded-full font-sans text-md leading-none font-medium transition-bg max-wide:h-8.5 max-wide:px-2.5 max-wide:text-sm";
 
-function StatusButton({ chip, alert }: { chip: boolean; alert: boolean }) {
-  const [open, setOpen] = useAtom(statusOpen);
+const alertDotClass = "size-1.75 flex-none self-center rounded-circle bg-warn-cap";
+
+function AlertButton({ alert, compact }: { alert: Alert; compact: boolean }) {
+  const setFocus = useAtomSet(settingsOpen);
+  const { text, short, focus } = alertClause(alert, useAtomValue(now));
   return (
     <button
       type="button"
       className={
-        chip
-          ? `${chipShapeClass} relative ml-0.5 px-3 ${open ? "bg-cap-1 text-on-c" : "text-cap-2 hover:bg-cap-hover hover:text-cap-1"}`
-          : toolClass(open)
+        compact
+          ? `${chipShapeClass} ml-0.5 px-3 font-semibold text-warn-cap hover:bg-cap-hover`
+          : "inline-flex items-baseline gap-1.5 font-semibold text-warn-cap hover:underline"
       }
-      aria-label="Status"
-      title="Status"
-      aria-pressed={open}
-      aria-description={alert ? "Needs attention" : undefined}
-      onClick={() => setOpen(!open)}
+      aria-description="Opens Settings"
+      onClick={() => setFocus(Option.some(focus))}
     >
-      <StatusIcon />
-      <i
-        className={`absolute size-2 rounded-circle bg-warn-cap transition-pop motion-reduce:transition-none ${chip ? "top-1.5 right-1.5" : "top-2 right-2"} ${alert ? "scale-none opacity-full" : "scale-dot opacity-none"} ${open ? "shadow-halo-cap-1" : "shadow-halo-capbg"}`}
-        aria-hidden="true"
-      />
+      <span className={alertDotClass} aria-hidden="true" />
+      {compact ? short : text}
     </button>
   );
 }
@@ -621,7 +619,7 @@ const capClass = (compact: boolean) =>
 
 const capDivClass = "mr-2.5 ml-3.5 h-4.5 w-px flex-none bg-cap-rule max-wide:mr-1.5 max-wide:ml-2";
 
-export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
+export function Cap({ form, alert }: { form: CapForm; alert: Option.Option<Alert> }) {
   const [current, navigate] = useAtom(route);
   const setSearching = useAtomSet(searchOpen);
   const loaded = useAtomValue(capCounts);
@@ -679,7 +677,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
               {Option.isSome(loaded) && (
                 <Chip widget={clearedWidget(loaded.value)} active={active} className="-ml-1" />
               )}
-              <StatusButton chip alert={alert} />
+              {Option.isSome(alert) && <AlertButton alert={alert.value} compact />}
             </>
           )}
         </div>
@@ -704,6 +702,7 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
                         <SentenceClause clause={clause} active={active} tail />
                       </span>
                     ))}
+                    {Option.isSome(alert) && <AlertButton alert={alert.value} compact={false} />}
                   </p>
                 </nav>
               );
@@ -719,7 +718,6 @@ export function Cap({ form, alert }: { form: CapForm; alert: boolean }) {
             >
               <SearchIcon />
             </button>
-            <StatusButton chip={false} alert={alert} />
           </span>
         </div>
       )}

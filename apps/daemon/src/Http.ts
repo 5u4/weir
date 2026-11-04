@@ -158,6 +158,7 @@ const status = Effect.fnUntraced(function* (
             name: stream.name,
             kind: stream.kind,
             last_sync_at: stream.lastSyncAt === null ? null : DateTime.formatIso(stream.lastSyncAt),
+            last_ok_at: stream.lastOkAt === null ? null : DateTime.formatIso(stream.lastOkAt),
             last_error: stream.lastError,
             backfill: stream.backfilledAt === null ? "running" : "done",
             items: stream.items,

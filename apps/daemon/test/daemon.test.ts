@@ -641,7 +641,11 @@ describe("gws labels", () => {
         stream,
         (s) => s?.last_sync_at != null && s.last_sync_at !== before?.last_sync_at,
       );
-      expect(after).toMatchObject({ backfill: "done", last_error: null });
+      expect(after).toMatchObject({
+        backfill: "done",
+        last_error: null,
+        last_ok_at: after?.last_sync_at,
+      });
       expect((yield* client.item({ params: { seq } })).deleted_at).not.toBeNull();
     }).pipe(Effect.scoped),
   );
@@ -659,6 +663,7 @@ describe("gws labels", () => {
         (s) => s?.last_error != null,
       );
       expect(failed?.last_error).toContain('Gmail has no label named "Nope"');
+      expect(failed?.last_ok_at).toBeNull();
       expect((yield* client.search({ query: { q: "" } })).conversations).toEqual([]);
     }).pipe(Effect.scoped),
   );

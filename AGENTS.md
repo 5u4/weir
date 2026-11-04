@@ -66,5 +66,5 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 - UI changes need before/after images; motion or timing needs a short video.
 - The daemon serves the Web UI only after `bun run build:web`; `bun run demo` runs it first.
 - UI images and videos come only from `bun run demo --serve` (synthetic data), never from a real
-  mailbox.
+  mailbox. Add `--fail` to serve with every source failing to sync, for the cap's sync alert.
 - Use squash merge and delete the source branch.

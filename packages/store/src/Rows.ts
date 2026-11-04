@@ -30,6 +30,7 @@ const streamFields = {
   cursor: Schema.NullOr(Schema.String),
   backfilledAt: Schema.NullOr(UtcIso),
   lastSyncAt: Schema.NullOr(UtcIso),
+  lastOkAt: Schema.NullOr(UtcIso),
   lastError: Schema.NullOr(Schema.String),
 };
 

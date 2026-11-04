@@ -2,14 +2,14 @@ import { useAtom, useAtomMount, useAtomValue } from "@effect/atom-react/Hooks";
 import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { Cap } from "./Cap.tsx";
-import { health } from "./Health.ts";
+import { alertOf, health } from "./Health.ts";
 import { keys } from "./Keys.ts";
 import { List } from "./List.tsx";
 import { formOf } from "./Notch.ts";
 import { queryText } from "./Query.ts";
 import { Reader } from "./Reader.tsx";
-import { route, searchOpen, statusOpen } from "./Route.ts";
-import { CloseIcon, EmptyReader, StatusView } from "./Status.tsx";
+import { route, searchOpen, settingsOpen } from "./Route.ts";
+import { CloseIcon, SettingsButton, SettingsView } from "./Settings.tsx";
 import { theme } from "./Theme.ts";
 import {
   arrivals,
@@ -39,14 +39,12 @@ export function App() {
   const looking = useAtomValue(searching);
   const query = useAtomValue(searchQuery);
   const results = useAtomValue(found);
-  const [open, setOpen] = useAtom(statusOpen);
+  const [focus, setFocus] = useAtom(settingsOpen);
+  const open = Option.isSome(focus);
   const result = useAtomValue(status);
-  const loaded = AsyncResult.getOrElse(
-    AsyncResult.map(result, (value) => Option.some({ value, health: health(value) })),
-    Option.none,
-  );
-  const alert = Option.exists(loaded, ({ health }) => health.alert);
-  const form = formOf({ status: open, reading, query: current.query, searching: opened });
+  const loaded = AsyncResult.getOrElse(AsyncResult.map(result, Option.some), Option.none);
+  const alert = Option.flatMap(loaded, alertOf);
+  const form = formOf({ settings: open, reading, query: current.query, searching: opened });
   const sheet = open || reading;
   return (
     <>
@@ -54,6 +52,7 @@ export function App() {
         <main className="list fixed top-edge bottom-0 left-stage w-list scrollbar-thin overflow-y-auto overscroll-contain max-wide:top-list max-wide:right-0 max-wide:left-0 max-wide:w-auto max-wide:px-1.5">
           <List />
         </main>
+        <SettingsButton />
         <section
           className={`reader fixed top-edge bottom-edge left-reader w-reader overflow-hidden rounded-reader bg-island elevation-reader max-wide:right-0 max-wide:bottom-0 max-wide:left-0 max-wide:z-dock max-wide:w-auto max-wide:rounded-b-none max-wide:elevation-sheet ${sheet ? "" : "max-wide:hidden"}`}
           aria-label="Reader"
@@ -78,15 +77,14 @@ export function App() {
                   </p>
                 </div>
               ) : (
-                Option.match(loaded, {
-                  onNone: () => null,
-                  onSome: ({ value, health }) =>
-                    open ? (
-                      <StatusView status={value} health={health} />
-                    ) : (
-                      <EmptyReader health={health} digest={value.digest} />
-                    ),
-                })
+                Option.isSome(focus) &&
+                Option.isSome(loaded) && (
+                  <SettingsView
+                    status={loaded.value}
+                    health={health(loaded.value)}
+                    focus={focus.value}
+                  />
+                )
               )}
             </div>
           )}
@@ -98,7 +96,7 @@ export function App() {
               aria-label="Close"
               onClick={() =>
                 open
-                  ? setOpen(false)
+                  ? setFocus(Option.none())
                   : navigate({
                       _tag: "Go",
                       to: { ...current, conversation: Option.none() },

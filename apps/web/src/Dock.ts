@@ -10,13 +10,20 @@ export const dockActions = ({ state, read }: Standing): ReadonlyArray<DockAction
   ...(state === "muted" ? [] : (["Mute"] as const)),
 ];
 
-export type Shortcut = "CloseStatus" | "Close" | "Done" | "Next" | "Previous" | "Search";
+export type Shortcut =
+  | "CloseSettings"
+  | "Close"
+  | "Done"
+  | "Next"
+  | "Previous"
+  | "Search"
+  | "Settings";
 
 export type Key = {
   readonly key: string;
   readonly modified: boolean;
   readonly editing: boolean;
-  readonly status: boolean;
+  readonly settings: boolean;
 };
 
 const keys: Readonly<Record<string, Shortcut>> = {
@@ -25,10 +32,11 @@ const keys: Readonly<Record<string, Shortcut>> = {
   j: "Next",
   k: "Previous",
   "/": "Search",
+  ",": "Settings",
 };
 
-export const shortcut = ({ key, modified, editing, status }: Key): Shortcut | null => {
-  if (status && key === "Escape") return "CloseStatus";
-  if (modified || editing || (status && key !== "/")) return null;
+export const shortcut = ({ key, modified, editing, settings }: Key): Shortcut | null => {
+  if (settings && key === "Escape") return "CloseSettings";
+  if (modified || editing || (settings && key !== "/" && key !== ",")) return null;
   return Object.hasOwn(keys, key) ? (keys[key] ?? null) : null;
 };

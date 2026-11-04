@@ -23,8 +23,8 @@
     animation: switch-rise var(--duration-base) var(--ease-standard);
   }
 
-  [data-rise="status"] {
-    animation: status-rise var(--duration-spring) var(--ease-standard);
+  [data-rise="settings"] {
+    animation: settings-rise var(--duration-spring) var(--ease-standard);
   }
 
   .list [data-k][data-enter] {
@@ -253,6 +253,12 @@
     animation: chip-in var(--duration-spring) var(--ease-spring) both;
   }
 
+  [data-flash] {
+    animation:
+      flash var(--duration-flash) var(--ease-standard) var(--duration-base) backwards,
+      flash-press var(--duration-enter) var(--ease-spring) var(--duration-base) backwards;
+  }
+
   @variant motion-reduce {
     [data-roll],
     [data-roll="down"] {
@@ -265,6 +271,10 @@
 
     [data-chip] {
       animation: none;
+    }
+
+    [data-flash] {
+      animation: flash var(--duration-flash) var(--ease-standard);
     }
   }
 
@@ -519,10 +529,24 @@
   }
 }
 
-@keyframes status-rise {
+@keyframes settings-rise {
   from {
     opacity: 0;
     transform: translateY(var(--spacing-3));
+  }
+}
+
+@keyframes flash {
+  0%,
+  40% {
+    background-color: var(--color-warn-wash);
+    box-shadow: var(--shadow-ring-thick-warn);
+  }
+}
+
+@keyframes flash-press {
+  from {
+    scale: var(--scale-flash);
   }
 }
 

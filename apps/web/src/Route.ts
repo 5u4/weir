@@ -105,7 +105,11 @@ const pushedEntry = (previous: Route, next: Route): SearchEntry | null => {
   });
 };
 
-const statusShown = Atom.make(false);
+export type SettingsSection = "appearance" | "sources" | "digests" | "config";
+
+export type SettingsFocus = { readonly section: SettingsSection; readonly source?: string };
+
+const settingsShown = Atom.make(Option.none<SettingsFocus>());
 
 const searchShown = Atom.make(false);
 
@@ -121,17 +125,17 @@ export const activeOpen: Atom.Atom<Option.Option<{ readonly conversation: Conver
   activeOpenShown;
 
 type Shown = {
-  readonly status: boolean;
+  readonly settings: boolean;
   readonly route: Route;
   readonly searching: boolean;
   readonly counts: Option.Option<Counts>;
 };
 
-const sceneOf = ({ status, route, searching, counts }: Shown): Scene => ({
-  status,
+const sceneOf = ({ settings, route, searching, counts }: Shown): Scene => ({
+  settings,
   conversation: route.conversation,
   notch: notchKey(
-    formOf({ status, reading: Option.isSome(route.conversation), query: route.query, searching }),
+    formOf({ settings, reading: Option.isSome(route.conversation), query: route.query, searching }),
     counts,
   ),
 });
@@ -147,7 +151,7 @@ const planned =
   ) =>
   (): Commit => {
     const before: Shown = {
-      status: read(statusShown),
+      settings: Option.isSome(read(settingsShown)),
       route: read(route),
       searching: read(searchShown),
       counts: read(countsShown),
@@ -156,15 +160,15 @@ const planned =
     return { before: sceneOf(before), after: sceneOf(after), apply, animate };
   };
 
-export const statusOpen = Atom.writable(
-  (get) => get(statusShown),
-  (ctx, open: boolean) =>
+export const settingsOpen = Atom.writable(
+  (get) => get(settingsShown),
+  (ctx, focus: Option.Option<SettingsFocus>) =>
     commit(
       planned(
         (atom) => ctx.get(atom),
         (before) => ({
-          after: { ...before, status: open },
-          apply: () => ctx.set(statusShown, open),
+          after: { ...before, settings: Option.isSome(focus) },
+          apply: () => ctx.set(settingsShown, focus),
           animate: true,
         }),
       ),
@@ -276,13 +280,13 @@ export const route: Atom.Writable<Route, Navigation> = Atom.writable(
           return {
             after: {
               ...before,
-              status: false,
+              settings: false,
               route: target,
               searching: before.searching && !leaving,
             },
             apply: () => {
               if (traversals !== submitted) return;
-              ctx.set(statusShown, false);
+              ctx.set(settingsShown, Option.none());
               if (leaving) ctx.set(searchShown, false);
               if (target.query === "") ctx.set(searchGroup, Option.none());
               ctx.set(

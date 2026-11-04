@@ -2,7 +2,7 @@ import * as Option from "effect/Option";
 import * as Atom from "effect/reactivity/Atom";
 import { shortcut } from "./Dock.ts";
 import { dock } from "./Reading.ts";
-import { ConversationId, route, searchOpen, statusOpen } from "./Route.ts";
+import { ConversationId, route, searchOpen, settingsOpen } from "./Route.ts";
 import { moved } from "./Rows.ts";
 import { dismiss, listedRows, searching } from "./Weir.ts";
 
@@ -15,7 +15,7 @@ export const keys = Atom.make((get) => {
       editing:
         target instanceof HTMLElement &&
         (target.isContentEditable || target.closest("input, textarea, select") !== null),
-      status: get.registry.get(statusOpen),
+      settings: Option.isSome(get.registry.get(settingsOpen)),
     });
     if (command === null) return;
     const current = get.registry.get(route);
@@ -23,12 +23,20 @@ export const keys = Atom.make((get) => {
     switch (command) {
       case "Search":
         event.preventDefault();
-        get.registry.set(statusOpen, false);
+        get.registry.set(settingsOpen, Option.none());
         get.registry.set(searchOpen, true);
         document.querySelector<HTMLInputElement>(".cap .cap-in")?.focus();
         return;
-      case "CloseStatus":
-        get.registry.set(statusOpen, false);
+      case "CloseSettings":
+        get.registry.set(settingsOpen, Option.none());
+        return;
+      case "Settings":
+        get.registry.set(
+          settingsOpen,
+          Option.isSome(get.registry.get(settingsOpen))
+            ? Option.none()
+            : Option.some({ section: "appearance" }),
+        );
         return;
       case "Close":
         if (current.query !== "") get.registry.set(route, { _tag: "Leave" });

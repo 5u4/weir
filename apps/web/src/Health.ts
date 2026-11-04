@@ -1,7 +1,9 @@
 import type { Status } from "@weir/daemon/Api";
+import * as Arr from "effect/Array";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
+import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Atom from "effect/reactivity/Atom";
 
@@ -27,24 +29,31 @@ export type SourceHealth = {
   readonly streams: ReadonlyArray<StreamHealth>;
 };
 
-export type Verdict =
-  | { readonly _tag: "Stopped" }
-  | { readonly _tag: "SourceDown"; readonly source: string }
-  | { readonly _tag: "Running"; readonly lastSync: DateTime.Utc | null };
-
 export type Health = {
   readonly sources: ReadonlyArray<SourceHealth>;
   readonly stopped: boolean;
-  readonly verdict: Verdict;
-  readonly alert: boolean;
 };
 
-const latest = (times: ReadonlyArray<string | null>) =>
-  times.reduce<DateTime.Utc | null>((max, time) => {
-    if (time === null) return max;
-    const at = DateTime.makeUnsafe(time);
-    return max === null || DateTime.isGreaterThan(at, max) ? at : max;
-  }, null);
+type ConfigProblem = NonNullable<Status["config"]["error"]>;
+
+export type FailedSource = { readonly id: string; readonly since: DateTime.Utc | null };
+
+export type Alert =
+  | { readonly _tag: "ConfigStopped"; readonly error: ConfigProblem }
+  | { readonly _tag: "SourcesFailed"; readonly sources: Arr.NonEmptyReadonlyArray<FailedSource> };
+
+const extreme =
+  (later: boolean) =>
+  (times: ReadonlyArray<string | null>): DateTime.Utc | null =>
+    times.reduce<DateTime.Utc | null>((best, time) => {
+      if (time === null) return best;
+      const at = DateTime.makeUnsafe(time);
+      return best === null || DateTime.isGreaterThan(at, best) === later ? at : best;
+    }, null);
+
+const latest = extreme(true);
+
+const earliest = extreme(false);
 
 const sourceState = (source: Status["sources"][number]): SourceState => {
   const lastSync = latest(source.streams.map(({ last_sync_at }) => last_sync_at));
@@ -74,33 +83,34 @@ const streamHealth = (stream: Status["sources"][number]["streams"][number]): Str
   };
 };
 
-export const health = (status: Status): Health => {
-  const sources = status.sources.map(
+export const health = (status: Status): Health => ({
+  sources: status.sources.map(
     (source): SourceHealth => ({
       id: source.id,
       plugin: source.plugin,
       state: sourceState(source),
       streams: source.streams.map(streamHealth),
     }),
-  );
-  const stopped = status.config.error !== null;
-  const down = sources.find(({ state }) => state._tag === "Failed");
-  const verdict: Verdict = stopped
-    ? { _tag: "Stopped" }
-    : down !== undefined
-      ? { _tag: "SourceDown", source: down.id }
-      : {
-          _tag: "Running",
-          lastSync: latest(
-            status.sources.flatMap(({ streams }) =>
-              streams.map(({ last_sync_at }) => last_sync_at),
-            ),
-          ),
-        };
-  return { sources, stopped, verdict, alert: verdict._tag !== "Running" };
-};
+  ),
+  stopped: status.config.error !== null,
+});
 
-type ConfigProblem = NonNullable<Status["config"]["error"]>;
+export const alertOf = (status: Status): Option.Option<Alert> => {
+  if (status.config.error !== null) {
+    return Option.some({ _tag: "ConfigStopped", error: status.config.error });
+  }
+  const failed = status.sources.flatMap((source): ReadonlyArray<FailedSource> => {
+    const failing =
+      source.listing === "failed"
+        ? source.streams
+        : source.streams.filter(({ last_error }) => last_error !== null);
+    if (source.listing !== "failed" && failing.length === 0) return [];
+    return [{ id: source.id, since: earliest(failing.map(({ last_ok_at }) => last_ok_at)) }];
+  });
+  return Arr.isReadonlyArrayNonEmpty(failed)
+    ? Option.some({ _tag: "SourcesFailed", sources: failed })
+    : Option.none();
+};
 
 export type ConfigState =
   | { readonly _tag: "Reloading" }
