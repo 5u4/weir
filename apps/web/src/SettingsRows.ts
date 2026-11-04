@@ -48,13 +48,3 @@ export const digestRows = (digest: Status["digest"]): ReadonlyArray<DigestRow> =
   );
   return rows;
 };
-
-// The empty reader's Digests line: conversations with a running or queued digest.
-export const waitingLine = (digest: Status["digest"], stopped: boolean): string | null => {
-  if (digest === null) return null;
-  if (stopped) return "Stopped";
-  const waiting = new Set(
-    [...digest.running, ...digest.queued].map(({ conversation_id }) => conversation_id),
-  ).size;
-  return waiting === 0 ? "Caught up" : `${plural(waiting, "conversation")} waiting`;
-};

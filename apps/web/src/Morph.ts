@@ -4,7 +4,7 @@ import { flushSync } from "react-dom";
 import type { ConversationId } from "./Route.ts";
 
 export type Scene = {
-  readonly status: boolean;
+  readonly settings: boolean;
   readonly conversation: Option.Option<ConversationId>;
   readonly notch: string;
 };
@@ -13,10 +13,10 @@ export type Motion =
   | { readonly _tag: "None" }
   | { readonly _tag: "Mode"; readonly open: boolean }
   | { readonly _tag: "Switch" }
-  | { readonly _tag: "StatusRise" }
+  | { readonly _tag: "SettingsRise" }
   | { readonly _tag: "Tick" };
 
-const sheet = (scene: Scene) => scene.status || Option.isSome(scene.conversation);
+const sheet = (scene: Scene) => scene.settings || Option.isSome(scene.conversation);
 
 const motions: ReadonlyArray<{
   readonly when: (before: Scene, after: Scene) => boolean;
@@ -27,12 +27,12 @@ const motions: ReadonlyArray<{
     motion: (after) => ({ _tag: "Mode", open: sheet(after) }),
   },
   {
-    when: (before, after) => sheet(after) && before.status !== after.status,
-    motion: () => ({ _tag: "StatusRise" }),
+    when: (before, after) => sheet(after) && before.settings !== after.settings,
+    motion: () => ({ _tag: "SettingsRise" }),
   },
   {
     when: (before, after) =>
-      !after.status && !Equal.equals(before.conversation, after.conversation),
+      !after.settings && !Equal.equals(before.conversation, after.conversation),
     motion: () => ({ _tag: "Switch" }),
   },
   {
@@ -160,7 +160,7 @@ const play = (types: Array<string>, arriving: Option.Option<ConversationId>, app
   }
 };
 
-const lift = (target: Element | null, rise: "switch" | "status") => {
+const lift = (target: Element | null, rise: "switch" | "settings") => {
   if (target === null) return;
   target.setAttribute("data-rise", rise);
   void Promise.allSettled(target.getAnimations().map(({ finished }) => finished)).then(() =>
@@ -181,13 +181,16 @@ export const commit = (plan: () => Commit) => {
     gate.queued.push(plan);
     return;
   }
-  if (before.status !== after.status || !Equal.equals(before.conversation, after.conversation)) {
+  if (
+    before.settings !== after.settings ||
+    !Equal.equals(before.conversation, after.conversation)
+  ) {
     departures += 1;
   }
   if (motion._tag === "Mode") {
     return play(
       ["mode", motion.open ? "open" : "close"],
-      after.status ? Option.none() : after.conversation,
+      after.settings ? Option.none() : after.conversation,
       apply,
     );
   }
@@ -196,8 +199,8 @@ export const commit = (plan: () => Commit) => {
   }
   if (motion._tag === "None" || matchMedia(reducedMotion).matches) return apply();
   flushSync(apply);
-  if (motion._tag === "StatusRise") {
-    return lift(document.querySelector(".r-scroll:not([hidden])"), "status");
+  if (motion._tag === "SettingsRise") {
+    return lift(document.querySelector(".r-scroll:not([hidden])"), "settings");
   }
   if (Option.isNone(after.conversation)) return;
   const departed = departures;

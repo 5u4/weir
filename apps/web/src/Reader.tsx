@@ -1418,7 +1418,7 @@ function Dock({ id }: { id: ConversationId }) {
   );
 }
 
-// Status hides the reader instead of unmounting it, so closing Status returns to the same reading state
+// Settings hides the reader instead of unmounting it, so closing Settings returns to the same reading state
 // and scroll position.
 export function Reader({ id, hidden }: { id: ConversationId; hidden: boolean }) {
   const result = useAtomValue(conversation(id));

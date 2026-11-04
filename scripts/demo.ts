@@ -48,7 +48,12 @@ const searches: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
   ],
 ];
 
-const { values: flags } = parseArgs({ options: { serve: { type: "boolean", default: false } } });
+const { values: flags } = parseArgs({
+  options: {
+    serve: { type: "boolean", default: false },
+    fail: { type: "boolean", default: false },
+  },
+});
 
 const home = Home.make(mkdtempSync(join(tmpdir(), "weir-demo-")));
 console.error(`weir demo: WEIR_HOME=${home.root}`);
@@ -60,14 +65,16 @@ const AI_SINCE = expectedDigests.ai_since;
 const mailbox = join(home.root, "mailbox");
 const seeded = seedMailbox(mailbox, { until: AI_SINCE });
 const bin = (path: string) => [process.execPath, join(import.meta.dirname, "..", path)];
-writeFileSync(
-  home.config,
-  `port = ${port}\n\n${configToml({
-    mailbox,
-    gws: bin("packages/fixtures/src/bin/fake-gws.ts"),
-    ai: bin("packages/fixtures/src/bin/fake-ai.ts"),
-  })}`,
-);
+const writeConfig = (mailboxDir: string) =>
+  writeFileSync(
+    home.config,
+    `port = ${port}\n\n${configToml({
+      mailbox: mailboxDir,
+      gws: bin("packages/fixtures/src/bin/fake-gws.ts"),
+      ai: bin("packages/fixtures/src/bin/fake-ai.ts"),
+    })}`,
+  );
+writeConfig(mailbox);
 
 const millisOf = (iso: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(iso));
 let fixedMillis = millisOf(AI_SINCE);
@@ -310,6 +317,23 @@ const demo = Effect.gen(function* () {
 
   if (problems.length > 0) return yield* Effect.fail(problems.join("\n"));
   lines.push("ok: search, tag test and digests match the fixtures");
+  if (flags.fail) {
+    writeConfig(join(home.root, "gone"));
+    yield* client.reload();
+    yield* pollUntil(
+      "failing sync",
+      Effect.map(client.status(), (status) => {
+        const pending = status.sources
+          .filter(
+            ({ listing, streams }) =>
+              listing !== "failed" && streams.every(({ last_error }) => last_error === null),
+          )
+          .map(({ id }) => id);
+        return { done: pending.length === 0, pending: pending.join(", "), value: status };
+      }),
+    );
+    lines.push("fail: every source now fails to sync, its fake mailbox gone");
+  }
   console.log(lines.join("\n"));
   if (flags.serve) {
     console.log(`weir demo: serving http://127.0.0.1:${port}/ until Ctrl-C`);

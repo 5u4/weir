@@ -15,6 +15,7 @@ export const migration = Effect.gen(function* () {
     cursor TEXT,
     backfilled_at TEXT,
     last_sync_at TEXT,
+    last_ok_at TEXT,
     last_error TEXT,
     UNIQUE (source_id, external_id)
   )`;

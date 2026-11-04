@@ -151,6 +151,7 @@ export const upsertStream = Effect.fnUntraced(function* (
     cursor: null,
     backfilledAt: null,
     lastSyncAt: null,
+    lastOkAt: null,
     lastError: null,
   });
   return yield* sql.withTransaction(
@@ -573,7 +574,8 @@ export const recordSyncRun = Effect.fnUntraced(function* (run: SyncRunInsert) {
   const sql = yield* SqlClient.SqlClient;
   const row = yield* Schema.encodeEffect(SyncRunInsert)(run);
   yield* sql`INSERT INTO sync_run ${sql.insert(row)}`;
-  yield* sql`UPDATE stream SET last_sync_at = ${row.startedAt}, last_error = ${row.error}
+  yield* sql`UPDATE stream SET last_sync_at = ${row.startedAt}, last_error = ${row.error},
+    last_ok_at = ${row.error === null ? row.startedAt : sql`last_ok_at`}
     WHERE id = ${row.streamId}`;
 });
 

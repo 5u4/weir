@@ -12,7 +12,7 @@ import {
   route,
   searchGroup,
   searchOpen,
-  statusOpen,
+  settingsOpen,
 } from "./Route.ts";
 
 vi.hoisted(() => vi.stubGlobal("location", { origin: "http://127.0.0.1:9347" }));
@@ -171,7 +171,7 @@ describe("leaving search through browser history", () => {
   });
 });
 
-describe("navigating closes Status", () => {
+describe("navigating closes Settings", () => {
   it.each<[string, Navigation]>([
     [
       "a view link",
@@ -193,10 +193,33 @@ describe("navigating closes Status", () => {
     ["typing the same search", { _tag: "Type", query: "" }],
   ])("%s", (_, navigation) => {
     const { registry, navigate } = session("/");
-    registry.mount(statusOpen);
-    registry.set(statusOpen, true);
+    registry.mount(settingsOpen);
+    registry.set(settingsOpen, Option.some({ section: "sources", source: "gmail" }));
     navigate(navigation);
-    expect(registry.get(statusOpen)).toBe(false);
+    expect(registry.get(settingsOpen)).toEqual(Option.none());
+  });
+
+  it(", opens Settings at the top, and , or Escape closes it", () => {
+    const { browser, registry } = session("/");
+    vi.stubGlobal("HTMLElement", class {});
+    registry.mount(keys);
+    registry.mount(settingsOpen);
+    const press = (key: string) =>
+      browser.dispatch("keydown", {
+        key,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: {},
+        preventDefault: () => {},
+      });
+    press(",");
+    expect(registry.get(settingsOpen)).toEqual(Option.some({ section: "appearance" }));
+    press(",");
+    expect(registry.get(settingsOpen)).toEqual(Option.none());
+    press(",");
+    press("Escape");
+    expect(registry.get(settingsOpen)).toEqual(Option.none());
   });
 });
 

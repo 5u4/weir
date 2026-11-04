@@ -1,14 +1,16 @@
 import type { Status } from "@weir/daemon/Api";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { describe, expect, it } from "vitest";
-import { ago, configState, dayLabel, health } from "./Health.ts";
+import { ago, alertOf, configState, dayLabel, health } from "./Health.ts";
 
 const stream = (overrides: Partial<Status["sources"][number]["streams"][number]> = {}) => ({
   name: "robin@example.com",
   kind: "message",
   last_sync_at: "2026-10-25T16:00:00.000Z",
+  last_ok_at: "2026-10-25T16:00:00.000Z",
   last_error: null,
   backfill: "done" as const,
   items: 12,
@@ -39,67 +41,81 @@ const source = (id: string, overrides: Partial<Status["sources"][number]> = {}) 
 });
 
 describe("status health", () => {
-  it("is running with the latest stream sync across sources", () => {
-    const result = health(
-      status([
-        source("work", { streams: [stream({ last_sync_at: "2026-10-25T15:00:00.000Z" })] }),
-        source("home", { streams: [stream({ last_sync_at: "2026-10-25T16:30:00.000Z" })] }),
-      ]),
-    );
-    expect(result.alert).toBe(false);
-    expect(result.verdict).toEqual({
-      _tag: "Running",
-      lastSync: DateTime.makeUnsafe("2026-10-25T16:30:00.000Z"),
-    });
+  it("raises no alert while every source syncs", () => {
+    const value = status([
+      source("work", { streams: [stream({ last_sync_at: "2026-10-25T15:00:00.000Z" })] }),
+      source("home", { streams: [stream({ last_sync_at: "2026-10-25T16:30:00.000Z" })] }),
+    ]);
+    expect(alertOf(value)).toEqual(Option.none());
+    expect(health(value).sources.map(({ state }) => state._tag)).toEqual(["Synced", "Synced"]);
   });
 
-  it("names the first failing source; a stream error fails it and keeps the last attempt", () => {
-    const result = health(
-      status([
-        source("work"),
-        source("home", {
-          streams: [
-            stream({ last_sync_at: "2026-10-25T10:00:00.000Z", last_error: "invalid_grant" }),
-          ],
-        }),
-        source("chat", { listing: "failed", error: "gws not found", streams: [] }),
-      ]),
+  it("alerts on every failing source, in order, since its last successful sync", () => {
+    const value = status([
+      source("work"),
+      source("home", {
+        streams: [
+          stream({
+            last_sync_at: "2026-10-25T16:00:00.000Z",
+            last_ok_at: "2026-10-25T10:00:00.000Z",
+            last_error: "invalid_grant",
+          }),
+        ],
+      }),
+      source("chat", { listing: "failed", error: "gws not found", streams: [] }),
+    ]);
+    expect(alertOf(value)).toEqual(
+      Option.some({
+        _tag: "SourcesFailed",
+        sources: [
+          { id: "home", since: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z") },
+          { id: "chat", since: null },
+        ],
+      }),
     );
-    expect(result.alert).toBe(true);
-    expect(result.verdict).toEqual({ _tag: "SourceDown", source: "home" });
-    expect(result.sources.map(({ state }) => state)).toEqual([
+    expect(health(value).sources.map(({ state }) => state)).toEqual([
       { _tag: "Synced", at: DateTime.makeUnsafe("2026-10-25T16:00:00.000Z") },
       {
         _tag: "Failed",
         error: "invalid_grant",
-        tried: DateTime.makeUnsafe("2026-10-25T10:00:00.000Z"),
+        tried: DateTime.makeUnsafe("2026-10-25T16:00:00.000Z"),
       },
       { _tag: "Failed", error: "gws not found", tried: null },
     ]);
   });
 
-  it("a config error stops everything and outranks a failing source", () => {
-    const result = health(
-      status([source("home", { streams: [stream({ last_error: "boom" })] })], {
-        file: "/h/config.toml",
-        message: "invalid config",
-        issues: [],
+  it("a source fails from the oldest success among its failing streams", () => {
+    const value = status([
+      source("work", {
+        streams: [
+          stream({ name: "inbox", last_ok_at: "2026-10-25T09:00:00.000Z", last_error: "boom" }),
+          stream({ name: "chat", last_ok_at: "2026-10-25T07:00:00.000Z", last_error: "boom" }),
+          stream({ name: "drafts", last_ok_at: "2026-10-25T01:00:00.000Z" }),
+        ],
+      }),
+    ]);
+    expect(alertOf(value)).toEqual(
+      Option.some({
+        _tag: "SourcesFailed",
+        sources: [{ id: "work", since: DateTime.makeUnsafe("2026-10-25T07:00:00.000Z") }],
       }),
     );
-    expect(result.stopped).toBe(true);
-    expect(result.verdict).toEqual({ _tag: "Stopped" });
+  });
+
+  it("a config error stops everything and outranks a failing source", () => {
+    const error = { file: "/h/config.toml", message: "invalid config", issues: [] };
+    const value = status([source("home", { streams: [stream({ last_error: "boom" })] })], error);
+    expect(health(value).stopped).toBe(true);
+    expect(alertOf(value)).toEqual(Option.some({ _tag: "ConfigStopped", error }));
   });
 
   it("a source still listing or never synced is not a failure", () => {
-    const result = health(
-      status([
-        source("new", { listing: "pending", streams: [] }),
-        source("idle", { streams: [stream({ last_sync_at: null })] }),
-      ]),
-    );
-    expect(result.alert).toBe(false);
-    expect(result.sources.map(({ state }) => state._tag)).toEqual(["Starting", "NotSynced"]);
-    expect(result.verdict).toEqual({ _tag: "Running", lastSync: null });
+    const value = status([
+      source("new", { listing: "pending", streams: [] }),
+      source("idle", { streams: [stream({ last_sync_at: null, last_ok_at: null })] }),
+    ]);
+    expect(alertOf(value)).toEqual(Option.none());
+    expect(health(value).sources.map(({ state }) => state._tag)).toEqual(["Starting", "NotSynced"]);
   });
 
   it("keeps each stream's own sync time, items and error", () => {

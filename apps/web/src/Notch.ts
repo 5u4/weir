@@ -1,6 +1,8 @@
 import type { Counts } from "@weir/daemon/Api";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import type { View } from "./Route.ts";
+import { type Alert, ago } from "./Health.ts";
+import type { SettingsFocus, View } from "./Route.ts";
 
 export type Sender = Counts["untagged"]["senders"][number];
 
@@ -110,20 +112,54 @@ export const sentence = (counts: Counts): Sentence => {
   };
 };
 
+export type AlertClause = {
+  readonly text: string;
+  readonly short: string;
+  readonly focus: SettingsFocus;
+};
+
+export const alertClause = (alert: Alert, current: DateTime.Utc): AlertClause => {
+  if (alert._tag === "ConfigStopped") {
+    return {
+      text: "Sync stopped: config error.",
+      short: "Sync stopped",
+      focus: { section: "config" },
+    };
+  }
+  const names = enumerate(
+    alert.sources.map(({ id }) => id),
+    "",
+    "",
+  )
+    .map(({ lead, widget, end }) => `${lead}${widget}${end}`)
+    .join(" ");
+  const oldest = alert.sources.reduce<DateTime.Utc | null>(
+    (found, { since }) =>
+      since === null || (found !== null && DateTime.isGreaterThan(since, found)) ? found : since,
+    null,
+  );
+  return {
+    text: `${names} ${oldest === null ? "never synced" : `stopped syncing ${ago(oldest, current)}`}.`,
+    short:
+      alert.sources.length === 1 ? `${names} stopped` : `${alert.sources.length} sources stopped`,
+    focus: { section: "sources", source: alert.sources[0].id },
+  };
+};
+
 export type CapForm = "full" | "compact" | "search" | "result";
 
 export const formOf = ({
-  status,
+  settings,
   reading,
   query,
   searching,
 }: {
-  readonly status: boolean;
+  readonly settings: boolean;
   readonly reading: boolean;
   readonly query: string;
   readonly searching: boolean;
 }): CapForm =>
-  status
+  settings
     ? "compact"
     : reading
       ? query === ""

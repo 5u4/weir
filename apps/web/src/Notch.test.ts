@@ -1,7 +1,18 @@
 import type { Counts } from "@weir/daemon/Api";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
-import { type Clause, formOf, monogram, notchKey, sentence, type Widget } from "./Notch.ts";
+import type { Alert } from "./Health.ts";
+import {
+  type AlertClause,
+  alertClause,
+  type Clause,
+  formOf,
+  monogram,
+  notchKey,
+  sentence,
+  type Widget,
+} from "./Notch.ts";
 
 const view = (unread: number, open = unread) => ({ unread, open, senders: [] });
 
@@ -124,18 +135,73 @@ describe("notch key", () => {
 
 describe("notch form", () => {
   it.each([
-    ["list", { status: false, reading: false, query: "", searching: false }, "full"],
-    ["search opened", { status: false, reading: false, query: "", searching: true }, "search"],
+    ["list", { settings: false, reading: false, query: "", searching: false }, "full"],
+    ["search opened", { settings: false, reading: false, query: "", searching: true }, "search"],
     [
       "search from the URL",
-      { status: false, reading: false, query: "a", searching: false },
+      { settings: false, reading: false, query: "a", searching: false },
       "search",
     ],
-    ["reading", { status: false, reading: true, query: "", searching: false }, "compact"],
-    ["reading a result", { status: false, reading: true, query: "a", searching: false }, "result"],
-    ["Status", { status: true, reading: true, query: "a", searching: true }, "compact"],
+    ["reading", { settings: false, reading: true, query: "", searching: false }, "compact"],
+    [
+      "reading a result",
+      { settings: false, reading: true, query: "a", searching: false },
+      "result",
+    ],
+    ["Settings", { settings: true, reading: true, query: "a", searching: true }, "compact"],
   ] as const)("%s", (_, shown, form) => {
     expect(formOf(shown)).toBe(form);
+  });
+});
+
+describe("alert clause", () => {
+  const current = DateTime.makeUnsafe("2026-10-25T16:00:00.000Z");
+  const hoursBefore = (hours: number) => DateTime.subtract(current, { hours });
+  it.each<[string, Alert, AlertClause]>([
+    [
+      "a failed source says when it last synced",
+      { _tag: "SourcesFailed", sources: [{ id: "gmail", since: hoursBefore(2) }] },
+      {
+        text: "gmail stopped syncing 2h ago.",
+        short: "gmail stopped",
+        focus: { section: "sources", source: "gmail" },
+      },
+    ],
+    [
+      "a source that never synced says so",
+      { _tag: "SourcesFailed", sources: [{ id: "gmail", since: null }] },
+      {
+        text: "gmail never synced.",
+        short: "gmail stopped",
+        focus: { section: "sources", source: "gmail" },
+      },
+    ],
+    [
+      "several sources share one clause timed from the oldest, aimed at the first",
+      {
+        _tag: "SourcesFailed",
+        sources: [
+          { id: "gmail", since: hoursBefore(2) },
+          { id: "slack", since: hoursBefore(5) },
+          { id: "work", since: null },
+        ],
+      },
+      {
+        text: "gmail, slack and work stopped syncing 5h ago.",
+        short: "3 sources stopped",
+        focus: { section: "sources", source: "gmail" },
+      },
+    ],
+    [
+      "a config error points at Config",
+      {
+        _tag: "ConfigStopped",
+        error: { file: "/h/config.toml", message: "invalid config", issues: [] },
+      },
+      { text: "Sync stopped: config error.", short: "Sync stopped", focus: { section: "config" } },
+    ],
+  ])("%s", (_, alert, clause) => {
+    expect(alertClause(alert, current)).toEqual(clause);
   });
 });
 

@@ -1,7 +1,8 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react/Hooks";
 import type { Status } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
-import type { CSSProperties, KeyboardEvent } from "react";
+import * as Option from "effect/Option";
+import { type CSSProperties, type KeyboardEvent, useCallback } from "react";
 import {
   ago,
   clockTime,
@@ -13,22 +14,44 @@ import {
   type SourceHealth,
   type SourceState,
   type StreamHealth,
-  type Verdict,
 } from "./Health.ts";
-import { statusOpen } from "./Route.ts";
-import { digestRows, waitingLine } from "./StatusRows.ts";
+import { type SettingsFocus, settingsOpen } from "./Route.ts";
+import { digestRows } from "./SettingsRows.ts";
 import { ThemePreference, themePreference } from "./Theme.ts";
 import { reload } from "./Weir.ts";
 
-export function StatusIcon() {
+function GearIcon() {
   return (
     <svg
-      className="size-4.5 fill-none stroke-current stroke-1.6 linecap-round linejoin-round"
-      viewBox="0 0 16 16"
+      className="size-4.5 fill-none stroke-current stroke-1.7 linecap-round linejoin-round"
+      viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <path d="M1.5 8.5h2.8l1.9-4.6 3.4 8.2 1.9-3.6h3" />
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
+  );
+}
+
+export function SettingsButton() {
+  const [focus, setFocus] = useAtom(settingsOpen);
+  const open = Option.isSome(focus);
+  return (
+    <footer
+      className="fixed bottom-0 left-stage z-raised flex h-14 w-list items-center bg-head px-1.5 shadow-rule-line backdrop-blur-md max-wide:right-0 max-wide:left-0 max-wide:w-auto max-wide:px-3"
+      aria-label="Settings"
+    >
+      <button
+        type="button"
+        className={`grid size-9 place-items-center rounded-circle transition-tint ${open ? "bg-ink text-island" : "text-ink-3 hover:bg-hover hover:text-ink"}`}
+        aria-label="Settings"
+        title="Settings (,)"
+        aria-pressed={open}
+        onClick={() => setFocus(open ? Option.none() : Option.some({ section: "appearance" }))}
+      >
+        <GearIcon />
+      </button>
+    </footer>
   );
 }
 
@@ -55,8 +78,6 @@ const glowClass: Record<Led, string> = {
   bad: "shadow-glow-warn",
 };
 
-const syncLedClass = (led: Led) => `size-1.75 self-center rounded-circle ${ledClass[led]}`;
-
 const stateLine = (state: SourceState, stopped: boolean, current: DateTime.Utc) => {
   switch (state._tag) {
     case "Failed":
@@ -77,88 +98,11 @@ const streamMeta = ({ state, items, backfilling }: StreamHealth, current: DateTi
     backfilling ? "backfill running" : null,
   ].filter((part) => part !== null);
 
-const verdictText = (verdict: Verdict, current: DateTime.Utc) => {
-  switch (verdict._tag) {
-    case "Stopped":
-      return {
-        title: "Sync and digests stopped",
-        detail:
-          "The config did not load. Fix it and Reload. Everything synced so far stays readable.",
-      };
-    case "SourceDown":
-      return {
-        title: `${verdict.source} can't sync.`,
-        detail: "The other sources and digests keep running.",
-      };
-    case "Running":
-      return {
-        title: "Everything is running.",
-        detail:
-          verdict.lastSync === null
-            ? "Waiting for the first sync."
-            : `Last sync ${ago(verdict.lastSync, current)}.`,
-      };
-  }
-};
-
-export function EmptyReader({ health, digest }: { health: Health; digest: Status["digest"] }) {
-  const current = useAtomValue(now);
-  const [, setOpen] = useAtom(statusOpen);
-  const waiting = waitingLine(digest, health.stopped);
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-reader pb-16">
-      {health.stopped && (
-        <p className="m-0 mb-5 font-display text-lg leading-snug font-semibold text-ink">
-          Sync and digests stopped. The config did not load.
-        </p>
-      )}
-      <ul
-        className="m-0 grid list-none grid-cols-sync items-baseline gap-x-3 gap-y-2.5 p-0 text-md text-ink-3"
-        aria-label="Sync"
-      >
-        {health.sources.map((source) => {
-          const bad = source.state._tag === "Failed";
-          return (
-            <li key={source.id} className="contents">
-              <span className={syncLedClass(ledOf(bad, health.stopped))} aria-hidden="true" />
-              <b className="font-medium text-ink-2">{source.id}</b>
-              <span className={`tabular-nums ${bad ? "font-semibold text-warn" : ""}`}>
-                {stateLine(source.state, health.stopped, current)}
-              </span>
-              {source.state._tag === "Failed" && (
-                <code className="col-start-2 col-end-4 -mt-1 max-w-error font-mono text-xs leading-normal font-medium wrap-anywhere text-ink-3">
-                  {source.state.error}
-                </code>
-              )}
-            </li>
-          );
-        })}
-        {waiting !== null && (
-          <li className="contents">
-            <span className={syncLedClass(ledOf(false, health.stopped))} aria-hidden="true" />
-            <b className="font-medium text-ink-2">Digests</b>
-            <span className="tabular-nums">{waiting}</span>
-          </li>
-        )}
-      </ul>
-      {health.alert && (
-        <button
-          type="button"
-          className="mt-5.5 h-7.5 rounded-full px-3.5 text-sm font-semibold text-ink shadow-ring-line transition-tint-ring hover:bg-ink hover:text-island hover:shadow-none active:scale-press"
-          onClick={() => setOpen(true)}
-        >
-          Open Status
-        </button>
-      )}
-    </div>
-  );
-}
-
 const codeClass = "font-mono text-sm leading-normal font-medium normal-nums";
 const errorClass = "mx-0 mt-2.5 mb-0.5 rounded-xl bg-warn-wash px-3.5 py-2.5 wrap-anywhere";
 const errorCodeClass = `${codeClass} text-ink`;
 const listClass = "m-0 grid list-none gap-1 p-0";
-const sectionClass = "border-t border-t-line-2 pt-5 pb-5.5";
+const sectionClass = "scroll-mt-3 border-t border-t-line-2 pt-5 pb-5.5";
 const headingClass =
   "mx-0 mt-0 mb-3 font-sans text-xs leading-none font-bold tracking-wide text-ink-3 uppercase";
 const fieldsClass = "m-0 grid gap-0.5";
@@ -189,7 +133,13 @@ function SourceRow({ source, stopped }: { source: SourceHealth; stopped: boolean
   const bad = state._tag === "Failed";
   const led = ledOf(bad, stopped);
   return (
-    <li className="grid grid-cols-source items-baseline gap-x-3 py-2">
+    <li
+      className="-mx-3 grid grid-cols-source items-baseline gap-x-3 rounded-xl px-3 py-2"
+      data-source={source.id}
+      onAnimationEnd={({ animationName, currentTarget }) => {
+        if (animationName === "flash") currentTarget.removeAttribute("data-flash");
+      }}
+    >
       <span
         className={`col-start-1 row-start-1 size-2 self-center rounded-circle ${ledClass[led]} ${glowClass[led]}`}
         aria-hidden="true"
@@ -252,7 +202,7 @@ function ConfigSection({ config }: { config: Status["config"] }) {
   const runReload = useAtomSet(reload);
   const reloading = state._tag === "Reloading";
   return (
-    <section className={sectionClass} aria-labelledby="sv-h-cfg">
+    <section className={sectionClass} aria-labelledby="sv-h-cfg" data-section="config">
       <h3 className={headingClass} id="sv-h-cfg">
         Config
       </h3>
@@ -364,7 +314,7 @@ function Appearance() {
     event.currentTarget.querySelector<HTMLButtonElement>(`[data-pick="${next}"]`)?.focus();
   };
   return (
-    <section className={sectionClass} aria-labelledby="sv-h-ap">
+    <section className={sectionClass} aria-labelledby="sv-h-ap" data-section="appearance">
       <h3 className={headingClass} id="sv-h-ap">
         Appearance
       </h3>
@@ -398,40 +348,44 @@ function Appearance() {
   );
 }
 
-export function StatusView({ status: value, health }: { status: Status; health: Health }) {
-  const current = useAtomValue(now);
-  const warn = health.alert;
-  const { title, detail } = verdictText(health.verdict, current);
+export function SettingsView({
+  status: value,
+  health,
+  focus,
+}: {
+  status: Status;
+  health: Health;
+  focus: SettingsFocus;
+}) {
+  const land = useCallback(
+    (view: HTMLDivElement | null) => {
+      const scroller = view?.closest<HTMLElement>(".r-scroll");
+      const section = view?.querySelector<HTMLElement>(`[data-section="${focus.section}"]`);
+      if (view == null || scroller == null || section == null) return;
+      scroller.scrollTop =
+        focus.section === "appearance"
+          ? 0
+          : scroller.scrollTop +
+            section.getBoundingClientRect().top -
+            scroller.getBoundingClientRect().top -
+            Number.parseFloat(getComputedStyle(section).scrollMarginTop);
+      const row = [...view.querySelectorAll<HTMLElement>("[data-source]")].find(
+        ({ dataset }) => dataset.source === focus.source,
+      );
+      if (row === undefined) return;
+      row.removeAttribute("data-flash");
+      void row.offsetWidth;
+      row.setAttribute("data-flash", "");
+    },
+    [focus],
+  );
   return (
-    <div className="max-w-status px-reader pt-5.5 pb-24 max-wide:pt-3.5">
-      <header
-        key={warn ? "warn" : "ok"}
-        className="grid grid-cols-verdict items-center gap-x-5 pb-5.5"
-      >
-        <h2 className="m-0 font-display text-3xl leading-tight font-extrabold tracking-tighter">
-          Status
-        </h2>
-        <svg
-          className={`h-6 w-40 justify-self-start fill-none stroke-2 linecap-round linejoin-round max-wide:w-30 ${warn ? "stroke-warn" : "stroke-ok"}`}
-          viewBox="0 0 160 24"
-          aria-hidden="true"
-        >
-          <path
-            className="dash-path animate-trace motion-reduce:animate-none"
-            pathLength="1"
-            d={warn ? "M0 13h56l7-10 10 19 4-7h83" : "M0 13h56l7-10 10 19 8-14 5 5h74"}
-          />
-        </svg>
-        <p className="col-span-full mx-0 mt-3.5 mb-0 flex flex-col gap-1">
-          <b
-            className={`font-display text-xl leading-snug font-bold tracking-snug ${warn ? "text-warn" : "text-ink"}`}
-          >
-            {title}
-          </b>
-          <span className="text-md leading-relaxed text-ink-2">{detail}</span>
-        </p>
-      </header>
-      <section className={sectionClass} aria-labelledby="sv-h-src">
+    <div className="max-w-status px-reader pt-5.5 pb-24 max-wide:pt-3.5" ref={land}>
+      <h2 className="m-0 pb-5.5 font-display text-3xl leading-tight font-extrabold tracking-tighter">
+        Settings
+      </h2>
+      <Appearance />
+      <section className={sectionClass} aria-labelledby="sv-h-src" data-section="sources">
         <h3 className={headingClass} id="sv-h-src">
           Sources
         </h3>
@@ -441,7 +395,7 @@ export function StatusView({ status: value, health }: { status: Status; health: 
           ))}
         </ul>
       </section>
-      <section className={sectionClass} aria-labelledby="sv-h-en">
+      <section className={sectionClass} aria-labelledby="sv-h-en" data-section="digests">
         <h3 className={headingClass} id="sv-h-en">
           Digests
         </h3>
@@ -503,7 +457,6 @@ export function StatusView({ status: value, health }: { status: Status; health: 
         </dl>
       </section>
       <ConfigSection config={value.config} />
-      <Appearance />
     </div>
   );
 }

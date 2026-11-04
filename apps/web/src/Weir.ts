@@ -22,7 +22,7 @@ import { refetches } from "./Live.ts";
 import { awaitArrivals } from "./Morph.ts";
 import { parseQuery, sameParams, searchParams } from "./Query.ts";
 import { narrowed, picked, type Result } from "./Results.ts";
-import { ConversationId, capCounts, route, searchGroup, statusOpen, type View } from "./Route.ts";
+import { ConversationId, capCounts, route, searchGroup, settingsOpen, type View } from "./Route.ts";
 import {
   type Act,
   exits,
@@ -45,8 +45,8 @@ const statusSnapshot = Weir.query("weir", "status", {});
 export const status = Atom.transform(
   statusSnapshot,
   (get) => {
-    get.subscribe(statusOpen, (open) => {
-      if (open) get.refresh(statusSnapshot);
+    get.subscribe(settingsOpen, (focus) => {
+      if (Option.isSome(focus)) get.refresh(statusSnapshot);
     });
     get.subscribe(statusSnapshot, (value) => get.setSelf(value));
     return get.once(statusSnapshot);

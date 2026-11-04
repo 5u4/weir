@@ -1,7 +1,7 @@
 import type { Status } from "@weir/daemon/Api";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vitest";
-import { digestRows, waitingLine } from "./StatusRows.ts";
+import { digestRows } from "./SettingsRows.ts";
 
 type Digest = NonNullable<Status["digest"]>;
 
@@ -98,22 +98,5 @@ describe("digestRows", () => {
     ],
   ])("%s", (_, value, rows) => {
     expect(digestRows(value)).toEqual(rows);
-  });
-});
-
-describe("waitingLine", () => {
-  it.each<[string, Status["digest"], boolean, string | null]>([
-    ["no [digest] has no line", null, false, null],
-    ["nothing queued is caught up", digest(), false, "Caught up"],
-    ["a stopped config stops digests", digest({ queued: [job(1)] }), true, "Stopped"],
-    [
-      "counts conversations, not jobs",
-      digest({ running: [job(1)], queued: [job(1), job(2), job(3)] }),
-      false,
-      "3 conversations waiting",
-    ],
-    ["one conversation is singular", digest({ queued: [job(4)] }), false, "1 conversation waiting"],
-  ])("%s", (_, value, stopped, line) => {
-    expect(waitingLine(value, stopped)).toBe(line);
   });
 });

@@ -175,7 +175,6 @@
   --height-pill: var(--size-pill);
   --size-pill: var(--spacing-12);
   --max-width-status: 760px;
-  --max-width-error: 44ch;
   --spacing-bleed: min(var(--padding-reader) - var(--spacing-2), var(--spacing-4));
   --inset-0\.75: 3px;
   --inset-half-px: 0.5px;
@@ -214,12 +213,10 @@
   --grid-template-columns-row: 32px minmax(0, 1fr) auto;
   --grid-template-columns-query: minmax(0, max-content) auto;
   --grid-template-columns-query-wide: minmax(0, max-content) 1fr;
-  --grid-template-columns-verdict: auto 1fr;
   --grid-template-columns-source: 10px minmax(0, 1fr) auto;
   --grid-template-columns-stream: minmax(0, 1fr) auto;
   --grid-template-columns-field: 8.5em minmax(0, 1fr);
   --grid-template-columns-stack: 1fr;
-  --grid-template-columns-sync: 8px max-content max-content;
   --grid-template-columns-segments: repeat(3, 96px);
   --grid-template-columns-segments-fill: repeat(3, 1fr);
   --grid-template-columns-group: var(--spacing-7) minmax(0, 1fr);
@@ -240,9 +237,9 @@
   --scale-press: 97%;
   --scale-press-firm: 94%;
   --scale-press-deep: 92%;
-  --scale-dot: 30%;
   --scale-enter: 80%;
   --scale-fold: 70%;
+  --scale-flash: 98.5%;
   --rotate-flip: 180deg;
   --translate-lift: 4px;
   --outline-width-hit: 2.5px;
@@ -272,13 +269,12 @@
   --shadow-ring-glass: inset 0 0 0 1px var(--color-glass);
   --shadow-ring-current: inset 0 0 0 1px currentColor;
   --shadow-ring-thick-ink: inset 0 0 0 2px var(--color-ink);
+  --shadow-ring-thick-warn: inset 0 0 0 2px var(--color-warn);
   --shadow-rule-line: inset 0 1px 0 var(--color-line);
   --shadow-ring-g-line: inset 0 0 0 1px var(--color-g-line);
   --shadow-halo-ground: 0 0 0 2.5px var(--color-ground);
   --shadow-halo-g-hover: 0 0 0 2.5px var(--color-g-hover);
   --shadow-halo-island: 0 0 0 2.5px var(--color-island);
-  --shadow-halo-capbg: 0 0 0 2.5px var(--color-capbg);
-  --shadow-halo-cap-1: 0 0 0 2.5px var(--color-cap-1);
   --shadow-stack-capbg: 0 0 0 0.09em var(--color-capbg);
   --shadow-stack-cap-1: 0 0 0 0.09em var(--color-cap-1);
   --shadow-glow-ok: 0 0 0 3px var(--color-ok-glow);
@@ -348,19 +344,13 @@
   --duration-morph: 640ms;
   --duration-spin: 800ms;
   --duration-loop: 1200ms;
+  --duration-flash: 1600ms;
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
 
-  --animate-trace: trace var(--duration-loop) var(--ease-glide) var(--duration-fast) both;
   --animate-spin: spin var(--duration-spin) linear infinite;
   --animate-beat: beat var(--duration-loop) var(--ease-standard) infinite;
   --animate-shimmer: shimmer var(--duration-loop) linear infinite;
-
-  @keyframes trace {
-    from {
-      stroke-dashoffset: 1;
-    }
-  }
 
   @keyframes spin {
     to {
@@ -417,22 +407,12 @@
   );
 }
 
-@utility transition-pop {
-  transition:
-    opacity var(--duration-base),
-    scale var(--duration-spring) var(--ease-spring);
-}
-
 @utility linecap-round {
   stroke-linecap: round;
 }
 
 @utility linejoin-round {
   stroke-linejoin: round;
-}
-
-@utility dash-path {
-  stroke-dasharray: 1;
 }
 
 @utility scrollbar-none {

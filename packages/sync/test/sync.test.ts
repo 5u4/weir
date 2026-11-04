@@ -36,8 +36,9 @@ const streamState = Effect.gen(function* () {
     cursor: string | null;
     backfilledAt: string | null;
     lastSyncAt: string | null;
+    lastOkAt: string | null;
     lastError: string | null;
-  }>`SELECT cursor, backfilled_at, last_sync_at, last_error FROM stream`;
+  }>`SELECT cursor, backfilled_at, last_sync_at, last_ok_at, last_error FROM stream`;
   return stream;
 });
 
@@ -576,6 +577,7 @@ describe("syncStream sync_run", () => {
       ]);
       expect(yield* streamState).toMatchObject({
         lastSyncAt: "2026-10-28T09:30:00.000Z",
+        lastOkAt: "2026-10-28T09:30:00.000Z",
         lastError: null,
       });
 
@@ -593,6 +595,7 @@ describe("syncStream sync_run", () => {
       ]);
       expect(yield* streamState).toMatchObject({
         lastSyncAt: "2026-10-28T09:35:00.000Z",
+        lastOkAt: "2026-10-28T09:30:00.000Z",
         lastError: "token expired",
       });
     }).pipe(Effect.provide(storeLayer())),
