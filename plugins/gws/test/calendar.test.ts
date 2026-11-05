@@ -17,10 +17,14 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-type FakeCalendar = { version: number; events: Record<string, unknown> };
+type FakeCalendar = { summary: string; version: number; events: Record<string, unknown> };
 const editCalendar = (
   dir: string,
-  edit: (mailbox: { pageSize: number; calendar: FakeCalendar }) => void,
+  edit: (mailbox: {
+    pageSize: number;
+    calendar: FakeCalendar;
+    calendars?: Record<string, FakeCalendar>;
+  }) => void,
 ) => {
   const file = join(dir, "mailbox.json");
   const mailbox = JSON.parse(readFileSync(file, "utf8"));
@@ -28,7 +32,7 @@ const editCalendar = (
   writeFileSync(file, JSON.stringify(mailbox));
 };
 
-const calendarSource = () => {
+const calendarSource = (calendars: string[] = ["primary"]) => {
   const dir = mkdtempSync(join(tmpdir(), "weir-calendar-"));
   dirs.push(dir);
   seedMailbox(dir);
@@ -38,27 +42,27 @@ const calendarSource = () => {
       command: [FAKE_GWS, "--mailbox", dir],
       backfill: "newer_than:30d",
       labels: ["INBOX"],
-      calendar: "primary",
+      calendars,
     },
     async () => {},
     { now: () => clock.now },
     fixtureFaceNet(),
   );
-  const sync = async (cursor: string | null) =>
-    decodePage(await source.sync(STREAM, cursor, new AbortController().signal));
-  const syncAll = async (cursor: string | null) => {
+  const sync = async (cursor: string | null, stream = STREAM) =>
+    decodePage(await source.sync(stream, cursor, new AbortController().signal));
+  const syncAll = async (cursor: string | null, stream = STREAM) => {
     const pages: SyncPage[] = [];
     let position = cursor;
     let more = true;
     while (more) {
-      const page = await sync(position);
+      const page = await sync(position, stream);
       pages.push(page);
       position = page.cursor;
       more = page.more;
     }
     return { pages, cursor: position ?? "" };
   };
-  return { dir, clock, sync, syncAll };
+  return { dir, clock, source, sync, syncAll };
 };
 
 const cancelled = (pages: ReadonlyArray<SyncPage>) =>
@@ -150,5 +154,43 @@ describe("calendar occurrence window", () => {
     ).toEqual([horizon]);
     const starts = refreshed[0]?.occurrences.map(({ start }) => Date.parse(start)) ?? [];
     expect(Math.max(...starts)).toBeGreaterThan(Date.parse(FIXTURE_NOW) + 120 * DAY_MS);
+  });
+});
+
+describe("several calendars on one source", () => {
+  it("streams each calendar under its display name and syncs only its own events", async () => {
+    const team = "team@group.calendar.google.com";
+    const { dir, source, syncAll } = calendarSource(["primary", team]);
+    editCalendar(dir, (mailbox) => {
+      const { nwfreeze, ...rest } = mailbox.calendar.events;
+      mailbox.calendar.summary = "Robin";
+      mailbox.calendar.events = rest;
+      mailbox.calendars = {
+        [team]: { ...mailbox.calendar, summary: "Northwind team", events: { nwfreeze } },
+      };
+    });
+
+    const events = (await source.streams()).filter(({ kind }) => kind === "event");
+    expect(events.map(({ id, name }) => [id, name])).toEqual([
+      ["calendar/primary", "Robin"],
+      [`calendar/${team}`, "Northwind team"],
+    ]);
+
+    const eventsOf = (pages: ReadonlyArray<SyncPage>) => [
+      ...new Set(
+        pages.flatMap(({ upserts }) =>
+          upserts.flatMap((item) =>
+            item.event ? [`${item.containerName}: ${item.event.eventId}`] : [],
+          ),
+        ),
+      ),
+    ];
+    const primary = eventsOf((await syncAll(null)).pages);
+    expect(primary.length).toBeGreaterThan(0);
+    expect(primary.every((event) => event.startsWith("Robin: "))).toBe(true);
+    expect(primary).not.toContain("Robin: nwfreeze");
+    expect(eventsOf((await syncAll(null, `calendar/${team}`)).pages)).toEqual([
+      "Northwind team: nwfreeze",
+    ]);
   });
 });

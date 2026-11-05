@@ -32,11 +32,11 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 - A tag naming a group that is not a `[[group]]` in the same file fails reload.
 - `[[group]]` rules cannot use `group`.
 - `tag test` sees groups as of the last reload: add a new group and reload before testing a tag that references it.
-- Calendar events (a gws source with `calendar = "primary"` in `[source.config]`) are items too: `/title` is the event summary, `/from` its organizer and `/raw` the Google Calendar event, so rules on `/raw/payload/headers` or `/raw/labelIds` never match them. A `[[group]]` joins events to mail only within the same source. Events never count toward digests.
+- Calendar events (a gws source with `calendars = ["primary"]` in `[source.config]`) are items too: `/title` is the event summary, `/from` its organizer, `/containerName` the calendar's display name, `/containerId` the calendar id as written in `calendars` and `/raw` the Google Calendar event, so rules on `/raw/payload/headers` or `/raw/labelIds` never match them. A rule that must keep matching after the calendar is renamed matches `/containerId`. A `[[group]]` joins events to mail only within the same source. Events never count toward digests.
 
 ## Examples
 
-A gws source syncs Gmail; `calendar` adds that Google Calendar (by calendar id, usually `"primary"`) as a second stream. The gws login must include the Calendar service, for example `gws auth login -s gmail,calendar`. Leave the key out and the source syncs mail only:
+A gws source syncs Gmail; each id in `calendars` adds that Google Calendar as its own event stream, named after the calendar's display name. List the ids with `gws calendar calendarList list`; `"primary"` is your own calendar. The gws login must include the Calendar service, for example `gws auth login -s gmail,calendar`. Leave the key out and the source syncs mail only:
 
 ```toml
 [[source]]
@@ -47,7 +47,7 @@ sync_every = "5m"
 [source.config]
 backfill = "newer_than:30d"
 labels = ["INBOX", "SENT"]
-calendar = "primary"
+calendars = ["primary"]
 ```
 
 ```toml

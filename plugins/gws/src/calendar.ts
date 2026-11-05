@@ -11,6 +11,7 @@ import {
   type EventDateTime,
   type Gws,
   GwsError,
+  getCalendarName,
   listEvents,
   listInstances,
 } from "./gws.ts";
@@ -84,7 +85,7 @@ const seriesEndOf = (recurrence: ReadonlyArray<string>): string | null => {
 
 const toEventItem = (
   event: CalendarEvent,
-  calendarId: string,
+  calendar: { readonly id: string; readonly name: string },
   timeZone: string | null,
   now: number,
 ): RawItem => {
@@ -93,8 +94,8 @@ const toEventItem = (
   return {
     externalId: `${event.id}@${event.updated ?? event.status ?? "confirmed"}`,
     threadId: seriesId ?? event.id,
-    containerId: calendarId,
-    containerName: "Calendar",
+    containerId: calendar.id,
+    containerName: calendar.name,
     occurredAt: event.updated ?? new Date(now).toISOString(),
     title: event.summary ?? null,
     from: {
@@ -181,15 +182,19 @@ export const calendarSync = async (
     horizon: null,
   };
   const stored = cursor === null ? full : decodeCursor(cursor);
-  const { position, listed } = await listEvents(cli, calendarId, stored, signal).then(
-    (listed) => ({ position: stored, listed }),
-    async (error: unknown) => {
-      if (stored.phase !== "incremental" || !(error instanceof GwsError) || error.code !== 410)
-        throw error;
-      const relist: Cursor = { ...full, seen: [], known: stored.known, horizon: stored.horizon };
-      return { position: relist, listed: await listEvents(cli, calendarId, relist, signal) };
-    },
-  );
+  const [name, { position, listed }] = await Promise.all([
+    getCalendarName(cli, calendarId, signal),
+    listEvents(cli, calendarId, stored, signal).then(
+      (listed) => ({ position: stored, listed }),
+      async (error: unknown) => {
+        if (stored.phase !== "incremental" || !(error instanceof GwsError) || error.code !== 410)
+          throw error;
+        const relist: Cursor = { ...full, seen: [], known: stored.known, horizon: stored.horizon };
+        return { position: relist, listed: await listEvents(cli, calendarId, relist, signal) };
+      },
+    ),
+  ]);
+  const calendar = { id: calendarId, name };
   const items = listed.items ?? [];
   const known = new Map(Object.entries(position.known));
   const series = new Set<string>();
@@ -247,7 +252,7 @@ export const calendarSync = async (
   const cancelledAt = new Date(now).toISOString();
   return {
     upserts: [
-      ...items.map((event) => toEventItem(event, calendarId, listed.timeZone ?? null, now)),
+      ...items.map((event) => toEventItem(event, calendar, listed.timeZone ?? null, now)),
       ...vanished.map(([eventId, entry]) =>
         toEventItem(
           {
@@ -258,7 +263,7 @@ export const calendarSync = async (
               ? {}
               : { recurringEventId: entry.series }),
           },
-          calendarId,
+          calendar,
           null,
           now,
         ),

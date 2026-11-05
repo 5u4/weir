@@ -291,12 +291,18 @@ const EventList = Schema.Struct({
 });
 export type EventList = typeof EventList.Type;
 
+const CalendarListEntry = Schema.Struct({
+  id: Schema.String,
+  summary: Schema.String,
+  summaryOverride: Schema.optionalKey(Schema.String),
+});
+
 const calendarCall = <A>(
   gws: Gws,
   method: ReadonlyArray<string>,
   params: Params,
   schema: Schema.Codec<A>,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ) =>
   retrying(
     gws,
@@ -306,6 +312,17 @@ const calendarCall = <A>(
     [],
     signal,
   );
+
+export const getCalendarName = async (gws: Gws, calendarId: string, signal?: AbortSignal) => {
+  const entry = await calendarCall(
+    gws,
+    ["calendarList", "get"],
+    { calendarId },
+    CalendarListEntry,
+    signal,
+  );
+  return entry.summaryOverride ?? entry.summary;
+};
 
 export const listEvents = (
   gws: Gws,

@@ -491,6 +491,21 @@ describe("recurring series", () => {
     }).pipe(Effect.provide(storeLayer())),
   );
 
+  it.effect("a renamed calendar updates the stored calendar name without a new item", () =>
+    Effect.gen(function* () {
+      yield* seriesBackfill;
+      const before = yield* seriesConversation;
+      const [itemBefore] = yield* Read.liveItems({ conversationIds: [before.id] });
+      yield* liveStep([
+        { ...seriesMaster("2026-10-20T09:00:00Z", "Weekday 1:1"), containerName: "Team calendar" },
+      ]);
+      const items = yield* Read.liveItems({ conversationIds: [before.id] });
+      expect(items.map(({ seq, containerName }) => [seq, containerName])).toEqual([
+        [itemBefore?.seq, "Team calendar"],
+      ]);
+    }).pipe(Effect.provide(storeLayer())),
+  );
+
   it.effect("a sparse cancelled master stays in its series and drops every occurrence", () =>
     Effect.gen(function* () {
       yield* seriesBackfill;

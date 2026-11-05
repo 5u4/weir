@@ -235,10 +235,26 @@ const listSendAs = (mailbox: Mailbox, p: Params) => {
 };
 
 const calendarOf = (mailbox: Mailbox, p: Params) => {
-  if (p.calendarId === undefined)
-    throw validation("Required path parameter 'calendarId' is missing");
-  if (p.calendarId !== "primary" && p.calendarId !== mailbox.emailAddress) throw notFound();
-  return mailbox.calendar;
+  const id = p.calendarId;
+  if (id === undefined) throw validation("Required path parameter 'calendarId' is missing");
+  if (id === "primary" || id === mailbox.emailAddress) {
+    return { id: mailbox.emailAddress, calendar: mailbox.calendar, primary: true };
+  }
+  const calendar = typeof id === "string" ? mailbox.calendars?.[id] : undefined;
+  if (calendar === undefined) throw notFound();
+  return { id, calendar, primary: false };
+};
+
+const getCalendarListEntry = (mailbox: Mailbox, p: Params) => {
+  const { id, calendar, primary } = calendarOf(mailbox, p);
+  return {
+    kind: "calendar#calendarListEntry",
+    id,
+    summary: calendar.summary,
+    timeZone: calendar.timeZone,
+    accessRole: "owner",
+    ...(primary ? { primary: true } : {}),
+  };
 };
 
 const timeParam = (p: Params, name: string) => {
@@ -257,7 +273,7 @@ const boundsOf = (event: Pick<StoredEvent, "start" | "end">) => ({
 const wire = ({ version: _, ...event }: StoredEvent) => event;
 
 const listEvents = (mailbox: Mailbox, p: Params) => {
-  const calendar = calendarOf(mailbox, p);
+  const { calendar } = calendarOf(mailbox, p);
   if (boolParam(p, "singleEvents")) {
     throw validation("fake-gws supports only singleEvents=false");
   }
@@ -284,7 +300,7 @@ const listEvents = (mailbox: Mailbox, p: Params) => {
   const { items, nextPageToken } = page(matching, p, size);
   return {
     kind: "calendar#events",
-    summary: mailbox.emailAddress,
+    summary: calendar.summary,
     timeZone: calendar.timeZone,
     items: items.map(wire),
     ...(nextPageToken ? { nextPageToken } : { nextSyncToken: String(calendar.version) }),
@@ -295,7 +311,7 @@ const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const DAY_MS = 86_400_000;
 
 const listInstances = (mailbox: Mailbox, p: Params) => {
-  const calendar = calendarOf(mailbox, p);
+  const { calendar } = calendarOf(mailbox, p);
   if (typeof p.eventId !== "string")
     throw validation("Required path parameter 'eventId' is missing");
   const master = calendar.events[p.eventId];
@@ -370,6 +386,7 @@ const COMMANDS: Record<
   },
   "gmail users getProfile": { params: ["userId"], run: getProfile },
   "gmail users settings sendAs list": { params: ["userId"], run: listSendAs },
+  "calendar calendarList get": { params: ["calendarId"], run: getCalendarListEntry },
   "calendar events list": {
     params: ["calendarId", "singleEvents", "maxResults", "syncToken", "timeMin", "pageToken"],
     run: listEvents,

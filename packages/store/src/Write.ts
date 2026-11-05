@@ -497,6 +497,7 @@ const RefreshedItem = ItemInsert.mapFields((fields) =>
   Struct.pick(fields, [
     "syncedAt",
     "title",
+    "containerName",
     "fromName",
     "fromAddress",
     "fromMe",

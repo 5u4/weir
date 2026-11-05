@@ -78,7 +78,7 @@ sync_every = "5m"
 command = [${command.map(tomlString).join(", ")}]
 backfill = "newer_than:30d"
 labels = ["INBOX", "SENT", "CATEGORY_PROMOTIONS"]
-calendar = "primary"
+calendars = ["primary"]
 
 [[tag]]
 name = "Me"

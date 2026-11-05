@@ -89,7 +89,10 @@ afterEach(() => {
 const host = { now: () => Date.parse(FIXTURE_NOW) };
 
 const sourceFor = (dir: string, labels = EVERY_LABEL): Source =>
-  gws.create({ command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels }, host);
+  gws.create(
+    { command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels, calendars: [] },
+    host,
+  );
 
 const running = new AbortController().signal;
 
@@ -716,6 +719,7 @@ describe("gws plugin against fake-gws", () => {
         command: ["sh", "-c", "echo gws exploded >&2; exit 2"],
         backfill: "newer_than:30d",
         labels: EVERY_LABEL,
+        calendars: [],
       },
       host,
     );
@@ -738,7 +742,12 @@ describe("gws quota backoff", () => {
   };
   const mailboxSource = (dir: string, sleep: Sleep) =>
     createSource(
-      { command: [FAKE_GWS, "--mailbox", dir], backfill: "newer_than:30d", labels: EVERY_LABEL },
+      {
+        command: [FAKE_GWS, "--mailbox", dir],
+        backfill: "newer_than:30d",
+        labels: EVERY_LABEL,
+        calendars: [],
+      },
       sleep,
       host,
       fixtureFaceNet(),
@@ -749,6 +758,7 @@ describe("gws quota backoff", () => {
         command: ["sh", "-c", `printf '%s' '${JSON.stringify({ error })}'; exit 1`],
         backfill: "newer_than:30d",
         labels: EVERY_LABEL,
+        calendars: [],
       },
       sleep,
       host,
@@ -837,9 +847,14 @@ describe("gws quota backoff", () => {
 describe("gws configSchema", () => {
   const validate = (input: unknown) => gws.configSchema["~standard"].validate(input);
 
-  it("defaults command to gws and labels to INBOX and SENT", async () => {
+  it("defaults command to gws, labels to INBOX and SENT, and calendars to none", async () => {
     expect(await validate({ backfill: "newer_than:30d" })).toEqual({
-      value: { command: ["gws"], backfill: "newer_than:30d", labels: ["INBOX", "SENT"] },
+      value: {
+        command: ["gws"],
+        backfill: "newer_than:30d",
+        labels: ["INBOX", "SENT"],
+        calendars: [],
+      },
     });
   });
 
@@ -849,8 +864,14 @@ describe("gws configSchema", () => {
     [{ command: "gws", backfill: "newer_than:30d" }],
     [{ backfill: "newer_than:30d", labels: [] }],
     [{ backfill: "newer_than:30d", labels: "INBOX" }],
+    [{ backfill: "newer_than:30d", calendars: ["primary", "primary"] }],
   ])("rejects %j", async (input) => {
     const result = await validate(input);
     expect(result.issues?.length).toBeGreaterThan(0);
+  });
+
+  it("rejects a key the config does not define", async () => {
+    const result = await validate({ backfill: "newer_than:30d", calendar: "primary" });
+    expect(result.issues?.map(({ path }) => path)).toEqual([["calendar"]]);
   });
 });

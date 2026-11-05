@@ -25,7 +25,7 @@ it("decodes the fixtures config with its fake-ai profile, gmail source, four tag
         command: ["fake-gws"],
         backfill: "newer_than:30d",
         labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
-        calendar: "primary",
+        calendars: ["primary"],
       },
     },
   ]);
@@ -50,6 +50,6 @@ it("decodes the fixtures config pointed at a mutable mailbox", () => {
     command: ["fake-gws", "--mailbox", '/tmp/mail "box"'],
     backfill: "newer_than:30d",
     labels: ["INBOX", "SENT", "CATEGORY_PROMOTIONS"],
-    calendar: "primary",
+    calendars: ["primary"],
   });
 });

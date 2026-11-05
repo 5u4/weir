@@ -12,6 +12,7 @@ import {
   abortableSleep,
   type Gws,
   GwsError,
+  getCalendarName,
   getProfile,
   getThread,
   type HistoryList,
@@ -34,7 +35,9 @@ const GwsConfig = Schema.Struct({
   ),
   backfill: Schema.String,
   labels: LabelIds.pipe(Schema.withDecodingDefaultKey(Effect.succeed(["INBOX", "SENT"] as const))),
-  calendar: Schema.optionalKey(Schema.String),
+  calendars: Schema.UniqueArray(Schema.String).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
 });
 export type GwsConfig = typeof GwsConfig.Type;
 
@@ -172,12 +175,13 @@ const emit = (
 });
 
 export const createSource = (
-  { command, backfill, labels: labelNames, calendar }: GwsConfig,
+  { command, backfill, labels: labelNames, calendars }: GwsConfig,
   sleep: Sleep,
   host: SourceHost,
   net: FaceNet,
 ): Source => {
   const cli: Gws = { command, sleep };
+  const calendarByStream = new Map(calendars.map((id) => [`${calendarPrefix}${id}`, id]));
   const listingPage = async (
     pass: Pass,
     labels: LabelIds,
@@ -333,7 +337,11 @@ export const createSource = (
 
   return {
     streams: async () => {
-      const [profile, sendAs] = await Promise.all([getProfile(cli), listSendAs(cli)]);
+      const [profile, sendAs, names] = await Promise.all([
+        getProfile(cli),
+        listSendAs(cli),
+        Promise.all(calendars.map((id) => getCalendarName(cli, id))),
+      ]);
       const me = [
         ...new Set([
           profile.emailAddress,
@@ -348,17 +356,13 @@ export const createSource = (
           me,
           openLabel: "Gmail",
         },
-        ...(calendar === undefined
-          ? []
-          : [
-              {
-                id: `${calendarPrefix}${calendar}`,
-                kind: "event" as const,
-                name: "Calendar",
-                me,
-                openLabel: "Google Calendar",
-              },
-            ]),
+        ...Arr.zip(calendars, names).map(([id, name]) => ({
+          id: `${calendarPrefix}${id}`,
+          kind: "event" as const,
+          name,
+          me,
+          openLabel: "Google Calendar",
+        })),
       ];
     },
     sync: async (
@@ -366,8 +370,9 @@ export const createSource = (
       cursor: string | null,
       signal: AbortSignal,
     ): Promise<SyncPage> => {
-      if (calendar !== undefined && streamId === `${calendarPrefix}${calendar}`) {
-        return calendarSync(cli, calendar, host.now(), cursor, signal);
+      const calendarId = calendarByStream.get(streamId);
+      if (calendarId !== undefined) {
+        return calendarSync(cli, calendarId, host.now(), cursor, signal);
       }
       const position = cursor === null ? null : decodeCursor(cursor);
       const recordedAt = Effect.runSync(Clock.currentTimeMillis);
@@ -400,6 +405,8 @@ export const createSource = (
 
 export const gwsPlugin = (net: FaceNet): SourcePlugin<GwsConfig> => ({
   id: "gws",
-  configSchema: Schema.toStandardSchemaV1(GwsConfig),
+  configSchema: Schema.toStandardSchemaV1(GwsConfig, {
+    parseOptions: { onExcessProperty: "error" },
+  }),
   create: (config, host) => createSource(config, abortableSleep, host, net),
 });

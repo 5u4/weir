@@ -29,6 +29,7 @@ export type CalendarEvent = {
 };
 export type StoredEvent = CalendarEvent & { version: number };
 export type Calendar = {
+  summary: string;
   timeZone: string;
   version: number;
   applied: number;
@@ -209,7 +210,8 @@ export const REVISIONS: ReadonlyArray<Revision> = [
 
 export const CALENDAR_CHANGES_AT = "2026-10-25T10:00:00-07:00";
 
-export const emptyCalendar = (): Calendar => ({
+export const emptyCalendar = (summary: string): Calendar => ({
+  summary,
   timeZone: CALENDAR_ZONE,
   version: 0,
   applied: 0,

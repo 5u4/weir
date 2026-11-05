@@ -22,7 +22,7 @@ sync_every = "1h"
 command = ["${join(import.meta.dirname, "../node_modules/.bin/fake-gws")}", "--mailbox", "${mailbox}"]
 backfill = "newer_than:30d"
 labels = ["INBOX"]
-calendar = "primary"
+calendars = ["primary"]
 `;
 
 describe("meetings", () => {
