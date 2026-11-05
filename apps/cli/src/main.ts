@@ -302,6 +302,25 @@ const stop = Command.make("stop", {}, () =>
   }),
 );
 
+const restart = Command.make("restart", {}, () =>
+  Effect.gen(function* () {
+    const home = yield* Home.fromEnv;
+    const { previous, daemon } = yield* Lifecycle.restart(home);
+    const running = {
+      pid: daemon.pid,
+      url: Lifecycle.url(daemon.port),
+      log: home.log,
+      help: ["weir", "weir stop"],
+    };
+    yield* print(
+      Option.match(previous, {
+        onNone: () => ({ daemon: "started", ...running }),
+        onSome: ({ pid }) => ({ daemon: "restarted", previous_pid: pid, ...running }),
+      }),
+    );
+  }),
+);
+
 const fail = (value: unknown) =>
   print(value).pipe(
     Effect.andThen(
@@ -322,6 +341,7 @@ home.pipe(
     reload,
     start,
     stop,
+    restart,
   ]),
   Command.run({ version: Build.version }),
   Effect.catchTags({
@@ -333,7 +353,7 @@ home.pipe(
       fail({ error: log_path === null ? error : `${error}; log: ${log_path}`, log: log_path }),
     DigestInterrupted: ({ message }) => fail({ error: message }),
     DaemonExited: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
-    DaemonSilent: ({ message, log }) => fail({ error: message, log, help: ["weir stop"] }),
+    DaemonSilent: ({ message, log }) => fail({ error: message, log, help: ["weir restart"] }),
     DaemonTimedOut: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
     PlatformError: ({ message }) => fail({ error: message }),
     HttpClientError: ({ message, request }) =>

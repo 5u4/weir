@@ -122,3 +122,45 @@ describe("weir start and stop", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+describe("weir restart", () => {
+  it.live("restart starts a stopped daemon, then replaces a running one", () =>
+    Effect.gen(function* () {
+      const { home, port } = yield* makeHome((port) => `port = ${port}\n`);
+      const first = yield* weir(home, "restart");
+      expect(first.exitCode).toBe(0);
+      expect(first.output).toMatchObject({ daemon: "started", url: `http://127.0.0.1:${port}` });
+      const pid = first.output.pid;
+      expect(alive(pid)).toBe(true);
+
+      const second = yield* weir(home, "restart");
+      expect(second.exitCode).toBe(0);
+      expect(second.output).toMatchObject({ daemon: "restarted", previous_pid: pid });
+      expect(second.output.pid).not.toBe(pid);
+      expect(alive(pid)).toBe(false);
+      expect(alive(second.output.pid)).toBe(true);
+      expect((yield* weir(home)).exitCode).toBe(0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.live(
+    "restart recovers a daemon that is alive but not answering",
+    () =>
+      Effect.gen(function* () {
+        const { home } = yield* makeHome((port) => `port = ${port}\n`);
+        const pid = Number((yield* weir(home, "start")).output.pid);
+        process.kill(pid, "SIGSTOP");
+
+        const refused = yield* weir(home, "start");
+        expect(refused.exitCode).toBe(1);
+        expect(refused.output.help).toEqual(["weir restart"]);
+
+        const restarted = yield* weir(home, "restart");
+        expect(restarted.exitCode).toBe(0);
+        expect(restarted.output).toMatchObject({ daemon: "restarted", previous_pid: pid });
+        expect(alive(pid)).toBe(false);
+        expect(alive(restarted.output.pid)).toBe(true);
+      }).pipe(Effect.scoped),
+    30_000,
+  );
+});
