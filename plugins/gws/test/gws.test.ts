@@ -869,4 +869,9 @@ describe("gws configSchema", () => {
     const result = await validate(input);
     expect(result.issues?.length).toBeGreaterThan(0);
   });
+
+  it("rejects a key the config does not define", async () => {
+    const result = await validate({ backfill: "newer_than:30d", calendar: "primary" });
+    expect(result.issues?.map(({ path }) => path)).toEqual([["calendar"]]);
+  });
 });

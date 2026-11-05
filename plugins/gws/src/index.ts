@@ -12,7 +12,7 @@ import {
   abortableSleep,
   type Gws,
   GwsError,
-  getCalendarListEntry,
+  getCalendarName,
   getProfile,
   getThread,
   type HistoryList,
@@ -337,10 +337,10 @@ export const createSource = (
 
   return {
     streams: async () => {
-      const [profile, sendAs, entries] = await Promise.all([
+      const [profile, sendAs, names] = await Promise.all([
         getProfile(cli),
         listSendAs(cli),
-        Promise.all(calendars.map((id) => getCalendarListEntry(cli, id))),
+        Promise.all(calendars.map((id) => getCalendarName(cli, id))),
       ]);
       const me = [
         ...new Set([
@@ -356,10 +356,10 @@ export const createSource = (
           me,
           openLabel: "Gmail",
         },
-        ...Arr.zip(calendars, entries).map(([id, entry]) => ({
+        ...Arr.zip(calendars, names).map(([id, name]) => ({
           id: `${calendarPrefix}${id}`,
           kind: "event" as const,
-          name: entry.summaryOverride ?? entry.summary,
+          name,
           me,
           openLabel: "Google Calendar",
         })),
@@ -405,6 +405,8 @@ export const createSource = (
 
 export const gwsPlugin = (net: FaceNet): SourcePlugin<GwsConfig> => ({
   id: "gws",
-  configSchema: Schema.toStandardSchemaV1(GwsConfig),
+  configSchema: Schema.toStandardSchemaV1(GwsConfig, {
+    parseOptions: { onExcessProperty: "error" },
+  }),
   create: (config, host) => createSource(config, abortableSleep, host, net),
 });

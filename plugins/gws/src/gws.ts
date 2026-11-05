@@ -313,8 +313,16 @@ const calendarCall = <A>(
     signal,
   );
 
-export const getCalendarListEntry = (gws: Gws, calendarId: string, signal?: AbortSignal) =>
-  calendarCall(gws, ["calendarList", "get"], { calendarId }, CalendarListEntry, signal);
+export const getCalendarName = async (gws: Gws, calendarId: string, signal?: AbortSignal) => {
+  const entry = await calendarCall(
+    gws,
+    ["calendarList", "get"],
+    { calendarId },
+    CalendarListEntry,
+    signal,
+  );
+  return entry.summaryOverride ?? entry.summary;
+};
 
 export const listEvents = (
   gws: Gws,

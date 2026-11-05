@@ -176,16 +176,21 @@ describe("several calendars on one source", () => {
       [`calendar/${team}`, "Northwind team"],
     ]);
 
-    const eventIds = (pages: ReadonlyArray<SyncPage>) => [
+    const eventsOf = (pages: ReadonlyArray<SyncPage>) => [
       ...new Set(
         pages.flatMap(({ upserts }) =>
-          upserts.flatMap((item) => (item.event ? [item.event.eventId] : [])),
+          upserts.flatMap((item) =>
+            item.event ? [`${item.containerName}: ${item.event.eventId}`] : [],
+          ),
         ),
       ),
     ];
-    const primary = eventIds((await syncAll(null)).pages);
+    const primary = eventsOf((await syncAll(null)).pages);
     expect(primary.length).toBeGreaterThan(0);
-    expect(primary).not.toContain("nwfreeze");
-    expect(eventIds((await syncAll(null, `calendar/${team}`)).pages)).toEqual(["nwfreeze"]);
+    expect(primary.every((event) => event.startsWith("Robin: "))).toBe(true);
+    expect(primary).not.toContain("Robin: nwfreeze");
+    expect(eventsOf((await syncAll(null, `calendar/${team}`)).pages)).toEqual([
+      "Northwind team: nwfreeze",
+    ]);
   });
 });
