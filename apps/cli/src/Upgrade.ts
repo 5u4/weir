@@ -45,8 +45,8 @@ export const isNewer = (candidate: string, installed: string): boolean =>
       aMajor !== bMajor ? aMajor > bMajor : aMinor !== bMinor ? aMinor > bMinor : aPatch > bPatch,
   });
 
-export const parseLocation = (location: string, base: string): Option.Option<string> => {
-  const path = URL.parse(location, base)?.pathname ?? "";
+export const parseLocation = (location: string, requested: string): Option.Option<string> => {
+  const path = URL.parse(location, requested)?.pathname ?? "";
   const match = /\/releases\/tag\/v(?<version>\d+\.\d+\.\d+)$/.exec(path);
   return Option.fromNullishOr(match?.groups?.version);
 };
@@ -63,7 +63,7 @@ export const latest = (base: string) =>
       ),
     );
     const location = response.headers.location ?? "";
-    return yield* Option.match(parseLocation(location, base), {
+    return yield* Option.match(parseLocation(location, `${base}/releases/latest`), {
       onNone: () =>
         Effect.fail(
           new ReleaseNotFound({

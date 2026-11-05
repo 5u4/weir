@@ -92,6 +92,7 @@ const daemon = vi.hoisted(() => {
     if (method === "GET" && url.pathname === "/status") {
       return Response.json({
         home: "/h",
+        version: "dev",
         config: { path: "/h/config.toml", loaded_at: "2026-10-25T16:00:00.000Z", error: null },
         sync: "running",
         sources: [],

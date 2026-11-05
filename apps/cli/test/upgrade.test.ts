@@ -19,16 +19,17 @@ describe("version order", () => {
 });
 
 describe("latest release location", () => {
-  const base = "https://github.com/5u4/weir";
+  const requested = "https://github.com/5u4/weir/releases/latest";
   it.each([
     ["https://github.com/5u4/weir/releases/tag/v0.3.0", Option.some("0.3.0")],
     ["/5u4/weir/releases/tag/v1.12.4", Option.some("1.12.4")],
+    ["tag/v0.3.0", Option.some("0.3.0")],
     ["/5u4/weir/releases", Option.none()],
     ["/5u4/weir/releases/tag/nightly", Option.none()],
     ["::not a url", Option.none()],
     ["", Option.none()],
   ])("%s", (location, expected) => {
-    expect(Upgrade.parseLocation(location, base)).toEqual(expected);
+    expect(Upgrade.parseLocation(location, requested)).toEqual(expected);
   });
 });
 
