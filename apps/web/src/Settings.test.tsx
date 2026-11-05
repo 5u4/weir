@@ -35,6 +35,7 @@ const source = (overrides: Partial<Source> = {}): Source => ({
 
 const status = (sources: ReadonlyArray<Source>): Status => ({
   home: "/h",
+  version: "0.1.0",
   config: { path: "/h/config.toml", loaded_at: hoursAgo(1), error: null },
   sync: "running",
   sources: [...sources],

@@ -22,6 +22,7 @@ const status = (
   configError: Status["config"]["error"] = null,
 ): Status => ({
   home: "/h",
+  version: "0.1.0",
   config: { path: "/h/config.toml", loaded_at: "2026-10-25T16:00:00.000Z", error: configError },
   sync: configError === null ? "running" : "stopped",
   sources,

@@ -17,6 +17,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Lifecycle from "./Lifecycle.ts";
+import * as Upgrade from "./Upgrade.ts";
 
 const bodyLimit = 400;
 
@@ -61,6 +62,7 @@ const home = Command.make("weir", {}, () =>
     const status = yield* client.status();
     yield* print({
       weir: status.home,
+      version: status.version,
       config: status.config.path,
       sync: status.sync,
       ...(status.config.error === null ? {} : { config_error: status.config.error.message }),
@@ -321,6 +323,31 @@ const restart = Command.make("restart", {}, () =>
   }),
 );
 
+const upgrade = Command.make("upgrade", {}, () =>
+  Effect.gen(function* () {
+    const home = yield* Home.fromEnv;
+    const result = yield* Upgrade.run(home, process.env.WEIR_RELEASES ?? Upgrade.defaultBase);
+    if (result._tag === "Current") {
+      yield* print({ weir: result.version, upgrade: "already current", help: ["weir"] });
+      return;
+    }
+    yield* print({
+      upgrade: "done",
+      from: result.from,
+      to: result.to,
+      ...Option.match(result.daemon, {
+        onNone: () => ({ daemon: "stopped", help: ["weir start"] }),
+        onSome: (daemon) => ({
+          daemon: "restarted",
+          pid: daemon.pid,
+          url: Lifecycle.url(daemon.port),
+          help: ["weir"],
+        }),
+      }),
+    });
+  }),
+);
+
 const fail = (value: unknown) =>
   print(value).pipe(
     Effect.andThen(
@@ -342,6 +369,7 @@ home.pipe(
     start,
     stop,
     restart,
+    upgrade,
   ]),
   Command.run({ version: Build.version }),
   Effect.catchTags({
@@ -355,6 +383,11 @@ home.pipe(
     DaemonExited: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
     DaemonSilent: ({ message, log }) => fail({ error: message, log, help: ["weir restart"] }),
     DaemonTimedOut: ({ message, log }) => fail({ error: message, log, help: ["weir start"] }),
+    DevBuild: ({ message }) => fail({ error: message }),
+    ReleaseNotFound: ({ message }) => fail({ error: message }),
+    ReleaseUnreachable: ({ message }) => fail({ error: message }),
+    InstallFailed: ({ message, output }) =>
+      fail({ error: message, output, help: ["weir upgrade"] }),
     PlatformError: ({ message }) => fail({ error: message }),
     HttpClientError: ({ message, request }) =>
       Effect.gen(function* () {

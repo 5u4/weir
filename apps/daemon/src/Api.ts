@@ -103,6 +103,7 @@ export type DigestRun = typeof DigestRun.Type;
 
 export const Status = Schema.Struct({
   home: Schema.String,
+  version: Schema.String,
   config: Schema.Struct({
     path: Schema.String,
     loaded_at: Schema.String,

@@ -56,6 +56,7 @@ import {
   type TagTest,
   type View,
 } from "./Api.ts";
+import * as Build from "./Build.ts";
 import * as ConfigFile from "./ConfigFile.ts";
 import { aiScopes, Daemon, layer as daemonLayer, platform, type State } from "./Daemon.ts";
 import * as Faces from "./Faces.ts";
@@ -208,6 +209,7 @@ const status = Effect.fnUntraced(function* (
   );
   return {
     home: home.root,
+    version: Build.version,
     config: {
       path: home.config,
       loaded_at: DateTime.formatIso(state.loadedAt),
