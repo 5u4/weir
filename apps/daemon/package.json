@@ -1,10 +1,10 @@
 {
   "name": "@weir/daemon",
-  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     "./Api": "./src/Api.ts",
+    "./Build": "./src/Build.ts",
     "./ConfigFile": "./src/ConfigFile.ts",
     "./Daemon": "./src/Daemon.ts",
     "./Home": "./src/Home.ts",

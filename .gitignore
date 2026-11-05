@@ -4,3 +4,4 @@ repos/
 dist/
 *.tsbuildinfo
 .vitest/
+weir.tgz
