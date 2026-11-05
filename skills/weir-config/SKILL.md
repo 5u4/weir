@@ -32,7 +32,7 @@ Rules address the item's rule input with JSON Pointers. Write every pointer from
 - A tag naming a group that is not a `[[group]]` in the same file fails reload.
 - `[[group]]` rules cannot use `group`.
 - `tag test` sees groups as of the last reload: add a new group and reload before testing a tag that references it.
-- Calendar events (a gws source with `calendars = ["primary"]` in `[source.config]`) are items too: `/title` is the event summary, `/from` its organizer, `/containerName` the calendar's display name and `/raw` the Google Calendar event, so rules on `/raw/payload/headers` or `/raw/labelIds` never match them. A `[[group]]` joins events to mail only within the same source. Events never count toward digests.
+- Calendar events (a gws source with `calendars = ["primary"]` in `[source.config]`) are items too: `/title` is the event summary, `/from` its organizer, `/containerName` the calendar's display name, `/containerId` the calendar id as written in `calendars` and `/raw` the Google Calendar event, so rules on `/raw/payload/headers` or `/raw/labelIds` never match them. A rule that must keep matching after the calendar is renamed matches `/containerId`. A `[[group]]` joins events to mail only within the same source. Events never count toward digests.
 
 ## Examples
 
