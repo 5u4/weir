@@ -4,6 +4,7 @@ import * as BunServices from "@effect/platform-bun/BunServices";
 import { encode } from "@toon-format/toon";
 import { DurationShorthand, untagged } from "@weir/contract/Config";
 import { Api } from "@weir/daemon/Api";
+import * as Build from "@weir/daemon/Build";
 import * as Home from "@weir/daemon/Home";
 import * as Console from "effect/Console";
 import * as Argument from "effect/cli/Argument";
@@ -322,7 +323,7 @@ home.pipe(
     start,
     stop,
   ]),
-  Command.run({ version: "0.1.0" }),
+  Command.run({ version: Build.version }),
   Effect.catchTags({
     ConfigInvalid: ({ message, file, issues }) => fail({ error: message, file, issues }),
     NotFound: ({ message }) => fail({ error: message }),

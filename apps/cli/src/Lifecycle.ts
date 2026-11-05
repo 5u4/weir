@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { Api } from "@weir/daemon/Api";
+import * as Build from "@weir/daemon/Build";
 import * as Home from "@weir/daemon/Home";
 import * as ProcessIdentity from "@weir/daemon/ProcessIdentity";
 import * as Data from "effect/Data";
@@ -114,7 +115,7 @@ export const start = (home: Home.WeirHome) =>
         "weir-daemon",
         home.log,
         process.execPath,
-        fileURLToPath(import.meta.resolve("@weir/daemon/main")),
+        Build.bundleFile("daemon.js") ?? fileURLToPath(import.meta.resolve("@weir/daemon/main")),
       ],
       cwd: home.root,
       env: { ...process.env, WEIR_HOME: home.root },

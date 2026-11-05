@@ -3,8 +3,9 @@ import * as Effect from "effect/Effect";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Layer from "effect/Layer";
+import * as Build from "./Build.ts";
 
-export const defaultDist = join(import.meta.dirname, "../../web/dist");
+export const defaultDist = Build.bundleFile("web") ?? join(import.meta.dirname, "../../web/dist");
 
 const assetName = /^[\w-][\w.-]*$/;
 
