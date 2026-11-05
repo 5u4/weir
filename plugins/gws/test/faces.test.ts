@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { abortableSleep } from "../src/gws.ts";
 import { createSource, type FaceNet } from "../src/index.ts";
 
-const config = { command: ["gws"], backfill: "newer_than:30d", labels: ["INBOX"] } as const;
+const config = {
+  command: ["gws"],
+  backfill: "newer_than:30d",
+  labels: ["INBOX"],
+  calendars: [],
+} as const;
 
 const facesWith = (net: FaceNet) => {
   const { faces } = createSource(config, abortableSleep, { now: Date.now }, net);

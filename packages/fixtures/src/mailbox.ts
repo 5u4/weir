@@ -65,6 +65,7 @@ export type Mailbox = {
   pending: string[];
   history: History[];
   calendar: Calendar;
+  calendars?: Record<string, Calendar>;
   delay?: Record<string, number>;
   quota?: { until: number; methods: string[] };
 };
@@ -138,7 +139,7 @@ const empty = (now: string): Mailbox => {
     messages: {},
     pending: [],
     history: [],
-    calendar: emptyCalendar(),
+    calendar: emptyCalendar(me.addr),
   };
 };
 
