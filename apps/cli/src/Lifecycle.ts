@@ -37,7 +37,7 @@ export class DaemonSilent extends Schema.TaggedError<DaemonSilent>()("DaemonSile
   log: Schema.Array(Schema.String),
 }) {
   override get message() {
-    return `weir daemon pid ${this.pid} is alive but not answering; run weir stop`;
+    return `weir daemon pid ${this.pid} is alive but not answering; run weir restart`;
   }
 }
 
@@ -193,4 +193,11 @@ export const stop = (home: Home.WeirHome) =>
       yield* fs.remove(home.daemon).pipe(Effect.ignore);
     }
     return target;
+  });
+
+export const restart = (home: Home.WeirHome) =>
+  Effect.gen(function* () {
+    const previous = yield* stop(home);
+    const { daemon } = yield* start(home);
+    return { previous, daemon };
   });
