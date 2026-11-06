@@ -95,21 +95,20 @@ describe("gws background backfill", () => {
       yield* eventually(
         Effect.sync(() => readCalls(mailbox)),
         (calls) => calls.some(({ command }) => command === "threads list"),
-        400,
       );
       deliverThreads(mailbox, [note("early", now - 60_000)]);
       expect((yield* stream)?.items).toBe(0);
 
-      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize, 400);
+      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize);
       deliverThreads(mailbox, [note("mid", now)]);
       const [elapsed, live] = yield* Effect.timed(
-        eventually(states, (s) => s["Note mid"] === "unread", 160),
+        eventually(states, (s) => s["Note mid"] === "unread"),
       );
       expect(live["Note mid"]).toBe("unread");
       expect(Duration.toMillis(elapsed)).toBeLessThan(3_000);
       expect((yield* stream)?.backfill).toBe("running");
 
-      const done = yield* eventually(stream, (s) => s?.backfill === "done", 800);
+      const done = yield* eventually(stream, (s) => s?.backfill === "done");
       expect(done).toMatchObject({ backfill: "done", last_error: null, items: seeded + 2 });
       const final = yield* states;
       expect(final["Note early"]).toBe("unread");
@@ -129,12 +128,11 @@ describe("gws background backfill", () => {
       yield* eventually(
         Effect.sync(() => readCalls(mailbox)),
         (calls) => calls.filter(({ command }) => command === "getProfile").length >= 2,
-        400,
       );
       expect(readCalls(mailbox).some(({ command }) => command === "threads list")).toBe(false);
       deliverThreads(mailbox, [note("snapshot", now)]);
 
-      const done = yield* eventually(stream, (s) => s?.backfill === "done", 800);
+      const done = yield* eventually(stream, (s) => s?.backfill === "done");
       expect(done).toMatchObject({ last_error: null, items: seeded + 1 });
       const final = yield* states;
       expect(final["Note snapshot"]).toBe("unread");
@@ -164,7 +162,6 @@ describe("gws background backfill", () => {
               ({ command, params }) =>
                 command === "threads list" && JSON.stringify(params.labelIds) === '["SENT"]',
             ),
-          400,
         );
         deliverThreads(mailbox, [note("last-page", now)]);
 
@@ -194,7 +191,6 @@ describe("gws background backfill", () => {
       yield* eventually(
         Effect.sync(() => readCalls(mailbox)),
         (calls) => calls.some(({ command }) => command === "threads list"),
-        400,
       );
       expect(readCalls(mailbox).some(({ command }) => command === "threads get")).toBe(false);
       const [reply] = deliverThreads(mailbox, [
@@ -208,7 +204,7 @@ describe("gws background backfill", () => {
       ]);
       expect(reply).toBeDefined();
 
-      const done = yield* eventually(stream, (s) => s?.backfill === "done", 800);
+      const done = yield* eventually(stream, (s) => s?.backfill === "done");
       expect(done).toMatchObject({ last_error: null, items: seeded + 2 });
       const final = yield* states;
       expect(final["Note late"]).toBe("unread");
@@ -223,7 +219,7 @@ describe("gws background backfill", () => {
         const seeded = 5;
         const { home, port, mailbox } = gmailHome(seeded, yield* Clock.currentTimeMillis);
         const { client, stream, states } = yield* connect(home, port);
-        yield* eventually(stream, (s) => s?.backfill === "done", 400);
+        yield* eventually(stream, (s) => s?.backfill === "done");
         const backfilled = yield* states;
         expect(seedTitles(seeded).map((title) => backfilled[title])).toEqual(
           seedTitles(seeded).map(() => "read"),
@@ -243,7 +239,6 @@ describe("gws background backfill", () => {
         yield* eventually(
           stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
           (s) => s?.backfill === "done" && seen.some(({ backfill }) => backfill === "running"),
-          800,
         );
         expect(seen.some((s) => s.backfill === "running")).toBe(true);
         expect(seen.at(-1)).toMatchObject({
@@ -279,7 +274,7 @@ describe("gws background backfill", () => {
         const asked = { id: "asked", subject: "Note asked", labels: ["INBOX"] };
         deliverThreads(mailbox, [{ ...asked, messages: [question] }]);
         const { client, stream, states } = yield* connect(home, port);
-        yield* eventually(stream, (s) => s?.backfill === "done", 400);
+        yield* eventually(stream, (s) => s?.backfill === "done");
         expect((yield* states)["Note asked"]).toBe("read");
 
         const answer = { at: gmailTime(now - 30 * 60_000), from: "me", to: ["priya"], text: "A" };
@@ -306,7 +301,7 @@ describe("gws background backfill", () => {
         const seeded = 2 * pageSize + 1;
         const { home, port, mailbox, writeConfig } = gmailHome(seeded, now, ["INBOX"]);
         const { client, stream, states } = yield* connect(home, port);
-        yield* eventually(stream, (s) => s?.backfill === "done", 400);
+        yield* eventually(stream, (s) => s?.backfill === "done");
         expect(yield* storedCursor(home)).toMatchObject({
           phase: "incremental",
           labels: ["INBOX"],
@@ -320,7 +315,6 @@ describe("gws background backfill", () => {
         yield* eventually(
           stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
           (s) => s?.backfill === "done" && seen.some(({ backfill }) => backfill === "running"),
-          800,
         );
         expect(seen.at(-1)).toMatchObject({
           backfill: "done",
@@ -345,7 +339,7 @@ describe("gws background backfill", () => {
       setDelay(mailbox, { "threads list": 500 });
       const { stream } = yield* connect(home, port);
       const events = yield* openEvents(port);
-      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize, 400);
+      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize);
       setQuota(mailbox, {
         until: (yield* Clock.currentTimeMillis) + 2_500,
         methods: ["threads get"],
@@ -355,7 +349,6 @@ describe("gws background backfill", () => {
       yield* eventually(
         stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
         (s) => s?.backfill === "done" || s?.last_error != null,
-        800,
       );
       expect(seen.filter(({ last_error }) => last_error !== null)).toEqual([]);
       expect(seen.at(-1)).toMatchObject({ backfill: "done", last_error: null, items: seeded });
