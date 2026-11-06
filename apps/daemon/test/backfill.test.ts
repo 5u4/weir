@@ -332,18 +332,18 @@ describe("gws background backfill", () => {
       }).pipe(Effect.scoped),
   );
 
-  it.live("a Gmail quota window mid-backfill backs off and the backfill still finishes", () =>
+  it.live("a Gmail quota window during backfill backs off and the backfill still finishes", () =>
     Effect.gen(function* () {
       const seeded = 3 * pageSize + 1;
       const { home, port, mailbox } = gmailHome(seeded, yield* Clock.currentTimeMillis);
-      setDelay(mailbox, { "threads list": 500 });
+      setQuota(mailbox, { until: Number.MAX_SAFE_INTEGER, methods: ["threads get"] });
       const { stream } = yield* connect(home, port);
       const events = yield* openEvents(port);
-      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize);
-      setQuota(mailbox, {
-        until: (yield* Clock.currentTimeMillis) + 2_500,
-        methods: ["threads get"],
-      });
+      yield* eventually(
+        Effect.sync(() => readCalls(mailbox)),
+        (calls) => calls.some(({ command, failed }) => command === "threads get" && failed),
+      );
+      setQuota(mailbox, undefined);
 
       const seen: Array<typeof StreamStatus.Type> = [];
       yield* eventually(
@@ -357,10 +357,6 @@ describe("gws background backfill", () => {
           event.type === "sync" && event.status !== "started",
       );
       expect(outcome.status).toBe("done");
-      expect(
-        readCalls(mailbox).filter(({ command, failed }) => command === "threads get" && failed)
-          .length,
-      ).toBeGreaterThan(0);
     }).pipe(Effect.scoped),
   );
 });
