@@ -65,3 +65,12 @@ module (`effect/Effect`, `effect/sql/SqlClient`); avoid the `effect` barrel and 
 - UI images and videos come only from `bun run demo --serve` (synthetic data), never from a real
   mailbox. Add `--fail` to serve with every source failing to sync, for the cap's sync alert.
 - Use squash merge and delete the source branch.
+
+## Release
+
+- The operator tags `vX.Y.Z` on a commit in `main` and pushes the tag.
+- `.github/workflows/release.yml` runs `scripts/release-check.ts`: it rejects a tag that is not
+  `vX.Y.Z` or a commit not on `main`, then runs typecheck, lint, and test.
+- The workflow then runs `bun run pack --version X.Y.Z`, checks the packed version, and publishes
+  `weir.tgz` as a GitHub release with generated notes.
+- `weir upgrade` follows `releases/latest` to the new tag and installs its `weir.tgz`.
