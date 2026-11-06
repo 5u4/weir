@@ -339,17 +339,14 @@ describe("gws background backfill", () => {
       setQuota(mailbox, { until: Number.MAX_SAFE_INTEGER, methods: ["threads get"] });
       const { stream } = yield* connect(home, port);
       const events = yield* openEvents(port);
-      yield* eventually(
-        Effect.sync(() => readCalls(mailbox)),
-        (calls) => calls.some(({ command, failed }) => command === "threads get" && failed),
+      const seen: Array<typeof StreamStatus.Type> = [];
+      const sampled = stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s))));
+      yield* eventually(Effect.all([sampled, Effect.sync(() => readCalls(mailbox))]), ([, calls]) =>
+        calls.some(({ command, failed }) => command === "threads get" && failed),
       );
       setQuota(mailbox, undefined);
 
-      const seen: Array<typeof StreamStatus.Type> = [];
-      yield* eventually(
-        stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
-        (s) => s?.backfill === "done" || s?.last_error != null,
-      );
+      yield* eventually(sampled, (s) => s?.backfill === "done" || s?.last_error != null);
       expect(seen.filter(({ last_error }) => last_error !== null)).toEqual([]);
       expect(seen.at(-1)).toMatchObject({ backfill: "done", last_error: null, items: seeded });
       const outcome = yield* events.until(
