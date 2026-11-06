@@ -22,19 +22,19 @@ bun add -g https://github.com/5u4/weir/releases/download/vX.Y.Z/weir.tgz
 The daemon reads `config.toml` in the weir home and does not start without it. An empty file is a
 valid config. The daemon listens on port 9347 unless `config.toml` sets `port`.
 
-| Command        | What it does                                                                  |
-| -------------- | ----------------------------------------------------------------------------- |
-| `weir start`   | Starts the daemon and prints its pid, Web UI URL, and log path.               |
-| `weir stop`    | Stops the daemon.                                                             |
-| `weir restart` | Stops the daemon if it runs, then starts it.                                  |
-| `weir upgrade` | Installs the latest release if it is newer, then restarts a running daemon.   |
+| Command        | What it does                                                                |
+| -------------- | --------------------------------------------------------------------------- |
+| `weir start`   | Starts the daemon and prints its pid, Web UI URL, and log path.             |
+| `weir stop`    | Stops the daemon.                                                           |
+| `weir restart` | Stops the daemon if it runs, then starts it.                                |
+| `weir upgrade` | Installs the latest release if it is newer, then restarts a running daemon. |
 
 ## Environment
 
-| Variable        | Default                       | Use                                                    |
-| --------------- | ----------------------------- | ------------------------------------------------------ |
+| Variable        | Default                       | Use                                                              |
+| --------------- | ----------------------------- | ---------------------------------------------------------------- |
 | `WEIR_HOME`     | `~/.weir`                     | Holds `config.toml`, `weir.db`, `daemon.json`, and `daemon.log`. |
-| `WEIR_RELEASES` | `https://github.com/5u4/weir` | Where `weir upgrade` looks for `releases/latest`.      |
+| `WEIR_RELEASES` | `https://github.com/5u4/weir` | Where `weir upgrade` looks for `releases/latest`.                |
 
 ## Develop from source
 
