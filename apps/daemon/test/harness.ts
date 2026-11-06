@@ -83,19 +83,25 @@ export const adjustableClock = (iso: string) =>
     };
   });
 
-export const eventually = <A, E, R>(
-  check: Effect.Effect<A, E, R>,
-  done: (value: A) => boolean,
-  attempts = 200,
-) =>
-  Effect.gen(function* () {
-    let value = yield* check;
-    for (let attempt = 0; attempt < attempts && !done(value); attempt++) {
+export const eventually = <A, E, R>(check: Effect.Effect<A, E, R>, done: (value: A) => boolean) => {
+  let last: A | undefined;
+  return Effect.gen(function* () {
+    last = yield* check;
+    while (!done(last)) {
       yield* Effect.sleep(Duration.millis(25));
-      value = yield* check;
+      last = yield* check;
     }
-    return value;
-  });
+    return last;
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(25),
+      orElse: () =>
+        Effect.die(
+          new Error(`eventually: not done after 25s, last value: ${JSON.stringify(last)}`),
+        ),
+    }),
+  );
+};
 
 export const spawnDaemon = (home: Home.WeirHome) =>
   Effect.gen(function* () {

@@ -75,7 +75,7 @@ describe("interrupting a sync pass", () => {
       yield* Layer.build(Http.layer(home, { gws: gwsPlugin(fixtureFaceNet()) }));
       const client = yield* apiClient(port);
       const events = yield* openEvents(port);
-      expect(midBackfill(yield* eventually(client.status(), midBackfill, 400))).toBe(true);
+      expect(midBackfill(yield* eventually(client.status(), midBackfill))).toBe(true);
 
       const [elapsed] = yield* Effect.timed(client.reload());
       const atReload = stream(yield* client.status());
@@ -107,7 +107,7 @@ describe("interrupting a sync pass", () => {
       const messageIds = slowMailbox(home, writeConfig);
       const client = yield* apiClient(port);
       const first = yield* spawnDaemon(home);
-      expect(midBackfill(yield* eventually(client.status(), midBackfill, 400))).toBe(true);
+      expect(midBackfill(yield* eventually(client.status(), midBackfill))).toBe(true);
 
       const [elapsed] = yield* Effect.timed(
         Effect.promise(() => {
@@ -118,7 +118,7 @@ describe("interrupting a sync pass", () => {
       expect(Duration.toMillis(elapsed)).toBeLessThan(listDelay);
 
       yield* spawnDaemon(home);
-      const done = stream(yield* eventually(client.status(), backfilled, 800));
+      const done = stream(yield* eventually(client.status(), backfilled));
       expect(done).toMatchObject({ backfill: "done", last_error: null, items: messageIds.length });
       expect(yield* storedIds(home)).toEqual(messageIds);
     }).pipe(Effect.scoped),

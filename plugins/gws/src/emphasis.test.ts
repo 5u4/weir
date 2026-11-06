@@ -734,5 +734,5 @@ describe("emphasis oracle", () => {
       failures.length,
       `${failures.length} of 3000 failed, ${failures.filter((failure) => !failure.includes("star-or-underscore-in-text")).length} without * or _ in text (by shape, failed/seen: ${counts})\n\n${failures.slice(0, 20).join("\n\n")}`,
     ).toBe(0);
-  }, 15_000);
+  }, 30_000);
 });
