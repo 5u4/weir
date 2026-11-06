@@ -332,24 +332,21 @@ describe("gws background backfill", () => {
       }).pipe(Effect.scoped),
   );
 
-  it.live("a Gmail quota window mid-backfill backs off and the backfill still finishes", () =>
+  it.live("a Gmail quota window during backfill backs off and the backfill still finishes", () =>
     Effect.gen(function* () {
       const seeded = 3 * pageSize + 1;
       const { home, port, mailbox } = gmailHome(seeded, yield* Clock.currentTimeMillis);
-      setDelay(mailbox, { "threads list": 500 });
+      setQuota(mailbox, { until: Number.MAX_SAFE_INTEGER, methods: ["threads get"] });
       const { stream } = yield* connect(home, port);
       const events = yield* openEvents(port);
-      yield* eventually(stream, (s) => (s?.items ?? 0) >= pageSize);
-      setQuota(mailbox, {
-        until: (yield* Clock.currentTimeMillis) + 2_500,
-        methods: ["threads get"],
-      });
-
       const seen: Array<typeof StreamStatus.Type> = [];
-      yield* eventually(
-        stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s)))),
-        (s) => s?.backfill === "done" || s?.last_error != null,
+      const sampled = stream.pipe(Effect.tap((s) => Effect.sync(() => s && seen.push(s))));
+      yield* eventually(Effect.all([sampled, Effect.sync(() => readCalls(mailbox))]), ([, calls]) =>
+        calls.some(({ command, failed }) => command === "threads get" && failed),
       );
+      setQuota(mailbox, undefined);
+
+      yield* eventually(sampled, (s) => s?.backfill === "done" || s?.last_error != null);
       expect(seen.filter(({ last_error }) => last_error !== null)).toEqual([]);
       expect(seen.at(-1)).toMatchObject({ backfill: "done", last_error: null, items: seeded });
       const outcome = yield* events.until(
@@ -357,10 +354,6 @@ describe("gws background backfill", () => {
           event.type === "sync" && event.status !== "started",
       );
       expect(outcome.status).toBe("done");
-      expect(
-        readCalls(mailbox).filter(({ command, failed }) => command === "threads get" && failed)
-          .length,
-      ).toBeGreaterThan(0);
     }).pipe(Effect.scoped),
   );
 });

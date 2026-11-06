@@ -1,10 +1,13 @@
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import * as BunServices from "@effect/platform-bun/BunServices";
 import { describe, expect, it } from "@effect/vitest";
 import { decode } from "@toon-format/toon";
 import * as Home from "@weir/daemon/Home";
+import * as ProcessIdentity from "@weir/daemon/ProcessIdentity";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 const cliMain = join(import.meta.dirname, "../src/main.ts");
 
@@ -23,14 +26,11 @@ const run = (cwd: string, weirHome: string, args: ReadonlyArray<string>) =>
 const weir = (home: Home.WeirHome, ...args: ReadonlyArray<string>) =>
   run(process.cwd(), home.root, args);
 
-const alive = (pid: unknown) => {
-  try {
-    process.kill(Number(pid), 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
+const alive = (pid: unknown) =>
+  ProcessIdentity.identify(Number(pid)).pipe(
+    Effect.map(Option.isSome),
+    Effect.provide(BunServices.layer),
+  );
 
 const makeHome = (config: (port: number) => string) =>
   Effect.acquireRelease(
@@ -57,7 +57,7 @@ describe("weir start and stop", () => {
         log: home.log,
       });
       const pid = started.output.pid;
-      expect(alive(pid)).toBe(true);
+      expect(yield* alive(pid)).toBe(true);
 
       const status = yield* weir(home);
       expect(status.exitCode).toBe(0);
@@ -70,7 +70,7 @@ describe("weir start and stop", () => {
       const stopped = yield* weir(home, "stop");
       expect(stopped.exitCode).toBe(0);
       expect(stopped.output).toMatchObject({ daemon: "stopped", pid });
-      expect(alive(pid)).toBe(false);
+      expect(yield* alive(pid)).toBe(false);
       expect(existsSync(home.daemon)).toBe(false);
 
       const stoppedAgain = yield* weir(home, "stop");
@@ -100,7 +100,7 @@ describe("weir start and stop", () => {
       const { exitCode, output } = yield* weir(home, "start");
       expect(exitCode).toBe(0);
       expect(output.daemon).toBe("started");
-      expect(alive(output.pid)).toBe(true);
+      expect(yield* alive(output.pid)).toBe(true);
     }).pipe(Effect.scoped),
   );
 
@@ -113,12 +113,12 @@ describe("weir start and stop", () => {
       expect(started.exitCode).toBe(0);
       expect(started.output.daemon).toBe("started");
       const pid = started.output.pid;
-      expect(alive(pid)).toBe(true);
+      expect(yield* alive(pid)).toBe(true);
 
       const stopped = yield* relative("stop");
       expect(stopped.exitCode).toBe(0);
       expect(stopped.output).toMatchObject({ daemon: "stopped", pid });
-      expect(alive(pid)).toBe(false);
+      expect(yield* alive(pid)).toBe(false);
     }).pipe(Effect.scoped),
   );
 });
@@ -131,14 +131,14 @@ describe("weir restart", () => {
       expect(first.exitCode).toBe(0);
       expect(first.output).toMatchObject({ daemon: "started", url: `http://127.0.0.1:${port}` });
       const pid = first.output.pid;
-      expect(alive(pid)).toBe(true);
+      expect(yield* alive(pid)).toBe(true);
 
       const second = yield* weir(home, "restart");
       expect(second.exitCode).toBe(0);
       expect(second.output).toMatchObject({ daemon: "restarted", previous_pid: pid });
       expect(second.output.pid).not.toBe(pid);
-      expect(alive(pid)).toBe(false);
-      expect(alive(second.output.pid)).toBe(true);
+      expect(yield* alive(pid)).toBe(false);
+      expect(yield* alive(second.output.pid)).toBe(true);
       expect((yield* weir(home)).exitCode).toBe(0);
     }).pipe(Effect.scoped),
   );
@@ -158,8 +158,8 @@ describe("weir restart", () => {
         const restarted = yield* weir(home, "restart");
         expect(restarted.exitCode).toBe(0);
         expect(restarted.output).toMatchObject({ daemon: "restarted", previous_pid: pid });
-        expect(alive(pid)).toBe(false);
-        expect(alive(restarted.output.pid)).toBe(true);
+        expect(yield* alive(pid)).toBe(false);
+        expect(yield* alive(restarted.output.pid)).toBe(true);
       }).pipe(Effect.scoped),
     30_000,
   );
