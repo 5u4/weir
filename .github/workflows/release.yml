@@ -1,0 +1,37 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: release-check
+        run: bun scripts/release-check.ts --tag "$TAG" --sha "$GITHUB_SHA"
+      - name: pack
+        run: bun run pack --version "${TAG#v}"
+      - name: verify version
+        run: |
+          packed=$(tar -xOzf weir.tgz package/package.json | jq -r .version)
+          if [ "$packed" != "${TAG#v}" ]; then
+            echo "weir.tgz has version $packed, tag is $TAG" >&2
+            exit 1
+          fi
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" weir.tgz --generate-notes
